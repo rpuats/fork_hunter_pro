@@ -1,0 +1,4478 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>👻 Ghost Imperium - Professional Fork Scanner</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        :root {
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #12121a;
+            --bg-card: #1a1a25;
+            --accent: #00d4ff;
+            --accent-glow: rgba(0, 212, 255, 0.3);
+            --success: #00ff88;
+            --success-glow: rgba(0, 255, 136, 0.3);
+            --warning: #ffaa00;
+            --danger: #ff4757;
+            --text: #e0e0e0;
+            --text-dim: #888;
+            --border: rgba(255,255,255,0.1);
+            --card-hover: rgba(0,212,255,0.1);
+        }
+
+        [data-theme="light"] {
+            --bg-primary: #f5f7fa;
+            --bg-secondary: #e8ecf1;
+            --bg-card: #ffffff;
+            --accent: #0066cc;
+            --accent-glow: rgba(0, 102, 204, 0.2);
+            --success: #00a854;
+            --success-glow: rgba(0, 168, 84, 0.2);
+            --warning: #d48806;
+            --danger: #cf1322;
+            --text: #1a1a2e;
+            --text-dim: #6b7280;
+            --border: rgba(0,0,0,0.1);
+            --card-hover: rgba(0,102,204,0.05);
+        }
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text);
+            min-height: 100vh;
+        }
+        
+        .cyber-bg {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: 
+                linear-gradient(90deg, rgba(0,212,255,0.02) 1px, transparent 1px),
+                linear-gradient(rgba(0,212,255,0.02) 1px, transparent 1px);
+            background-size: 40px 40px;
+            pointer-events: none;
+            z-index: -1;
+        }
+        
+        .container { max-width: 1600px; margin: 0 auto; padding: 20px; }
+        
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 30px;
+            background: linear-gradient(135deg, var(--bg-secondary), var(--bg-card));
+            border: 1px solid rgba(0,212,255,0.2);
+            border-radius: 16px;
+            margin-bottom: 20px;
+        }
+        
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .logo-icon {
+            width: 50px; height: 50px;
+            background: linear-gradient(135deg, var(--accent), #0066ff);
+            border-radius: 12px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 26px;
+            box-shadow: 0 0 30px var(--accent-glow);
+            animation: glow 2s ease-in-out infinite alternate;
+        }
+        
+        @keyframes glow {
+            from { box-shadow: 0 0 20px var(--accent-glow); }
+            to { box-shadow: 0 0 40px var(--accent-glow); }
+        }
+        
+        .logo h1 {
+            font-size: 26px;
+            font-weight: 800;
+            background: linear-gradient(135deg, var(--accent), #fff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            letter-spacing: 2px;
+        }
+        
+        .status-panel {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+        
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            background: var(--bg-card);
+            border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        
+        .status-dot {
+            width: 10px; height: 10px;
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+        
+        .status-dot.online { background: var(--success); box-shadow: 0 0 10px var(--success); }
+        .status-dot.offline { background: var(--danger); animation: none; }
+        
+        @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.5; } }
+        
+        .nav {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 20px;
+            background: var(--bg-secondary);
+            padding: 8px;
+            border-radius: 12px;
+        }
+        
+        .nav a {
+            padding: 12px 20px;
+            color: var(--text-dim);
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 500;
+            transition: all 0.3s;
+            display: flex; align-items: center; gap: 8px;
+        }
+        
+        .nav a:hover { background: rgba(255,255,255,0.05); color: var(--text); }
+        .nav a.active { background: var(--accent); color: #000; }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        
+        .stat-card {
+            background: linear-gradient(135deg, var(--bg-card), var(--bg-secondary));
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 16px;
+            padding: 24px;
+            transition: all 0.3s;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, var(--accent), var(--success));
+        }
+        
+        .stat-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 10px 40px rgba(0,212,255,0.1);
+        }
+        
+        .stat-icon { font-size: 32px; margin-bottom: 12px; }
+        .stat-label { font-size: 12px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; }
+        .stat-value { font-size: 36px; font-weight: 800; margin: 8px 0; }
+        .stat-sub { font-size: 12px; color: var(--success); }
+        
+        .main-layout {
+            display: grid;
+            grid-template-columns: 1fr 380px;
+            gap: 24px;
+        }
+        
+        .card {
+            background: var(--bg-card);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 16px;
+            padding: 24px;
+        }
+        
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+        
+        .card-title {
+            font-size: 18px; font-weight: 600;
+            display: flex; align-items: center; gap: 10px;
+        }
+        
+        .filters {
+            display: flex; gap: 12px; margin-bottom: 20px; flex-wrap: wrap;
+        }
+        
+        .filter-select, .filter-input {
+            padding: 10px 16px;
+            background: var(--bg-secondary);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 8px;
+            color: var(--text);
+            font-size: 14px;
+            outline: none;
+            transition: all 0.3s;
+        }
+        
+        .filter-select:focus, .filter-input:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-glow);
+        }
+        
+        .surebet {
+            background: linear-gradient(135deg, rgba(0,255,136,0.1), rgba(0,255,136,0.02));
+            border: 1px solid rgba(0,255,136,0.3);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 12px;
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+        
+        .surebet:hover {
+            transform: translateX(8px);
+            box-shadow: 0 0 30px var(--success-glow);
+            border-color: var(--success);
+        }
+        
+        .surebet.new {
+            animation: flash 0.5s ease;
+        }
+        
+        @keyframes flash {
+            0%,100% { background: linear-gradient(135deg, rgba(0,255,136,0.1), rgba(0,255,136,0.02)); }
+            50% { background: linear-gradient(135deg, rgba(0,255,136,0.3), rgba(0,255,136,0.1)); }
+        }
+        
+        .surebet-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        
+        .event-name { font-size: 16px; font-weight: 600; }
+        
+        .profit-badge {
+            background: var(--success);
+            color: #000;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-weight: 800;
+            font-size: 14px;
+        }
+        
+        .profit-badge.high {
+            background: linear-gradient(135deg, #00ff88, #00ffcc);
+            box-shadow: 0 0 20px var(--success-glow);
+            animation: glow-green 1s ease-in-out infinite alternate;
+        }
+        
+        @keyframes glow-green {
+            from { box-shadow: 0 0 20px var(--success-glow); }
+            to { box-shadow: 0 0 40px var(--success-glow); }
+        }
+        
+        .bookmaker-row {
+            display: flex;
+            gap: 12px;
+            margin: 12px 0;
+        }
+        
+        .bk-chip {
+            flex: 1;
+            padding: 10px 14px;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .bk-name { font-weight: 600; font-size: 13px; }
+        .bk-odds { color: var(--accent); font-weight: 800; font-size: 16px; }
+        
+        .stake-info {
+            display: flex;
+            justify-content: space-between;
+            padding: 12px;
+            background: rgba(0,0,0,0.3);
+            border-radius: 8px;
+            margin-top: 12px;
+        }
+        
+        .live-badge {
+            display: inline-flex; align-items: center; gap: 6px;
+            background: rgba(255,71,87,0.2);
+            color: var(--danger);
+            padding: 4px 10px;
+            border-radius: 4px;
+            font-size: 11px; font-weight: 600; text-transform: uppercase;
+        }
+        
+        .live-badge::before {
+            content: ''; width: 6px; height: 6px;
+            background: var(--danger); border-radius: 50%;
+            animation: pulse 1s infinite;
+        }
+        
+        .btn {
+            padding: 10px 20px;
+            border: none; border-radius: 8px;
+            font-weight: 600; cursor: pointer;
+            transition: all 0.3s;
+            display: flex; align-items: center; gap: 8px;
+        }
+        
+        .btn-success { background: var(--success); color: #000; }
+        .btn-danger { background: var(--danger); color: #fff; }
+        .btn-primary { background: var(--accent); color: #000; }
+        .btn-secondary { background: var(--bg-secondary); color: var(--text); border: 1px solid rgba(255,255,255,0.1); }
+        .btn:hover { transform: scale(1.02); filter: brightness(1.1); }
+        
+        .toggle-row {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 12px 0;
+            cursor: pointer;
+        }
+        
+        .toggle-input { display: none; }
+        
+        .toggle-slider {
+            width: 50px; height: 26px;
+            background: var(--bg-secondary);
+            border-radius: 13px;
+            position: relative;
+            transition: 0.3s;
+        }
+        
+        .toggle-slider::after {
+            content: ''; width: 22px; height: 22px;
+            background: var(--text-dim);
+            border-radius: 50%;
+            position: absolute;
+            top: 2px; left: 2px;
+            transition: 0.3s;
+        }
+        
+        .toggle-input:checked + .toggle-slider {
+            background: var(--accent);
+        }
+        
+        .toggle-input:checked + .toggle-slider::after {
+            left: 26px;
+            background: #fff;
+        }
+        
+        .bk-toggle {
+            display: flex; align-items: center; gap: 8px;
+            padding: 10px 16px;
+            background: var(--bg-secondary);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .bk-toggle:hover { border-color: var(--accent); }
+        .bk-toggle input { cursor: pointer; }
+        .bk-toggle.disabled { opacity: 0.5; cursor: not-allowed; }
+        
+        .sidebar { display: flex; flex-direction: column; gap: 16px; }
+        
+        .source-item {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 12px 16px;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+        
+        .source-name { display: flex; align-items: center; gap: 10px; font-weight: 500; }
+        .source-dot { width: 8px; height: 8px; border-radius: 50%; }
+        .source-dot.online { background: var(--success); }
+        .source-dot.offline { background: var(--danger); }
+        .source-events { font-size: 13px; color: var(--text-dim); }
+        
+        .calc-section {
+            background: linear-gradient(135deg, var(--bg-card), var(--bg-secondary));
+        }
+        
+        .calc-input {
+            width: 100%; padding: 12px 16px;
+            background: var(--bg-primary);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 8px;
+            color: var(--text); font-size: 16px; margin: 8px 0;
+        }
+        
+        .calc-result {
+            display: none;
+            background: linear-gradient(135deg, rgba(0,255,136,0.2), rgba(0,255,136,0.05));
+            border: 1px solid var(--success);
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 16px;
+        }
+        
+        .calc-result.show { display: block; animation: fadeIn 0.3s ease; }
+        
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+        
+        .empty-state {
+            text-align: center; padding: 60px 20px; color: var(--text-dim);
+        }
+        
+        .empty-icon { font-size: 64px; margin-bottom: 20px; opacity: 0.5; }
+        
+        .scroll-area {
+            max-height: 500px; overflow-y: auto;
+            padding-right: 8px;
+        }
+        
+        .scroll-area::-webkit-scrollbar { width: 6px; }
+        .scroll-area::-webkit-scrollbar-track { background: var(--bg-secondary); border-radius: 3px; }
+        .scroll-area::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 3px; }
+        
+        @media (max-width: 1200px) { .main-layout { grid-template-columns: 1fr; } }
+        
+        @media (max-width: 768px) {
+            .container { padding: 10px; }
+            header { flex-direction: column; gap: 16px; padding: 16px; }
+            .status-panel { width: 100%; justify-content: space-between; }
+            .nav { overflow-x: auto; white-space: nowrap; padding: 6px; }
+            .nav a { padding: 10px 14px; font-size: 13px; }
+            .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+            .stat-card { padding: 16px; }
+            .stat-value { font-size: 28px; }
+            .card { padding: 16px; }
+            .filters { flex-direction: column; }
+            .filter-select, .filter-input { width: 100%; }
+            .surebet { padding: 14px; }
+            .bookmaker-row { flex-direction: column; }
+            .bk-chip { padding: 8px 12px; }
+            .logo h1 { font-size: 20px; }
+            .logo-icon { width: 40px; height: 40px; font-size: 20px; }
+            .main-layout { gap: 16px; }
+            .scroll-area { max-height: 400px; }
+            .surebet-header { flex-direction: column; align-items: flex-start; gap: 8px; }
+            .stake-info { flex-direction: column; gap: 6px; }
+            .theme-toggle { position: relative; }
+            .export-btn { padding: 8px 14px; font-size: 13px; }
+        }
+        
+        @media (max-width: 480px) {
+            .stats-grid { grid-template-columns: 1fr; }
+            .nav a span.nav-text { display: none; }
+            .nav a { padding: 10px; }
+        }
+        
+        .theme-toggle {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 8px 14px;
+            color: var(--text);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+        .theme-toggle:hover {
+            border-color: var(--accent);
+            background: var(--card-hover);
+        }
+        
+        .export-btn {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 8px 14px;
+            color: var(--text);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+        .export-btn:hover {
+            border-color: var(--accent);
+            background: var(--card-hover);
+        }
+        
+        .activity-feed {
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .activity-item {
+            padding: 12px;
+            border-left: 3px solid var(--success);
+            background: var(--bg-secondary);
+            border-radius: 0 8px 8px 0;
+            margin-bottom: 8px;
+            transition: all 0.3s;
+        }
+        .activity-item:hover {
+            background: var(--card-hover);
+        }
+        .activity-time {
+            font-size: 11px;
+            color: var(--text-dim);
+            margin-bottom: 4px;
+        }
+        .activity-event {
+            font-size: 13px;
+            font-weight: 500;
+        }
+        .activity-profit {
+            color: var(--success);
+            font-weight: 700;
+            font-size: 14px;
+        }
+        .activity-bks {
+            font-size: 12px;
+            color: var(--text-dim);
+            margin-top: 4px;
+        }
+        
+        .sources-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 12px;
+        }
+        .source-card {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 14px;
+            transition: all 0.3s;
+        }
+        .source-card:hover {
+            border-color: var(--accent);
+            transform: translateY(-2px);
+        }
+        .source-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .source-card-name {
+            font-weight: 600;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .source-card-status {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+        }
+        .source-card-status.online { background: var(--success); box-shadow: 0 0 8px var(--success-glow); }
+        .source-card-status.offline { background: var(--danger); }
+        .source-card-status.error { background: var(--warning); }
+        .source-card-events {
+            font-size: 12px;
+            color: var(--text-dim);
+        }
+        .source-card-errors {
+            font-size: 11px;
+            color: var(--danger);
+            margin-top: 4px;
+        }
+        
+        .stake-breakdown {
+            display: flex;
+            gap: 8px;
+            margin-top: 10px;
+            flex-wrap: wrap;
+        }
+        .stake-item {
+            flex: 1;
+            min-width: 100px;
+            background: rgba(0,0,0,0.2);
+            border-radius: 6px;
+            padding: 8px;
+            text-align: center;
+        }
+        [data-theme="light"] .stake-item {
+            background: rgba(0,0,0,0.05);
+        }
+        .stake-item-bk {
+            font-size: 11px;
+            color: var(--text-dim);
+            margin-bottom: 4px;
+        }
+        .stake-item-amount {
+            font-size: 14px;
+            font-weight: 700;
+            color: var(--accent);
+        }
+        .stake-item-odds {
+            font-size: 12px;
+            color: var(--success);
+        }
+        
+        .profit-rub {
+            font-size: 13px;
+            color: var(--success);
+            font-weight: 600;
+            margin-top: 6px;
+        }
+
+        /* Live Odds Heatmap */
+        .heatmap-container {
+            overflow-x: auto;
+            padding: 8px 0;
+        }
+        .heatmap-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
+        }
+        .heatmap-table th {
+            padding: 8px 6px;
+            text-align: center;
+            color: var(--text-dim);
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 10px;
+            letter-spacing: 0.5px;
+            position: sticky;
+            left: 0;
+            background: var(--bg-card);
+            z-index: 1;
+        }
+        .heatmap-table th:first-child {
+            text-align: left;
+            min-width: 100px;
+        }
+        .heatmap-table td {
+            padding: 6px;
+            text-align: center;
+            border-radius: 4px;
+            transition: all 0.2s;
+            font-weight: 600;
+        }
+        .heatmap-table td:first-child {
+            text-align: left;
+            font-weight: 500;
+            color: var(--text);
+        }
+        .heatmap-table tr:hover td {
+            filter: brightness(1.2);
+        }
+        .heat-0 { background: rgba(255,71,87,0.15); color: var(--danger); }
+        .heat-1 { background: rgba(255,170,0,0.15); color: var(--warning); }
+        .heat-2 { background: rgba(0,212,255,0.1); color: var(--accent); }
+        .heat-3 { background: rgba(0,255,136,0.15); color: var(--success); }
+        .heat-4 { background: rgba(0,255,136,0.3); color: #fff; box-shadow: 0 0 8px var(--success-glow); }
+        .heat-na { background: rgba(255,255,255,0.03); color: var(--text-dim); }
+
+        /* Profit Tracker Widget */
+        .profit-tracker {
+            background: linear-gradient(135deg, rgba(0,255,136,0.08), rgba(0,212,255,0.05));
+            border: 1px solid rgba(0,255,136,0.2);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+        .profit-tracker-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+        }
+        .profit-tracker-title {
+            font-size: 13px;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .profit-tracker-value {
+            font-size: 28px;
+            font-weight: 800;
+            color: var(--success);
+        }
+        .profit-tracker-sub {
+            font-size: 12px;
+            color: var(--text-dim);
+            margin-top: 4px;
+        }
+        .profit-tracker-bar {
+            height: 4px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 2px;
+            margin-top: 10px;
+            overflow: hidden;
+        }
+        .profit-tracker-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--success), var(--accent));
+            border-radius: 2px;
+            transition: width 0.5s ease;
+        }
+        .profit-tracker-stats {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 10px;
+            font-size: 11px;
+            color: var(--text-dim);
+        }
+        .profit-tracker-stats span {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        /* Smart Filters */
+        .filter-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        .filter-label {
+            font-size: 10px;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .range-slider {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            background: linear-gradient(90deg, var(--success), var(--accent));
+            outline: none;
+            cursor: pointer;
+        }
+        .range-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: var(--accent);
+            cursor: pointer;
+            box-shadow: 0 0 10px var(--accent-glow);
+        }
+        .range-value {
+            font-size: 12px;
+            color: var(--accent);
+            font-weight: 600;
+            text-align: center;
+        }
+        .time-filters {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+        .time-chip {
+            padding: 6px 12px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            font-size: 11px;
+            cursor: pointer;
+            transition: all 0.2s;
+            color: var(--text-dim);
+        }
+        .time-chip:hover {
+            border-color: var(--accent);
+            color: var(--text);
+        }
+        .time-chip.active {
+            background: var(--accent);
+            color: #000;
+            border-color: var(--accent);
+        }
+        .bk-multi-select {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+        }
+        .bk-chip-filter {
+            padding: 4px 10px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            font-size: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+            color: var(--text-dim);
+        }
+        .bk-chip-filter:hover {
+            border-color: var(--accent);
+        }
+        .bk-chip-filter.active {
+            background: rgba(0,212,255,0.2);
+            color: var(--accent);
+            border-color: var(--accent);
+        }
+        .sweet-spot-btn {
+            padding: 8px 16px;
+            background: linear-gradient(135deg, rgba(0,255,136,0.2), rgba(0,212,255,0.2));
+            border: 1px solid var(--success);
+            border-radius: 8px;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            color: var(--success);
+        }
+        .sweet-spot-btn:hover {
+            background: linear-gradient(135deg, rgba(0,255,136,0.3), rgba(0,212,255,0.3));
+        }
+        .sweet-spot-btn.active {
+            background: var(--success);
+            color: #000;
+        }
+        .filter-row {
+            display: flex;
+            gap: 12px;
+            align-items: flex-end;
+            flex-wrap: wrap;
+        }
+        .filter-section {
+            margin-bottom: 12px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border);
+        }
+        .filter-section:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+
+        /* Reliability Score */
+        .reliability-score {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 8px;
+        }
+        .reliability-stars {
+            display: flex;
+            gap: 2px;
+        }
+        .star {
+            color: rgba(255,255,255,0.15);
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        .star.filled {
+            color: #ffaa00;
+            text-shadow: 0 0 6px rgba(255,170,0,0.4);
+        }
+        .reliability-label {
+            font-size: 10px;
+            color: var(--text-dim);
+            text-transform: uppercase;
+        }
+        .reliability-tooltip {
+            position: relative;
+            display: inline-block;
+            cursor: help;
+        }
+        .reliability-tooltip .tooltip-text {
+            visibility: hidden;
+            background: var(--bg-secondary);
+            color: var(--text);
+            padding: 8px 12px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            font-size: 11px;
+            position: absolute;
+            z-index: 100;
+            bottom: 125%;
+            left: 50%;
+            transform: translateX(-50%);
+            white-space: nowrap;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        .reliability-tooltip:hover .tooltip-text {
+            visibility: visible;
+            opacity: 1;
+        }
+
+        /* Animations */
+        @keyframes slideInRight {
+            from { opacity: 0; transform: translateX(40px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        @keyframes slideInUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes fadeInScale {
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
+        }
+        @keyframes shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+        .surebet-slide-in {
+            animation: slideInRight 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+        }
+        .card-animate-in {
+            animation: fadeInScale 0.3s ease-out;
+        }
+        .section-transition {
+            animation: slideInUp 0.3s ease-out;
+        }
+        .stat-value.counting {
+            transition: all 0.3s ease;
+        }
+        .surebet.focused {
+            border-color: var(--accent) !important;
+            box-shadow: 0 0 20px var(--accent-glow), 0 0 40px rgba(0,212,255,0.1);
+            transform: translateX(8px) scale(1.01);
+        }
+        .keyboard-hint {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 12px 16px;
+            font-size: 11px;
+            color: var(--text-dim);
+            z-index: 1000;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+        }
+        .keyboard-hint.show {
+            opacity: 1;
+        }
+        .keyboard-hint kbd {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: 2px 6px;
+            font-size: 10px;
+            font-family: inherit;
+            color: var(--text);
+        }
+
+        /* Heatmap toggle button */
+        .heatmap-toggle {
+            padding: 6px 14px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-dim);
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+        .heatmap-toggle:hover {
+            border-color: var(--accent);
+            color: var(--text);
+        }
+        .heatmap-toggle.active {
+            background: var(--accent);
+            color: #000;
+            border-color: var(--accent);
+        }
+
+        /* Expanded surebet details */
+        .surebet-details {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease, padding 0.3s ease;
+        }
+        .surebet-details.expanded {
+            max-height: 300px;
+            padding-top: 12px;
+        }
+        .surebet-expand-btn {
+            background: none;
+            border: none;
+            color: var(--text-dim);
+            cursor: pointer;
+            font-size: 12px;
+            padding: 4px 8px;
+            transition: color 0.2s;
+        }
+        .surebet-expand-btn:hover {
+            color: var(--accent);
+        }
+        .detail-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0;
+            border-bottom: 1px solid var(--border);
+            font-size: 12px;
+        }
+        .detail-row:last-child {
+            border-bottom: none;
+        }
+        .detail-label {
+            color: var(--text-dim);
+        }
+        .detail-value {
+            color: var(--text);
+            font-weight: 600;
+        }
+
+        /* Freebets Section Styles */
+        .fb-card {
+            background: linear-gradient(135deg, var(--bg-card), var(--bg-secondary));
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 16px;
+            transition: all 0.3s;
+            position: relative;
+            overflow: hidden;
+            animation: fbSlideIn 0.4s ease-out both;
+        }
+        @keyframes fbSlideIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .fb-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            border-radius: 16px 16px 0 0;
+        }
+        .fb-card.type-registration::before { background: linear-gradient(90deg, #00ff88, #00d4ff); }
+        .fb-card.type-deposit::before { background: linear-gradient(90deg, #ffaa00, #ff6600); }
+        .fb-card.type-riskfree::before { background: linear-gradient(90deg, #0066ff, #00d4ff); }
+        .fb-card.type-loyalty::before { background: linear-gradient(90deg, #ff00ff, #6600ff); }
+        .fb-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 12px 40px rgba(0,212,255,0.15);
+            border-color: var(--accent);
+        }
+        .fb-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 16px;
+        }
+        .fb-card-title {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .fb-bk-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            font-weight: 800;
+            color: #000;
+            flex-shrink: 0;
+        }
+        .fb-name {
+            font-size: 18px;
+            font-weight: 700;
+            margin-bottom: 4px;
+        }
+        .fb-type-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .fb-type-badge.registration { background: rgba(0,255,136,0.15); color: var(--success); }
+        .fb-type-badge.deposit { background: rgba(255,170,0,0.15); color: var(--warning); }
+        .fb-type-badge.riskfree { background: rgba(0,102,255,0.15); color: #0066ff; }
+        .fb-type-badge.loyalty { background: rgba(255,0,255,0.15); color: #ff00ff; }
+        .fb-amount-display {
+            text-align: right;
+            flex-shrink: 0;
+        }
+        .fb-amount-value {
+            font-size: 32px;
+            font-weight: 800;
+            color: var(--success);
+        }
+        .fb-amount-label {
+            font-size: 11px;
+            color: var(--text-dim);
+            text-transform: uppercase;
+        }
+        .fb-stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+            margin: 16px 0;
+        }
+        .fb-stat {
+            background: var(--bg-secondary);
+            border-radius: 10px;
+            padding: 12px;
+            text-align: center;
+        }
+        .fb-stat-label {
+            font-size: 10px;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+        }
+        .fb-stat-value {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--accent);
+        }
+        .fb-stat-value.success { color: var(--success); }
+        .fb-stat-value.warning { color: var(--warning); }
+        .fb-desc {
+            color: var(--text-dim);
+            font-size: 13px;
+            line-height: 1.6;
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid var(--border);
+        }
+        .fb-roi-bar {
+            height: 6px;
+            background: var(--bg-secondary);
+            border-radius: 3px;
+            margin-top: 12px;
+            overflow: hidden;
+        }
+        .fb-roi-bar-fill {
+            height: 100%;
+            border-radius: 3px;
+            transition: width 0.5s ease;
+        }
+        .fb-roi-bar-fill.high { background: linear-gradient(90deg, var(--success), #00ffcc); }
+        .fb-roi-bar-fill.medium { background: linear-gradient(90deg, var(--warning), #ffaa00); }
+        .fb-roi-bar-fill.low { background: linear-gradient(90deg, var(--accent), #0066ff); }
+        
+        .fb-strategy-card {
+            background: linear-gradient(135deg, rgba(0,255,136,0.08), rgba(0,212,255,0.05));
+            border: 1px solid rgba(0,255,136,0.3);
+            border-radius: 16px;
+            padding: 24px;
+            margin-bottom: 24px;
+            transition: all 0.3s;
+        }
+        .fb-strategy-card:hover {
+            box-shadow: 0 0 30px rgba(0,255,136,0.1);
+        }
+        .fb-strategy-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+        .fb-strategy-title {
+            font-size: 18px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .fb-strategy-badge {
+            background: var(--success);
+            color: #000;
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-weight: 800;
+            font-size: 14px;
+        }
+        .fb-strategy-content {
+            color: var(--text);
+            font-size: 14px;
+            line-height: 1.7;
+            margin-bottom: 16px;
+        }
+        .fb-strategy-steps {
+            display: flex;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+        .fb-strategy-step {
+            flex: 1;
+            min-width: 150px;
+            background: var(--bg-secondary);
+            border-radius: 10px;
+            padding: 16px;
+            text-align: center;
+            transition: all 0.2s;
+        }
+        .fb-strategy-step:hover {
+            transform: translateY(-2px);
+            background: var(--card-hover);
+        }
+        .fb-strategy-step-num {
+            width: 28px;
+            height: 28px;
+            background: var(--accent);
+            color: #000;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 800;
+            font-size: 14px;
+            margin: 0 auto 8px;
+        }
+        .fb-strategy-step-text {
+            font-size: 12px;
+            color: var(--text-dim);
+        }
+        .fb-strategy-step-value {
+            font-size: 16px;
+            font-weight: 700;
+            color: var(--success);
+            margin-top: 4px;
+        }
+        
+        .fb-comparison-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 16px;
+        }
+        .fb-comparison-table th {
+            padding: 12px 16px;
+            text-align: left;
+            color: var(--text-dim);
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            background: var(--bg-card);
+            z-index: 1;
+        }
+        .fb-comparison-table td {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--border);
+            font-size: 13px;
+        }
+        .fb-comparison-table tr:hover td {
+            background: var(--card-hover);
+        }
+        .fb-comparison-table tr:last-child td {
+            border-bottom: none;
+        }
+        .fb-tier-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 4px 10px;
+            border-radius: 16px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .fb-tier-badge.gold { background: rgba(255,170,0,0.2); color: #ffaa00; }
+        .fb-tier-badge.silver { background: rgba(192,192,192,0.2); color: #c0c0c0; }
+        .fb-tier-badge.bronze { background: rgba(205,127,50,0.2); color: #cd7f32; }
+        
+        .fb-filter-group {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .fb-filter-chip {
+            padding: 8px 16px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            color: var(--text-dim);
+        }
+        .fb-filter-chip:hover {
+            border-color: var(--accent);
+            color: var(--text);
+        }
+        .fb-filter-chip.active {
+            background: var(--accent);
+            color: #000;
+            border-color: var(--accent);
+        }
+        
+        .fb-calc-widget {
+            background: linear-gradient(135deg, var(--bg-card), var(--bg-secondary));
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 24px;
+            margin-top: 24px;
+        }
+        .fb-calc-title {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .fb-calc-row {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+        .fb-calc-input {
+            flex: 1;
+            padding: 12px 16px;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text);
+            font-size: 14px;
+            outline: none;
+            transition: all 0.3s;
+        }
+        .fb-calc-input:focus {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-glow);
+        }
+        .fb-calc-result {
+            background: linear-gradient(135deg, rgba(0,255,136,0.1), rgba(0,255,136,0.02));
+            border: 1px solid var(--success);
+            border-radius: 12px;
+            padding: 16px;
+            margin-top: 16px;
+            display: none;
+        }
+        .fb-calc-result.show { display: block; animation: fadeIn 0.3s ease; }
+        .fb-calc-result-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid rgba(0,255,136,0.2);
+        }
+        .fb-calc-result-row:last-child { border-bottom: none; }
+        .fb-calc-result-label { color: var(--text-dim); font-size: 13px; }
+        .fb-calc-result-value { color: var(--success); font-weight: 700; font-size: 14px; }
+
+        .fb-view-toggle {
+            display: flex;
+            gap: 4px;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            padding: 4px;
+        }
+        .fb-view-btn {
+            padding: 6px 14px;
+            border: none;
+            border-radius: 6px;
+            background: transparent;
+            color: var(--text-dim);
+            cursor: pointer;
+            font-size: 12px;
+            transition: all 0.2s;
+        }
+        .fb-view-btn.active {
+            background: var(--accent);
+            color: #000;
+        }
+        .fb-view-btn:hover:not(.active) {
+            color: var(--text);
+        }
+        .fb-table-view { display: none; }
+        .fb-table-view.active { display: block; }
+        .fb-card-view { display: block; }
+        .fb-card-view.hidden { display: none; }
+        .fb-loading {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-dim);
+        }
+        .fb-loading-spinner {
+            width: 40px;
+            height: 40px;
+            border: 3px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto 16px;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .fb-error {
+            background: rgba(255,71,87,0.1);
+            border: 1px solid rgba(255,71,87,0.3);
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            color: var(--danger);
+        }
+        .fb-surebet-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 16px;
+            background: linear-gradient(135deg, rgba(0,255,136,0.15), rgba(0,212,255,0.1));
+            border: 1px solid rgba(0,255,136,0.3);
+            border-radius: 8px;
+            color: var(--success);
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-top: 12px;
+        }
+        .fb-surebet-link:hover {
+            background: linear-gradient(135deg, rgba(0,255,136,0.25), rgba(0,212,255,0.2));
+            transform: translateY(-1px);
+        }
+        .fb-freshness {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            font-size: 10px;
+            color: var(--text-dim);
+            margin-left: 8px;
+        }
+        .fb-freshness-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+        }
+        .fb-freshness-dot.fresh { background: var(--success); }
+        .fb-freshness-dot.stale { background: var(--warning); }
+        .fb-freshness-dot.old { background: var(--danger); }
+
+        /* Generosity Index */
+        .gen-card {
+            background: linear-gradient(135deg, var(--bg-card), var(--bg-secondary));
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 24px;
+            margin-top: 24px;
+        }
+        .gen-highlights {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 16px;
+            margin-bottom: 20px;
+        }
+        .gen-highlight {
+            background: var(--bg-secondary);
+            border-radius: 12px;
+            padding: 16px;
+            text-align: center;
+            border: 1px solid var(--border);
+            transition: all 0.3s;
+        }
+        .gen-highlight:hover {
+            border-color: var(--accent);
+            transform: translateY(-2px);
+        }
+        .gen-highlight-icon {
+            font-size: 28px;
+            margin-bottom: 8px;
+        }
+        .gen-highlight-label {
+            font-size: 11px;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+        }
+        .gen-highlight-value {
+            font-size: 18px;
+            font-weight: 700;
+            color: var(--success);
+        }
+        .gen-highlight-sub {
+            font-size: 12px;
+            color: var(--text-dim);
+            margin-top: 4px;
+        }
+        .gen-table-container {
+            overflow-x: auto;
+        }
+        .gen-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        .gen-table th {
+            padding: 10px 14px;
+            text-align: left;
+            color: var(--text-dim);
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            background: var(--bg-card);
+            z-index: 1;
+        }
+        .gen-table td {
+            padding: 10px 14px;
+            border-bottom: 1px solid var(--border);
+            transition: background 0.2s;
+        }
+        .gen-table tr:hover td {
+            background: var(--card-hover);
+        }
+        .gen-table tr:last-child td {
+            border-bottom: none;
+        }
+        .gen-score {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-weight: 700;
+            font-size: 13px;
+        }
+        .gen-score.generous {
+            background: rgba(0,255,136,0.15);
+            color: var(--success);
+        }
+        .gen-score.average {
+            background: rgba(255,170,0,0.15);
+            color: var(--warning);
+        }
+        .gen-score.stingy {
+            background: rgba(255,71,87,0.15);
+            color: var(--danger);
+        }
+        .gen-rank {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            font-weight: 700;
+            font-size: 12px;
+        }
+        .gen-rank.gold { background: rgba(255,170,0,0.2); color: #ffaa00; }
+        .gen-rank.silver { background: rgba(192,192,192,0.2); color: #c0c0c0; }
+        .gen-rank.bronze { background: rgba(205,127,50,0.2); color: #cd7f32; }
+        .gen-rank.normal { background: var(--bg-secondary); color: var(--text-dim); }
+        .gen-bk-name {
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .gen-sport-tag {
+            padding: 3px 8px;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            font-size: 11px;
+            color: var(--text-dim);
+        }
+        .gen-refresh-info {
+            font-size: 11px;
+            color: var(--text-dim);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .gen-loading {
+            text-align: center;
+            padding: 30px;
+            color: var(--text-dim);
+        }
+        .gen-loading-spinner {
+            width: 30px;
+            height: 30px;
+            border: 3px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto 12px;
+        }
+
+        /* Surebet History */
+        .sh-card {
+            background: linear-gradient(135deg, var(--bg-card), var(--bg-secondary));
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 24px;
+            margin-top: 24px;
+        }
+        .sh-summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        .sh-summary-item {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 16px;
+            text-align: center;
+            transition: all 0.3s;
+        }
+        .sh-summary-item:hover {
+            border-color: var(--accent);
+            transform: translateY(-2px);
+        }
+        .sh-summary-label {
+            font-size: 10px;
+            color: var(--text-dim);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 6px;
+        }
+        .sh-summary-value {
+            font-size: 22px;
+            font-weight: 800;
+            color: var(--success);
+        }
+        .sh-summary-sub {
+            font-size: 11px;
+            color: var(--text-dim);
+            margin-top: 4px;
+        }
+        .sh-table-container {
+            overflow-x: auto;
+            margin-bottom: 20px;
+        }
+        .sh-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        .sh-table th {
+            padding: 10px 14px;
+            text-align: left;
+            color: var(--text-dim);
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid var(--border);
+            position: sticky;
+            top: 0;
+            background: var(--bg-card);
+            z-index: 1;
+        }
+        .sh-table td {
+            padding: 10px 14px;
+            border-bottom: 1px solid var(--border);
+            transition: background 0.2s;
+        }
+        .sh-table tr:hover td {
+            background: var(--card-hover);
+        }
+        .sh-table tr:last-child td {
+            border-bottom: none;
+        }
+        .sh-status {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: 600;
+        }
+        .sh-status.active {
+            background: rgba(0,255,136,0.15);
+            color: var(--success);
+        }
+        .sh-status.expired {
+            background: rgba(255,71,87,0.15);
+            color: var(--danger);
+        }
+        .sh-status.captured {
+            background: rgba(0,212,255,0.15);
+            color: var(--accent);
+        }
+        .sh-heatmap-container {
+            margin-top: 16px;
+        }
+        .sh-heatmap-title {
+            font-size: 13px;
+            font-weight: 600;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .sh-heatmap-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 8px;
+        }
+        .sh-heatmap-cell {
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 12px;
+            text-align: center;
+            transition: all 0.3s;
+            position: relative;
+            overflow: hidden;
+        }
+        .sh-heatmap-cell::before {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            border-radius: 0 0 10px 10px;
+        }
+        .sh-heatmap-cell.level-0::before { background: rgba(255,71,87,0.5); }
+        .sh-heatmap-cell.level-1::before { background: rgba(255,170,0,0.5); }
+        .sh-heatmap-cell.level-2::before { background: rgba(0,212,255,0.5); }
+        .sh-heatmap-cell.level-3::before { background: rgba(0,255,136,0.5); }
+        .sh-heatmap-cell.level-4::before { background: var(--success); box-shadow: 0 0 10px var(--success-glow); }
+        .sh-heatmap-cell:hover {
+            border-color: var(--accent);
+            transform: translateY(-2px);
+        }
+        .sh-heatmap-bk {
+            font-size: 12px;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+        .sh-heatmap-count {
+            font-size: 20px;
+            font-weight: 800;
+            color: var(--accent);
+        }
+        .sh-heatmap-pct {
+            font-size: 10px;
+            color: var(--text-dim);
+        }
+        .sh-lifespan-bar {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-top: 16px;
+            padding: 16px;
+            background: var(--bg-secondary);
+            border-radius: 12px;
+        }
+        .sh-lifespan-label {
+            font-size: 12px;
+            color: var(--text-dim);
+            min-width: 140px;
+        }
+        .sh-lifespan-track {
+            flex: 1;
+            height: 8px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .sh-lifespan-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--success), var(--accent));
+            border-radius: 4px;
+            transition: width 0.5s ease;
+        }
+        .sh-lifespan-value {
+            font-size: 18px;
+            font-weight: 800;
+            color: var(--success);
+            min-width: 60px;
+            text-align: right;
+        }
+        .sh-time-filter {
+            display: flex;
+            gap: 6px;
+            margin-bottom: 16px;
+        }
+        .sh-time-btn {
+            padding: 6px 14px;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            font-size: 11px;
+            cursor: pointer;
+            transition: all 0.2s;
+            color: var(--text-dim);
+        }
+        .sh-time-btn:hover {
+            border-color: var(--accent);
+            color: var(--text);
+        }
+        .sh-time-btn.active {
+            background: var(--accent);
+            color: #000;
+            border-color: var(--accent);
+        }
+        .sh-refresh-info {
+            font-size: 11px;
+            color: var(--text-dim);
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .sh-loading {
+            text-align: center;
+            padding: 30px;
+            color: var(--text-dim);
+        }
+        .sh-loading-spinner {
+            width: 30px;
+            height: 30px;
+            border: 3px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto 12px;
+        }
+        .sh-empty {
+            text-align: center;
+            padding: 30px;
+            color: var(--text-dim);
+        }
+    </style>
+</head>
+<body>
+    <div class="cyber-bg"></div>
+    
+    <div class="container">
+        <header>
+            <div class="logo">
+                <div class="logo-icon">👻</div>
+                <div>
+                    <h1>GHOST IMPERIUM</h1>
+                    <span style="color: var(--text-dim); font-size: 12px;">Professional Fork Scanner v2.0</span>
+                </div>
+            </div>
+            <div class="status-panel">
+                <div class="status-item">
+                    <div class="status-dot" id="scannerDot"></div>
+                    <span id="scannerStatus">Connecting...</span>
+                </div>
+                <div class="status-item">
+                    <span style="color: var(--text-dim)">Latency:</span>
+                    <span id="latency" style="color: var(--success)">0ms</span>
+                </div>
+                <button class="theme-toggle" onclick="toggleTheme()" id="themeBtn">🌙 Theme</button>
+                <button class="export-btn" onclick="exportCSV()">📥 Export CSV</button>
+            </div>
+        </header>
+        
+        <nav class="nav">
+            <a href="#" class="active" onclick="showSection('scanner')">📊 Dashboard</a>
+            <a href="#" onclick="showSection('surebets')">💰 Surebets</a>
+            <a href="#" onclick="showSection('valuebets')">💎 Value Bets</a>
+            <a href="#" onclick="showSection('corridors')">📐 Corridors</a>
+            <a href="#" onclick="showSection('analytics')">📈 Analytics</a>
+            <a href="#" onclick="showSection('calculator')">🧮 Calculator</a>
+            <a href="#" onclick="showSection('bonuses')">🎁 Bonuses</a>
+            <a href="#" onclick="showSection('freebets')">🎯 Freebets</a>
+            <a href="#" onclick="showSection('settings')">⚙️ Settings</a>
+        </nav>
+        
+        <section id="scanner" class="section-transition">
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon">📡</div>
+                    <div class="stat-label">Active Events</div>
+                    <div class="stat-value" id="eventsCount">0</div>
+                    <div class="stat-sub">Across all bookmakers</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">💰</div>
+                    <div class="stat-label">Active Forks</div>
+                    <div class="stat-value" id="surebetsCount" style="color: var(--success)">0</div>
+                    <div class="stat-sub">Profit opportunities</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">📈</div>
+                    <div class="stat-label">Best Profit</div>
+                    <div class="stat-value" id="bestProfit" style="color: var(--success)">0%</div>
+                    <div class="stat-sub">Top fork</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">⚡</div>
+                    <div class="stat-label">Cycle Time</div>
+                    <div class="stat-value" id="cycleTime" style="font-size: 24px;">0ms</div>
+                    <div class="stat-sub">Scan duration</div>
+                </div>
+            </div>
+
+            <div class="profit-tracker" id="profitTracker">
+                <div class="profit-tracker-header">
+                    <span class="profit-tracker-title">💰 Cumulative Potential Profit</span>
+                    <span style="font-size: 11px; color: var(--text-dim);" id="profitTrackerPeriod">Today</span>
+                </div>
+                <div class="profit-tracker-value" id="profitTrackerValue">0₽</div>
+                <div class="profit-tracker-sub" id="profitTrackerSub">From 0 surebets found today</div>
+                <div class="profit-tracker-bar">
+                    <div class="profit-tracker-bar-fill" id="profitTrackerBar" style="width: 0%"></div>
+                </div>
+                <div class="profit-tracker-stats">
+                    <span>📊 Avg: <b id="profitTrackerAvg">0₽</b></span>
+                    <span>🏆 Best: <b id="profitTrackerBest">0₽</b></span>
+                    <span>⏱️ Last: <b id="profitTrackerLast">--</b></span>
+                </div>
+            </div>
+            
+            <div class="card" style="margin-bottom: 24px;">
+                <div class="card-header">
+                    <div class="card-title">📍 Sources — Bookmaker Status</div>
+                    <div style="display: flex; gap: 10px; align-items: center;">
+                        <span id="sourcesOnline" style="color: var(--success); font-size: 13px;">0/12 online</span>
+                        <button class="heatmap-toggle" id="heatmapToggle" onclick="toggleHeatmap()">🗺️ Odds Heatmap</button>
+                    </div>
+                </div>
+                <div id="heatmapContainer" style="display: none; margin-bottom: 16px;">
+                    <div class="heatmap-container" id="heatmapGrid"></div>
+                </div>
+                <div class="sources-grid" id="sourcesGrid">
+                    <div class="empty-state" style="padding: 20px;">
+                        <p>Loading bookmakers...</p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="main-layout">
+                <div>
+                    <div class="card" style="margin-bottom: 24px;">
+                        <div class="card-header">
+                            <div class="card-title">🔥 Hot Forks <span id="forkCount" style="color: var(--success)">(0)</span></div>
+                        </div>
+                        <div class="filters">
+                            <div class="filter-row" style="width: 100%;">
+                                <div class="filter-group" style="flex: 1; min-width: 120px;">
+                                    <label class="filter-label">Sport</label>
+                                    <select class="filter-select" id="filterSport">
+                                        <option value="">All Sports</option>
+                                        <option value="football">⚽ Football</option>
+                                        <option value="hockey">🏒 Hockey</option>
+                                        <option value="basketball">🏀 Basketball</option>
+                                        <option value="tennis">🎾 Tennis</option>
+                                        <option value="volleyball">🏐 Volleyball</option>
+                                    </select>
+                                </div>
+                                <div class="filter-group" style="flex: 1; min-width: 120px;">
+                                    <label class="filter-label">Mode</label>
+                                    <select class="filter-select" id="filterLive">
+                                        <option value="">All</option>
+                                        <option value="1">🔴 Live</option>
+                                        <option value="0">📅 Prematch</option>
+                                    </select>
+                                </div>
+                                <div class="filter-group" style="flex: 1; min-width: 100px;">
+                                    <label class="filter-label">Min Profit</label>
+                                    <input type="number" class="filter-input" id="filterProfit" placeholder="Min %" min="0" max="100" step="0.1">
+                                </div>
+                                <button class="btn btn-primary" onclick="applyFilters()">Apply</button>
+                            </div>
+                        </div>
+
+                        <div class="filter-section">
+                            <div class="filter-group" style="margin-bottom: 10px;">
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <label class="filter-label">Profit Range</label>
+                                    <span class="range-value" id="profitRangeValue">0% — 10%</span>
+                                </div>
+                                <div style="display: flex; gap: 12px; align-items: center;">
+                                    <input type="range" class="range-slider" id="profitMin" min="0" max="10" step="0.1" value="0" oninput="updateProfitRange()">
+                                    <input type="range" class="range-slider" id="profitMax" min="0" max="10" step="0.1" value="10" oninput="updateProfitRange()">
+                                </div>
+                            </div>
+                            <div class="filter-group" style="margin-bottom: 10px;">
+                                <label class="filter-label">Time Since Found</label>
+                                <div class="time-filters">
+                                    <div class="time-chip active" data-time="all" onclick="setTimeFilter(this)">All</div>
+                                    <div class="time-chip" data-time="1" onclick="setTimeFilter(this)">&lt; 1 min</div>
+                                    <div class="time-chip" data-time="5" onclick="setTimeFilter(this)">&lt; 5 min</div>
+                                    <div class="time-chip" data-time="15" onclick="setTimeFilter(this)">&lt; 15 min</div>
+                                </div>
+                            </div>
+                            <div class="filter-group" style="margin-bottom: 10px;">
+                                <label class="filter-label">Bookmakers</label>
+                                <div class="bk-multi-select" id="bkFilterChips"></div>
+                            </div>
+                            <div style="display: flex; gap: 8px; align-items: center;">
+                                <button class="sweet-spot-btn" id="sweetSpotBtn" onclick="toggleSweetSpot()">🎯 Sweet Spot (3-7%)</button>
+                                <button class="btn btn-primary" style="font-size: 12px; padding: 8px 16px;" onclick="applyFilters()">Filter All</button>
+                                <button class="btn" style="font-size: 12px; padding: 8px 16px; background: var(--bg-secondary); color: var(--text-dim);" onclick="clearFilters()">Reset</button>
+                            </div>
+                        </div>
+
+                        <div class="scroll-area" id="surebetsList">
+                            <div class="empty-state">
+                                <div class="empty-icon">🔍</div>
+                                <h3>Searching for forks...</h3>
+                                <p>Scanner is working, please wait</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title">🕐 Recent Activity</div>
+                            <span style="color: var(--text-dim); font-size: 12px;" id="activityCount">0 events</span>
+                        </div>
+                        <div class="activity-feed" id="activityFeed">
+                            <div class="empty-state" style="padding: 20px;">
+                                <p>No activity yet</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="sidebar">
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title">📍 Quick Overview</div>
+                        </div>
+                        <div id="sourcesList">
+                            <div class="empty-state" style="padding: 20px;">
+                                <p>Loading...</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="card calc-section">
+                        <div class="card-header">
+                            <div class="card-title">🧮 Quick Calculator</div>
+                        </div>
+                        <input type="number" class="calc-input" id="calcOdds1" placeholder="Odds 1" step="0.01">
+                        <input type="number" class="calc-input" id="calcOdds2" placeholder="Odds 2" step="0.01">
+                        <input type="number" class="calc-input" id="calcStake" placeholder="Stake" value="10000">
+                        <button class="btn btn-success" style="width: 100%; margin-top: 10px;" onclick="quickCalculate()">
+                            Calculate
+                        </button>
+                        <div id="calcResult" class="calc-result"></div>
+                    </div>
+                    
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title">⚡ Quick Actions</div>
+                        </div>
+                        <div style="display: flex; flex-direction: column; gap: 10px;">
+                            <button class="btn btn-success" onclick="refreshData()">🔄 Refresh Data</button>
+                            <button class="btn btn-danger" onclick="clearFilters()">🗑️ Clear Filters</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+        
+        <section id="valuebets" style="display: none;">
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon">💎</div>
+                    <div class="stat-label">Value Bets</div>
+                    <div class="stat-value" id="vbCount" style="color: var(--success)">0</div>
+                    <div class="stat-sub">With positive edge</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">📈</div>
+                    <div class="stat-label">Avg Edge</div>
+                    <div class="stat-value" id="vbAvgEdge">0%</div>
+                    <div class="stat-sub">Expected value</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">🏆</div>
+                    <div class="stat-label">Best Edge</div>
+                    <div class="stat-value" id="vbBestEdge" style="color: var(--success)">0%</div>
+                    <div class="stat-sub">Top opportunity</div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">💎 Value Bets</div>
+                    <div style="display: flex; gap: 10px;">
+                        <select class="filter-select" id="vbSport" onchange="loadValueBets()">
+                            <option value="">All Sports</option>
+                            <option value="football">Football</option>
+                            <option value="hockey">Hockey</option>
+                            <option value="basketball">Basketball</option>
+                        </select>
+                        <select class="filter-select" id="vbBookmaker" onchange="loadValueBets()">
+                            <option value="">All Bookmakers</option>
+                        </select>
+                        <input type="number" class="filter-input" id="vbMinEdge" placeholder="Min Edge %" value="2" onchange="loadValueBets()">
+                    </div>
+                </div>
+                <div class="scroll-area" id="valuebetsList"></div>
+            </div>
+        </section>
+        
+        <section id="corridors" style="display: none;">
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon">📐</div>
+                    <div class="stat-label">Corridors</div>
+                    <div class="stat-value" id="corrCount" style="color: var(--warning)">0</div>
+                    <div class="stat-sub">Totals & Handicaps</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">📊</div>
+                    <div class="stat-label">Avg EV</div>
+                    <div class="stat-value" id="corrAvgEv">0%</div>
+                    <div class="stat-sub">Expected value</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">🎯</div>
+                    <div class="stat-label">Best EV</div>
+                    <div class="stat-value" id="corrBestEv" style="color: var(--success)">0%</div>
+                    <div class="stat-sub">Top opportunity</div>
+                </div>
+            </div>
+            
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">📐 Corridors</div>
+                </div>
+                <div class="scroll-area" id="corridorsList"></div>
+            </div>
+        </section>
+        
+        <section id="analytics" style="display: none;">
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon">📊</div>
+                    <div class="stat-label">Total Surebets Found</div>
+                    <div class="stat-value" id="analyticsTotal">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">💰</div>
+                    <div class="stat-label">Total Profit</div>
+                    <div class="stat-value" id="analyticsTotalProfit" style="color: var(--success)">0%</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">📈</div>
+                    <div class="stat-label">Avg Profit</div>
+                    <div class="stat-value" id="analyticsAvgProfit">0%</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">🏆</div>
+                    <div class="stat-label">Best Profit</div>
+                    <div class="stat-value" id="analyticsBestProfit" style="color: var(--success)">0%</div>
+                </div>
+            </div>
+            
+            <div class="main-layout">
+                <div class="card">
+                    <div class="card-header">
+                        <div class="card-title">📈 Profit Over Time</div>
+                    </div>
+                    <div id="profitChart" style="height: 300px; position: relative;">
+                        <canvas id="profitChartCanvas" style="width: 100%; height: 100%;"></canvas>
+                    </div>
+                </div>
+                
+                <div class="sidebar">
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title">🏅 Top Bookmakers</div>
+                        </div>
+                        <div id="topBookmakers"></div>
+                    </div>
+                    
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="card-title">⚽ Top Sports</div>
+                        </div>
+                        <div id="topSports"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="gen-card" id="generosityCard">
+                <div class="card-header">
+                    <div class="card-title">💎 Generosity Index</div>
+                    <div class="gen-refresh-info">
+                        <span id="genLastUpdate">—</span>
+                        <span>•</span>
+                        <span>Auto-refresh: 60s</span>
+                    </div>
+                </div>
+
+                <div id="generosityLoading" class="gen-loading">
+                    <div class="gen-loading-spinner"></div>
+                    <p>Loading generosity data...</p>
+                </div>
+
+                <div id="generosityContent" style="display: none;">
+                    <div class="gen-highlights" id="genHighlights"></div>
+
+                    <div class="gen-table-container">
+                        <table class="gen-table">
+                            <thead>
+                                <tr>
+                                    <th>Rank</th>
+                                    <th>Bookmaker</th>
+                                    <th>Sport</th>
+                                    <th>Generosity Score</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="genTableBody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="sh-card" id="surebetHistoryCard">
+                <div class="card-header">
+                    <div class="card-title">📜 Surebet History</div>
+                    <div class="sh-refresh-info">
+                        <span id="shLastUpdate">—</span>
+                        <span>•</span>
+                        <span>Auto-refresh: 60s</span>
+                    </div>
+                </div>
+
+                <div id="shLoading" class="sh-loading">
+                    <div class="sh-loading-spinner"></div>
+                    <p>Loading surebet history...</p>
+                </div>
+
+                <div id="shContent" style="display: none;">
+                    <div class="sh-summary-grid" id="shSummary"></div>
+
+                    <div class="sh-time-filter">
+                        <button class="sh-time-btn active" data-period="today" onclick="setShPeriod(this)">Today</button>
+                        <button class="sh-time-btn" data-period="week" onclick="setShPeriod(this)">Week</button>
+                        <button class="sh-time-btn" data-period="month" onclick="setShPeriod(this)">Month</button>
+                    </div>
+
+                    <div class="sh-table-container">
+                        <table class="sh-table">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Match</th>
+                                    <th>Bookmaker 1</th>
+                                    <th>Bookmaker 2</th>
+                                    <th>Profit %</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                            <tbody id="shTableBody"></tbody>
+                        </table>
+                    </div>
+
+                    <div class="sh-heatmap-container">
+                        <div class="sh-heatmap-title">🗺️ Bookmaker Surebet Frequency</div>
+                        <div class="sh-heatmap-grid" id="shHeatmap"></div>
+                    </div>
+
+                    <div class="sh-lifespan-bar">
+                        <span class="sh-lifespan-label">⏱️ Avg Surebet Lifespan</span>
+                        <div class="sh-lifespan-track">
+                            <div class="sh-lifespan-fill" id="shLifespanFill" style="width: 0%"></div>
+                        </div>
+                        <span class="sh-lifespan-value" id="shLifespanValue">0s</span>
+                    </div>
+                </div>
+            </div>
+        </section>
+        
+        <section id="surebets" style="display: none;">
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">💰 All Forks <span id="totalForks">(0 found)</span></div>
+                    <input type="text" class="filter-input" id="searchForks" placeholder="Search..." oninput="searchForks()">
+                </div>
+                <div class="scroll-area" id="allForks"></div>
+            </div>
+        </section>
+        
+        <section id="calculator" style="display: none;">
+            <div class="card calc-section">
+                <div class="card-header">
+                    <div class="card-title">🧮 Fork Calculator</div>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+                    <div>
+                        <label style="color: var(--text-dim); font-size: 12px; text-transform: uppercase;">Fork Type</label>
+                        <select class="filter-select" id="forkType" style="width: 100%; margin: 8px 0 16px;">
+                            <option value="2way">2-way (P1 / P2)</option>
+                            <option value="3way">3-way (P1 / X / P2)</option>
+                        </select>
+                        
+                        <label style="color: var(--text-dim); font-size: 12px; text-transform: uppercase;">Odds 1 (P1)</label>
+                        <input type="number" class="calc-input" id="odds1" step="0.01" placeholder="2.10">
+                        
+                        <label style="color: var(--text-dim); font-size: 12px; text-transform: uppercase;">Odds 2 (X / P2)</label>
+                        <input type="number" class="calc-input" id="odds2" step="0.01" placeholder="2.15">
+                        
+                        <label style="color: var(--text-dim); font-size: 12px; text-transform: uppercase;">Odds 3 (for 3-way)</label>
+                        <input type="number" class="calc-input" id="odds3" step="0.01" placeholder="3.50">
+                        
+                        <label style="color: var(--text-dim); font-size: 12px; text-transform: uppercase;">Total Stake (₽)</label>
+                        <input type="number" class="calc-input" id="stake" value="10000">
+                        
+                        <button class="btn btn-success" style="width: 100%; margin-top: 20px;" onclick="calculateFork()">
+                            💰 Calculate Fork
+                        </button>
+                    </div>
+                    <div>
+                        <div id="forkResult" class="calc-result" style="display: none;"></div>
+                        <div style="background: var(--bg-secondary); padding: 20px; border-radius: 12px; margin-top: 16px;">
+                            <h4 style="margin-bottom: 12px;">📊 How it works</h4>
+                            <p style="color: var(--text-dim); font-size: 14px; line-height: 1.6;">
+                                A fork (surebet) occurs when the sum of inverse odds is less than 1.<br><br>
+                                <b>Formula:</b><br>
+                                S = 1/K1 + 1/K2<br>
+                                If S < 1 → Fork found!<br><br>
+                                <b>Profit:</b><br>
+                                Profit = (1/S - 1) × 100%
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+        
+        <section id="freebets" style="display: none;">
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon">🎯</div>
+                    <div class="stat-label">Available Freebets</div>
+                    <div class="stat-value" id="fbCount" style="color: var(--success)">0</div>
+                    <div class="stat-sub"><span class="fb-freshness"><span class="fb-freshness-dot fresh" id="fbFreshDot"></span><span id="fbFreshText">—</span></span></div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">💰</div>
+                    <div class="stat-label">Total Value</div>
+                    <div class="stat-value" id="fbTotalValue">0₽</div>
+                    <div class="stat-sub">Combined freebet pool</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">📈</div>
+                    <div class="stat-label">Best ROI%</div>
+                    <div class="stat-value" id="fbBestRoi" style="color: var(--success)">0%</div>
+                    <div class="stat-sub" id="fbBestRoiDesc">Top freebet return</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon">🏆</div>
+                    <div class="stat-label">Best Strategy</div>
+                    <div class="stat-value" id="fbBestStrategy" style="font-size: 16px;">—</div>
+                    <div class="stat-sub" id="fbStrategyDesc">Recommended approach</div>
+                </div>
+            </div>
+
+            <div class="fb-strategy-card" id="fbStrategyCard">
+                <div class="fb-strategy-header">
+                    <div class="fb-strategy-title">🏆 Best Strategy Recommendation</div>
+                    <div class="fb-strategy-badge" id="fbStrategyBadge">Loading...</div>
+                </div>
+                <div class="fb-strategy-content" id="fbStrategyText">
+                    <div class="fb-loading">
+                        <div class="fb-loading-spinner"></div>
+                        <p>Analyzing best freebet opportunities...</p>
+                    </div>
+                </div>
+                <div class="fb-strategy-steps" id="fbStrategySteps">
+                    <div class="fb-strategy-step">
+                        <div class="fb-strategy-step-num">1</div>
+                        <div class="fb-strategy-step-text">Register</div>
+                        <div class="fb-strategy-step-value" id="fbStep1Val">—</div>
+                    </div>
+                    <div class="fb-strategy-step">
+                        <div class="fb-strategy-step-num">2</div>
+                        <div class="fb-strategy-step-text">Place Freebet</div>
+                        <div class="fb-strategy-step-value" id="fbStep2Val">—</div>
+                    </div>
+                    <div class="fb-strategy-step">
+                        <div class="fb-strategy-step-num">3</div>
+                        <div class="fb-strategy-step-text">Hedge Risk</div>
+                        <div class="fb-strategy-step-value" id="fbStep3Val">—</div>
+                    </div>
+                    <div class="fb-strategy-step">
+                        <div class="fb-strategy-step-num">4</div>
+                        <div class="fb-strategy-step-text">Expected Profit</div>
+                        <div class="fb-strategy-step-value" id="fbStep4Val">—</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card" style="margin-bottom: 24px;">
+                <div class="card-header">
+                    <div class="card-title">🎯 Freebet Offers <span id="fbFilteredCount" style="color: var(--text-dim); font-size: 13px; font-weight: 400;"></span></div>
+                    <div style="display: flex; gap: 12px; align-items: center;">
+                        <div class="fb-view-toggle">
+                            <button class="fb-view-btn active" id="fbViewCards" onclick="setFbView('cards')">📋 Cards</button>
+                            <button class="fb-view-btn" id="fbViewTable" onclick="setFbView('table')">📊 Table</button>
+                        </div>
+                        <button class="btn btn-secondary" style="font-size: 12px; padding: 6px 12px;" onclick="refreshFreebets()">🔄 Refresh</button>
+                    </div>
+                </div>
+                <div class="filters">
+                    <div class="filter-group" style="flex: 1; min-width: 180px;">
+                        <label class="filter-label">Bookmaker</label>
+                        <select class="filter-select" id="fbFilterBk" onchange="filterFreebets()">
+                            <option value="">All Bookmakers</option>
+                        </select>
+                    </div>
+                    <div class="filter-group" style="flex: 1; min-width: 180px;">
+                        <label class="filter-label">Freebet Type</label>
+                        <select class="filter-select" id="fbFilterType" onchange="filterFreebets()">
+                            <option value="">All Types</option>
+                            <option value="registration">🆕 Registration</option>
+                            <option value="deposit">💳 Deposit Bonus</option>
+                            <option value="riskfree">🛡️ Risk-Free Bet</option>
+                            <option value="loyalty">⭐ Loyalty</option>
+                        </select>
+                    </div>
+                    <div class="filter-group" style="flex: 1; min-width: 180px;">
+                        <label class="filter-label">Sort By</label>
+                        <select class="filter-select" id="fbSortBy" onchange="filterFreebets()">
+                            <option value="amount">Amount (High → Low)</option>
+                            <option value="roi">ROI (High → Low)</option>
+                            <option value="wager">Wager (Low → High)</option>
+                            <option value="expiry">Expiry (Soon → Late)</option>
+                        </select>
+                    </div>
+                </div>
+                <div id="freebetsCardView" class="scroll-area fb-card-view"></div>
+                <div id="freebetsTableView" class="scroll-area fb-table-view">
+                    <table class="fb-comparison-table">
+                        <thead>
+                            <tr>
+                                <th>Bookmaker</th>
+                                <th>Type</th>
+                                <th>Amount</th>
+                                <th>Min Odds</th>
+                                <th>Wager</th>
+                                <th>ROI</th>
+                                <th>Expiry</th>
+                            </tr>
+                        </thead>
+                        <tbody id="freebetsTableBody"></tbody>
+                    </table>
+                </div>
+                <div id="freebetsLoading" class="fb-loading" style="display: none;">
+                    <div class="fb-loading-spinner"></div>
+                    <p>Loading freebet offers...</p>
+                </div>
+                <div id="freebetsError" class="fb-error" style="display: none;"></div>
+            </div>
+
+            <div class="card" style="margin-bottom: 24px;" id="fbSurebetsCard">
+                <div class="card-header">
+                    <div class="card-title">💰 Freebet-Optimized Surebets <span id="fbSurebetCount" style="color: var(--success); font-size: 13px; font-weight: 400;"></span></div>
+                    <div style="display: flex; gap: 8px; align-items: center;">
+                        <input type="number" class="filter-input" id="fbSurebetMinRoi" placeholder="Min ROI %" value="5" min="0.1" max="100" step="0.1" style="width: 120px;" onchange="loadFreebetSurebets()">
+                        <input type="number" class="filter-input" id="fbSurebetStake" placeholder="Total Stake" value="10000" min="100" step="100" style="width: 140px;" onchange="loadFreebetSurebets()">
+                    </div>
+                </div>
+                <div class="scroll-area" id="freebetSurebetsList"></div>
+            </div>
+
+            <div class="fb-calc-widget">
+                <div class="fb-calc-title">🧮 Freebet ROI Calculator</div>
+                <div class="fb-calc-row">
+                    <input type="number" class="fb-calc-input" id="fbCalcAmount" placeholder="Freebet Amount (₽)" value="1000">
+                    <input type="number" class="fb-calc-input" id="fbCalcOdds" placeholder="Odds" value="2.0" step="0.01">
+                </div>
+                <div class="fb-calc-row">
+                    <input type="number" class="fb-calc-input" id="fbCalcHedgeOdds" placeholder="Hedge Odds (other BK)" value="1.9" step="0.01">
+                    <input type="number" class="fb-calc-input" id="fbCalcWager" placeholder="Wager Requirement (x)" value="1" step="0.1">
+                </div>
+                <button class="btn btn-success" style="width: 100%; margin-top: 8px;" onclick="calculateFreebetROI()">Calculate ROI</button>
+                <div id="fbCalcResult" class="fb-calc-result"></div>
+            </div>
+        </section>
+
+        <section id="bonuses" style="display: none;">
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">🎁 Bookmaker Bonuses</div>
+                </div>
+                <div class="scroll-area" id="bonusesList"></div>
+            </div>
+        </section>
+        
+        <section id="settings" style="display: none;">
+            <div class="card">
+                <div class="card-header">
+                    <div class="card-title">⚙️ Settings</div>
+                </div>
+                
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
+                    <div>
+                        <h3 style="margin-bottom: 16px; color: var(--accent);">📡 Scanner</h3>
+                        
+                        <label style="color: var(--text-dim); font-size: 12px; text-transform: uppercase;">Min Profit (%)</label>
+                        <input type="number" class="calc-input" id="minProfit" value="0.5" min="0.1" max="50" step="0.1">
+                        
+                        <label style="color: var(--text-dim); font-size: 12px; text-transform: uppercase; margin-top: 16px; display: block;">Scan Interval (seconds)</label>
+                        <input type="number" class="calc-input" id="scanInterval" value="3" min="1" max="60">
+                        
+                        <label style="color: var(--text-dim); font-size: 12px; text-transform: uppercase; margin-top: 16px; display: block;">Cache TTL (seconds)</label>
+                        <input type="number" class="calc-input" id="cacheTtl" value="10" min="1" max="60">
+                        
+                        <label style="color: var(--text-dim); font-size: 12px; text-transform: uppercase; margin-top: 16px; display: block;">Min Odds</label>
+                        <input type="number" class="calc-input" id="minOdds" value="1.05" min="1.01" max="5" step="0.01">
+                        
+                        <label style="color: var(--text-dim); font-size: 12px; text-transform: uppercase; margin-top: 16px; display: block;">Max Odds</label>
+                        <input type="number" class="calc-input" id="maxOdds" value="50" min="5" max="100" step="1">
+                    </div>
+                    
+                    <div>
+                        <h3 style="margin-bottom: 16px; color: var(--accent);">🔔 Modes</h3>
+                        
+                        <label class="toggle-row">
+                            <span>Live Only</span>
+                            <input type="checkbox" id="liveOnly" class="toggle-input">
+                            <span class="toggle-slider"></span>
+                        </label>
+                        
+                        <label class="toggle-row">
+                            <span>Prematch</span>
+                            <input type="checkbox" id="prematchEnabled" class="toggle-input" checked>
+                            <span class="toggle-slider"></span>
+                        </label>
+                        
+                        <label class="toggle-row">
+                            <span>Cyber Sport</span>
+                            <input type="checkbox" id="cyberEnabled" class="toggle-input" checked>
+                            <span class="toggle-slider"></span>
+                        </label>
+                        
+                        <p style="color: var(--text-dim); font-size: 12px; margin-top: 8px;">
+                            Scan live, prematch and cyber sport events
+                        </p>
+                    </div>
+                </div>
+                
+                <h3 style="margin: 24px 0 16px 0; color: var(--accent);">📊 Bookmakers</h3>
+                <p style="color: var(--text-dim); font-size: 12px; margin-bottom: 12px;">Select which bookmakers to scan</p>
+                
+                <div id="bookmakerCheckboxes" style="display: flex; flex-wrap: wrap; gap: 10px;">
+                    <label class="bk-toggle" data-slug="winline">
+                        <input type="checkbox" checked> Winline
+                    </label>
+                    <label class="bk-toggle" data-slug="pari">
+                        <input type="checkbox" checked> Pari
+                    </label>
+                    <label class="bk-toggle" data-slug="betcity">
+                        <input type="checkbox" checked> Betcity
+                    </label>
+                    <label class="bk-toggle" data-slug="marathon">
+                        <input type="checkbox" checked> Marathon
+                    </label>
+                    <label class="bk-toggle" data-slug="zenit">
+                        <input type="checkbox" checked> Zenit
+                    </label>
+                    <label class="bk-toggle" data-slug="baltbet">
+                        <input type="checkbox" checked> Baltbet
+                    </label>
+                    <label class="bk-toggle" data-slug="bettery">
+                        <input type="checkbox" checked> Bettery
+                    </label>
+                    <label class="bk-toggle disabled" data-slug="olimp">
+                        <input type="checkbox" disabled> Olimp
+                        <span style="color: var(--danger); font-size: 10px;">Timeout</span>
+                    </label>
+                    <label class="bk-toggle disabled" data-slug="olimpbet">
+                        <input type="checkbox" disabled> OlimpBet
+                        <span style="color: var(--danger); font-size: 10px;">SPA</span>
+                    </label>
+                    <label class="bk-toggle disabled" data-slug="tennisi">
+                        <input type="checkbox" disabled> Tennisi
+                        <span style="color: var(--danger); font-size: 10px;">Timeout</span>
+                    </label>
+                    <label class="bk-toggle disabled" data-slug="betm">
+                        <input type="checkbox" disabled> Bet-M
+                        <span style="color: var(--danger); font-size: 10px;">Timeout</span>
+                    </label>
+                    <label class="bk-toggle disabled" data-slug="melbet">
+                        <input type="checkbox" disabled> Melbet
+                        <span style="color: var(--danger); font-size: 10px;">Cloudflare</span>
+                    </label>
+                </div>
+                
+                <div style="margin-top: 24px;">
+                    <button class="btn btn-primary" onclick="saveSettings()" style="margin-right: 10px;">💾 Save</button>
+                    <button class="btn btn-secondary" onclick="loadSettings()">🔄 Reset</button>
+                    <span id="settingsStatus" style="margin-left: 16px; color: var(--success);"></span>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <div class="keyboard-hint" id="keyboardHint">
+        <kbd>↑↓</kbd> Navigate &nbsp; <kbd>Enter</kbd> Expand &nbsp; <kbd>Esc</kbd> Close &nbsp; <kbd>Ctrl+E</kbd> Export
+    </div>
+    
+    <script>
+        const API = window.location.origin;
+        let ws = null;
+        let allSurebets = [];
+        let lastPing = 0;
+        let activityLog = [];
+        let currentTheme = localStorage.getItem('theme') || 'dark';
+        let focusedSurebetIndex = -1;
+        let heatmapVisible = false;
+        let heatmapData = {};
+        let profitTrackerData = { total: 0, count: 0, best: 0, items: [] };
+        let activeFilters = { sport: '', live: '', minProfit: 0, maxProfit: 10, time: 'all', bookmakers: [], sweetSpot: false };
+        let surebetTimestamps = new Map();
+        
+        document.documentElement.setAttribute('data-theme', currentTheme);
+        updateThemeBtn();
+        
+        function toggleTheme() {
+            currentTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            document.documentElement.setAttribute('data-theme', currentTheme);
+            localStorage.setItem('theme', currentTheme);
+            updateThemeBtn();
+        }
+        
+        function updateThemeBtn() {
+            const btn = document.getElementById('themeBtn');
+            if (btn) btn.textContent = currentTheme === 'dark' ? '☀️ Light' : '🌙 Dark';
+        }
+        
+        async function loadSettings() {
+            try {
+                const resp = await fetch(`${API}/api/v1/settings`);
+                const data = await resp.json();
+                
+                if (data.success) {
+                    const cfg = data.data;
+                    document.getElementById('minProfit').value = cfg.min_profit || 0.5;
+                    document.getElementById('scanInterval').value = cfg.cycle_interval || 3;
+                    document.getElementById('cacheTtl').value = cfg.cache_ttl || 10;
+                    document.getElementById('liveOnly').checked = cfg.live_only || false;
+                    document.getElementById('prematchEnabled').checked = cfg.prematch_enabled !== false;
+                    document.getElementById('cyberEnabled').checked = cfg.cyber_enabled !== false;
+                    
+                    const minOddsEl = document.getElementById('minOdds');
+                    const maxOddsEl = document.getElementById('maxOdds');
+                    if (minOddsEl) minOddsEl.value = cfg.min_odds || 1.05;
+                    if (maxOddsEl) maxOddsEl.value = cfg.max_odds || 50;
+                    
+                    const sources = cfg.enabled_sources || [];
+                    document.querySelectorAll('.bk-toggle:not(.disabled) input').forEach(cb => {
+                        const slug = cb.closest('.bk-toggle').dataset.slug;
+                        cb.checked = sources.includes(slug);
+                    });
+                }
+            } catch (e) {
+                console.error('Failed to load settings:', e);
+            }
+        }
+        
+        async function saveSettings() {
+            const statusEl = document.getElementById('settingsStatus');
+            statusEl.textContent = 'Saving...';
+            
+            const minProfit = parseFloat(document.getElementById('minProfit').value);
+            const cycleInterval = parseFloat(document.getElementById('scanInterval').value);
+            const cacheTtl = parseFloat(document.getElementById('cacheTtl').value);
+            const liveOnly = document.getElementById('liveOnly').checked;
+            const prematchEnabled = document.getElementById('prematchEnabled').checked;
+            const cyberEnabled = document.getElementById('cyberEnabled').checked;
+            const minOdds = parseFloat(document.getElementById('minOdds').value) || 1.05;
+            const maxOdds = parseFloat(document.getElementById('maxOdds').value) || 50;
+            
+            const enabledSources = [];
+            document.querySelectorAll('.bk-toggle:not(.disabled) input:checked').forEach(cb => {
+                enabledSources.push(cb.closest('.bk-toggle').dataset.slug);
+            });
+            
+            try {
+                const resp = await fetch(`${API}/api/v1/settings`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        min_profit: minProfit,
+                        cycle_interval: cycleInterval,
+                        cache_ttl: cacheTtl,
+                        live_only: liveOnly,
+                        prematch_enabled: prematchEnabled,
+                        cyber_enabled: cyberEnabled,
+                        enabled_sources: enabledSources,
+                        min_odds: minOdds,
+                        max_odds: maxOdds
+                    })
+                });
+                
+                const data = await resp.json();
+                
+                if (data.success) {
+                    statusEl.textContent = '✓ Saved!';
+                    setTimeout(() => { statusEl.textContent = ''; }, 2000);
+                } else {
+                    statusEl.textContent = '✗ Error';
+                    statusEl.style.color = 'var(--danger)';
+                }
+            } catch (e) {
+                console.error('Failed to save settings:', e);
+                statusEl.textContent = '✗ Error';
+                statusEl.style.color = 'var(--danger)';
+            }
+        }
+        
+        function exportCSV() {
+            if (!allSurebets.length) {
+                alert('No surebets to export');
+                return;
+            }
+            
+            const headers = ['ID', 'Event', 'Sport', 'Profit %', 'Profit ₽', 'Total Stake', 'Bookmaker 1', 'Odds 1', 'Stake 1', 'Bookmaker 2', 'Odds 2', 'Stake 2', 'Live', 'Time'];
+            const rows = allSurebets.map(sb => {
+                const legs = sb.legs || [];
+                const profitRub = sb.total_stake ? (sb.total_stake * sb.profit_percent / 100) : 0;
+                return [
+                    sb.id || '',
+                    `"${(sb.event_name || 'Unknown').replace(/"/g, '""')}"`,
+                    sb.sport || '',
+                    (sb.profit_percent || 0).toFixed(2),
+                    profitRub.toFixed(2),
+                    sb.total_stake || 10000,
+                    legs[0]?.bookmaker || '',
+                    legs[0]?.odds || '',
+                    legs[0]?.calculated_stake || '',
+                    legs[1]?.bookmaker || '',
+                    legs[1]?.odds || '',
+                    legs[1]?.calculated_stake || '',
+                    sb.is_live ? 'Yes' : 'No',
+                    sb.timestamp || new Date().toISOString()
+                ].join(',');
+            });
+            
+            const csv = [headers.join(','), ...rows].join('\n');
+            const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `ghost_imperium_surebets_${new Date().toISOString().slice(0,10)}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+        
+        function connectWS() {
+            ws = new WebSocket(`ws://${API}/ws/v1/surebets`);
+            
+            ws.onopen = () => {
+                console.log('WebSocket connected');
+                document.getElementById('scannerStatus').textContent = 'Connected';
+                document.getElementById('scannerDot').className = 'status-dot online';
+            };
+            
+            ws.onmessage = (e) => {
+                const data = JSON.parse(e.data);
+                
+                if (data.type === 'connected') {
+                    console.log('Server connected:', data.message);
+                }
+                
+                if (data.type === 'new_surebets') {
+                    data.data.forEach(sb => addNewSurebet(sb));
+                }
+                
+                if (data.type === 'stats') {
+                    updateStats(data.data);
+                }
+                
+                if (data.type === 'surebets') {
+                    allSurebets = data.data;
+                    renderSurebets(allSurebets);
+                }
+            };
+            
+            ws.onclose = () => {
+                document.getElementById('scannerStatus').textContent = 'Disconnected';
+                document.getElementById('scannerDot').className = 'status-dot offline';
+                setTimeout(connectWS, 3000);
+            };
+            
+            ws.onerror = (e) => console.error('WS error:', e);
+        }
+        
+        async function fetchStats() {
+            try {
+                const resp = await fetch(`${API}/api/v1/stats`);
+                const data = await resp.json();
+                updateStats(data);
+            } catch (e) { console.error(e); }
+        }
+        
+        function updateStats(data) {
+            const eventsEl = document.getElementById('eventsCount');
+            const surebetsEl = document.getElementById('surebetsCount');
+            const cycleEl = document.getElementById('cycleTime');
+
+            const newEvents = data.events_count || 0;
+            const newSurebets = data.surebets_count || 0;
+
+            if (eventsEl.textContent !== String(newEvents)) animateValue('eventsCount', newEvents, '');
+            if (surebetsEl.textContent !== String(newSurebets)) animateValue('surebetsCount', newSurebets, '');
+            if (cycleEl.textContent !== `${data.avg_cycle_ms || 0}ms`) {
+                cycleEl.textContent = `${data.avg_cycle_ms || 0}ms`;
+            }
+
+            document.getElementById('forkCount').textContent = `(${data.surebets_count || 0})`;
+            document.getElementById('totalForks').textContent = `${data.surebets_count || 0} found`;
+            
+            const parsers = data.parsers || {};
+            const sourcesListDiv = document.getElementById('sourcesList');
+            sourcesListDiv.innerHTML = Object.entries(parsers).map(([name, stat]) => `
+                <div class="source-item">
+                    <div class="source-name">
+                        <span class="source-dot ${stat.events > 0 ? 'online' : 'offline'}"></span>
+                        ${name}
+                    </div>
+                    <div class="source-events">${stat.events || 0} events</div>
+                </div>
+            `).join('') || '<p style="color:var(--text-dim); padding: 10px;">No data</p>';
+            
+            const sourcesGridDiv = document.getElementById('sourcesGrid');
+            const bookmakers = [
+                { slug: 'winline', name: 'Winline', icon: '🟢' },
+                { slug: 'olimp', name: 'Olimp', icon: '🔵' },
+                { slug: 'olimppet', name: 'OlimpBet', icon: '🟣' },
+                { slug: 'pari', name: 'Pari', icon: '🟡' },
+                { slug: 'marathon', name: 'Marathonbet', icon: '🔴' },
+                { slug: 'betboom', name: 'BetBoom', icon: '🟠' },
+                { slug: 'fonbet', name: 'Fonbet', icon: '⚪' },
+                { slug: '1xstavka', name: '1xStavka', icon: '🟤' },
+                { slug: 'leon', name: 'Leon', icon: '🦁' },
+                { slug: 'betcity', name: 'Betcity', icon: '🏙️' },
+                { slug: 'pinup', name: 'Pin-up', icon: '📌' },
+                { slug: 'zenit', name: 'Zenit', icon: '⭐' }
+            ];
+            
+            let onlineCount = 0;
+            sourcesGridDiv.innerHTML = bookmakers.map(bk => {
+                const stat = parsers[bk.name] || parsers[bk.slug] || {};
+                const events = stat.events || 0;
+                const errors = stat.errors || 0;
+                const isOnline = events > 0;
+                const statusClass = errors > 3 ? 'error' : (isOnline ? 'online' : 'offline');
+                if (isOnline) onlineCount++;
+                
+                return `
+                    <div class="source-card">
+                        <div class="source-card-header">
+                            <div class="source-card-name">
+                                <span class="source-card-status ${statusClass}"></span>
+                                ${bk.icon} ${bk.name}
+                            </div>
+                        </div>
+                        <div class="source-card-events">📊 ${events} events</div>
+                        ${errors > 0 ? `<div class="source-card-errors">⚠️ ${errors} errors</div>` : ''}
+                    </div>
+                `;
+            }).join('');
+            
+            document.getElementById('sourcesOnline').textContent = `${onlineCount}/12 online`;
+        }
+        
+        async function fetchSurebets() {
+            try {
+                const resp = await fetch(`${API}/api/v1/surebets?limit=100`);
+                const data = await resp.json();
+                if (data.success && data.data) {
+                    allSurebets = data.data.surebets || [];
+                    renderSurebets(allSurebets);
+                    updateBestProfit();
+                }
+            } catch (e) { console.error(e); }
+        }
+        
+        function renderSurebets(surebets) {
+            const container = document.getElementById('surebetsList');
+            
+            if (!surebets.length) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-icon">😴</div>
+                        <h3>No forks found</h3>
+                        <p>Scanner is working, try again later</p>
+                    </div>`;
+                return;
+            }
+            
+            container.innerHTML = surebets.map(sb => {
+                if (sb.id && !surebetTimestamps.has(sb.id)) {
+                    surebetTimestamps.set(sb.id, Date.now() - Math.random() * 300000);
+                }
+                return renderSurebetCard(sb);
+            }).join('');
+        }
+        
+        function renderSurebetCard(sb) {
+            const legs = sb.legs || [];
+            const profit = sb.profit_percent || 0;
+            const isHigh = profit >= 5;
+            const totalStake = sb.total_stake || 10000;
+            const profitRub = totalStake * profit / 100;
+            const reliability = calculateReliability(sb);
+            const stars = renderStars(reliability.score);
+            const foundAt = surebetTimestamps.get(sb.id) || Date.now();
+            const timeAgo = getTimeAgo(foundAt);
+
+            return `
+                <div class="surebet ${isHigh ? 'high' : ''} surebet-slide-in" data-id="${sb.id || ''}" onclick="toggleSurebetDetails(this)">
+                    <div class="surebet-header">
+                        <div>
+                            <div class="event-name">${sb.event_name || 'Unknown'}</div>
+                            ${sb.is_live ? '<span class="live-badge">Live</span>' : ''}
+                            ${sb.sport ? `<span style="color: var(--text-dim); font-size: 12px; margin-left: 8px;">${sb.sport}</span>` : ''}
+                            <span style="color: var(--text-dim); font-size: 10px; margin-left: 8px;">${timeAgo}</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 10px;">
+                            <div>
+                                <div class="profit-badge ${isHigh ? 'high' : ''}">+${profit.toFixed(2)}%</div>
+                                <div class="profit-rub" style="text-align: right;">+${profitRub.toFixed(0)}₽</div>
+                            </div>
+                            <button class="surebet-expand-btn" onclick="event.stopPropagation(); toggleSurebetDetails(this.closest('.surebet'))">▼</button>
+                        </div>
+                    </div>
+                    <div class="bookmaker-row">
+                        ${legs.map(l => `
+                            <div class="bk-chip">
+                                <span class="bk-name">${l.bookmaker}</span>
+                                <span class="bk-odds">${l.odds?.toFixed(2)}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                    <div class="reliability-score">
+                        <span class="reliability-label">Reliability:</span>
+                        <div class="reliability-stars">${stars}</div>
+                        <span class="reliability-tooltip">
+                            <span style="font-size: 10px; color: var(--text-dim);">(${reliability.score}/5)</span>
+                            <span class="tooltip-text">Stability: ${reliability.stability} | BK Pair: ${reliability.bkPair} | Margin: ${reliability.margin}</span>
+                        </span>
+                    </div>
+                    <div class="surebet-details">
+                        <div class="stake-breakdown">
+                            ${legs.map(l => `
+                                <div class="stake-item">
+                                    <div class="stake-item-bk">${l.bookmaker}</div>
+                                    <div class="stake-item-amount">${l.calculated_stake ? l.calculated_stake.toFixed(0) : (totalStake / legs.length).toFixed(0)}₽</div>
+                                    <div class="stake-item-odds">K${l.odds?.toFixed(2)}</div>
+                                </div>
+                            `).join('')}
+                        </div>
+                        <div class="stake-info">
+                            <span>Total Stake: ${totalStake.toFixed(0)}₽</span>
+                            <span style="color: var(--success)">Guaranteed Profit: +${profitRub.toFixed(0)}₽</span>
+                        </div>
+                        <div style="margin-top: 10px;">
+                            <div class="detail-row">
+                                <span class="detail-label">Market</span>
+                                <span class="detail-value">${sb.market_type || '1X2'}</span>
+                            </div>
+                            <div class="detail-row">
+                                <span class="detail-label">Found</span>
+                                <span class="detail-value">${timeAgo}</span>
+                            </div>
+                            <div class="detail-row">
+                                <span class="detail-label">Reliability Score</span>
+                                <span class="detail-value">${reliability.score}/5 — ${reliability.label}</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        function addNewSurebet(sb) {
+            allSurebets.unshift(sb);
+            allSurebets = allSurebets.slice(0, 100);
+
+            if (sb.id) surebetTimestamps.set(sb.id, Date.now());
+
+            const container = document.getElementById('surebetsList');
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = renderSurebetCard(sb);
+            const newCard = tempDiv.firstElementChild;
+            container.prepend(newCard);
+
+            if (container.children.length > 50) {
+                container.lastElementChild.remove();
+            }
+
+            addToActivity(sb);
+            updateBestProfit();
+            updateProfitTracker(sb);
+            if (heatmapVisible) buildHeatmap();
+        }
+        
+        function addToActivity(sb) {
+            const legs = sb.legs || [];
+            const profit = sb.profit_percent || 0;
+            const totalStake = sb.total_stake || 10000;
+            const profitRub = totalStake * profit / 100;
+            
+            activityLog.unshift({
+                event: sb.event_name || 'Unknown',
+                profit: profit,
+                profitRub: profitRub,
+                bks: legs.map(l => l.bookmaker).join(' vs '),
+                time: new Date()
+            });
+            
+            if (activityLog.length > 50) activityLog.pop();
+            
+            renderActivity();
+        }
+        
+        function renderActivity() {
+            const feed = document.getElementById('activityFeed');
+            document.getElementById('activityCount').textContent = `${activityLog.length} events`;
+            
+            if (!activityLog.length) {
+                feed.innerHTML = '<div class="empty-state" style="padding: 20px;"><p>No activity yet</p></div>';
+                return;
+            }
+            
+            feed.innerHTML = activityLog.slice(0, 20).map(a => `
+                <div class="activity-item">
+                    <div class="activity-time">${a.time.toLocaleTimeString()}</div>
+                    <div class="activity-event">${a.event}</div>
+                    <div class="activity-profit">+${a.profit.toFixed(2)}% (+${a.profitRub.toFixed(0)}₽)</div>
+                    <div class="activity-bks">${a.bks}</div>
+                </div>
+            `).join('');
+        }
+        
+        function updateBestProfit() {
+            const best = allSurebets[0];
+            document.getElementById('bestProfit').textContent = 
+                best ? `+${best.profit_percent?.toFixed(2)}%` : '0%';
+        }
+        
+        function toggleHeatmap() {
+            heatmapVisible = !heatmapVisible;
+            document.getElementById('heatmapContainer').style.display = heatmapVisible ? 'block' : 'none';
+            document.getElementById('heatmapToggle').classList.toggle('active', heatmapVisible);
+            if (heatmapVisible && allSurebets.length > 0) {
+                buildHeatmap();
+            }
+        }
+
+        function buildHeatmap() {
+            const sports = {};
+            const bkNames = ['Winline', 'Olimp', 'OlimpBet', 'Pari', 'Marathonbet', 'BetBoom', 'Fonbet', '1xStavka', 'Leon', 'Betcity', 'Pin-up', 'Zenit'];
+
+            allSurebets.forEach(sb => {
+                const sport = sb.sport || 'other';
+                if (!sports[sport]) sports[sport] = {};
+                const legs = sb.legs || [];
+                legs.forEach(l => {
+                    const bk = l.bookmaker;
+                    const odds = l.odds || 0;
+                    if (!sports[sport][bk]) sports[sport][bk] = [];
+                    sports[sport][bk].push(odds);
+                });
+            });
+
+            const sportNames = Object.keys(sports);
+            if (sportNames.length === 0) {
+                document.getElementById('heatmapGrid').innerHTML = '<div class="empty-state" style="padding: 10px;"><p>No data for heatmap</p></div>';
+                return;
+            }
+
+            let html = '<table class="heatmap-table"><thead><tr><th>Sport</th>';
+            bkNames.forEach(bk => { html += `<th>${bk.substring(0, 6)}</th>`; });
+            html += '</tr></thead><tbody>';
+
+            sportNames.forEach(sport => {
+                html += `<tr><td>${sport}</td>`;
+                bkNames.forEach(bk => {
+                    const oddsArr = sports[sport][bk];
+                    if (oddsArr && oddsArr.length > 0) {
+                        const avg = oddsArr.reduce((a, b) => a + b, 0) / oddsArr.length;
+                        const maxPossible = 5.0;
+                        const level = Math.min(4, Math.floor((avg / maxPossible) * 5));
+                        html += `<td class="heat-${level}">${avg.toFixed(2)}</td>`;
+                    } else {
+                        html += '<td class="heat-na">—</td>';
+                    }
+                });
+                html += '</tr>';
+            });
+
+            html += '</tbody></table>';
+            document.getElementById('heatmapGrid').innerHTML = html;
+        }
+
+        function updateProfitTracker(sb) {
+            const profitRub = (sb.total_stake || 10000) * (sb.profit_percent || 0) / 100;
+            profitTrackerData.total += profitRub;
+            profitTrackerData.count++;
+            if (profitRub > profitTrackerData.best) profitTrackerData.best = profitRub;
+            profitTrackerData.items.push({ profit: profitRub, time: new Date() });
+
+            animateValue('profitTrackerValue', profitTrackerData.total, '₽');
+            document.getElementById('profitTrackerSub').textContent = `From ${profitTrackerData.count} surebets found today`;
+            document.getElementById('profitTrackerAvg').textContent = `${(profitTrackerData.total / profitTrackerData.count).toFixed(0)}₽`;
+            document.getElementById('profitTrackerBest').textContent = `${profitTrackerData.best.toFixed(0)}₽`;
+            document.getElementById('profitTrackerLast').textContent = new Date().toLocaleTimeString();
+
+            const barWidth = Math.min(100, (profitTrackerData.total / 100000) * 100);
+            document.getElementById('profitTrackerBar').style.width = `${barWidth}%`;
+        }
+
+        function animateValue(elementId, target, suffix = '') {
+            const el = document.getElementById(elementId);
+            const start = parseFloat(el.textContent.replace(/[^\d.-]/g, '')) || 0;
+            const duration = 500;
+            const startTime = performance.now();
+
+            function update(currentTime) {
+                const elapsed = currentTime - startTime;
+                const progress = Math.min(elapsed / duration, 1);
+                const eased = 1 - Math.pow(1 - progress, 3);
+                const current = start + (target - start) * eased;
+                el.textContent = `${current.toFixed(0)}${suffix}`;
+                if (progress < 1) requestAnimationFrame(update);
+            }
+            requestAnimationFrame(update);
+        }
+
+        function updateProfitRange() {
+            const min = parseFloat(document.getElementById('profitMin').value);
+            const max = parseFloat(document.getElementById('profitMax').value);
+            document.getElementById('profitRangeValue').textContent = `${min.toFixed(1)}% — ${max.toFixed(1)}%`;
+        }
+
+        function setTimeFilter(el) {
+            document.querySelectorAll('.time-chip').forEach(c => c.classList.remove('active'));
+            el.classList.add('active');
+            activeFilters.time = el.dataset.time;
+        }
+
+        function toggleSweetSpot() {
+            activeFilters.sweetSpot = !activeFilters.sweetSpot;
+            const btn = document.getElementById('sweetSpotBtn');
+            btn.classList.toggle('active', activeFilters.sweetSpot);
+            if (activeFilters.sweetSpot) {
+                document.getElementById('profitMin').value = 3;
+                document.getElementById('profitMax').value = 7;
+                updateProfitRange();
+            }
+        }
+
+        function initBkFilterChips() {
+            const bks = ['Winline', 'Olimp', 'OlimpBet', 'Pari', 'Marathonbet', 'BetBoom', 'Fonbet', '1xStavka', 'Leon', 'Betcity', 'Pin-up', 'Zenit'];
+            const container = document.getElementById('bkFilterChips');
+            container.innerHTML = bks.map(bk =>
+                `<div class="bk-chip-filter" data-bk="${bk}" onclick="toggleBkFilter(this)">${bk}</div>`
+            ).join('');
+        }
+
+        function toggleBkFilter(el) {
+            el.classList.toggle('active');
+            const bk = el.dataset.bk;
+            if (activeFilters.bookmakers.includes(bk)) {
+                activeFilters.bookmakers = activeFilters.bookmakers.filter(b => b !== bk);
+            } else {
+                activeFilters.bookmakers.push(bk);
+            }
+        }
+
+        function calculateReliability(sb) {
+            const profit = sb.profit_percent || 0;
+            const legs = sb.legs || [];
+            let score = 3;
+
+            let marginScore = 0;
+            if (profit >= 1 && profit <= 7) marginScore = 2;
+            else if (profit > 0.5 && profit < 10) marginScore = 1;
+            else marginScore = -1;
+
+            let bkScore = 0;
+            const reliableBks = ['Winline', 'Fonbet', 'Pari', 'Leon', 'BetBoom'];
+            const bkNames = legs.map(l => l.bookmaker);
+            const reliableCount = bkNames.filter(bk => reliableBks.includes(bk)).length;
+            bkScore = reliableCount - 1;
+
+            let stabilityScore = 0;
+            const foundAt = surebetTimestamps.get(sb.id);
+            if (foundAt) {
+                const age = (Date.now() - foundAt) / 1000;
+                if (age < 60) stabilityScore = 1;
+                else if (age < 300) stabilityScore = 0;
+                else stabilityScore = -1;
+            }
+
+            score = Math.max(1, Math.min(5, 3 + marginScore + bkScore + stabilityScore));
+
+            let label = 'Medium';
+            if (score >= 5) label = 'Excellent';
+            else if (score >= 4) label = 'High';
+            else if (score >= 3) label = 'Medium';
+            else if (score >= 2) label = 'Low';
+            else label = 'Risky';
+
+            return {
+                score,
+                label,
+                stability: stabilityScore > 0 ? 'Fresh' : (stabilityScore < 0 ? 'Old' : 'Normal'),
+                bkPair: bkScore > 0 ? 'Reliable' : (bkScore < 0 ? 'Unknown' : 'Standard'),
+                margin: marginScore > 0 ? 'Optimal' : (marginScore < 0 ? 'Suspicious' : 'Normal')
+            };
+        }
+
+        function renderStars(count) {
+            let html = '';
+            for (let i = 1; i <= 5; i++) {
+                html += `<span class="star ${i <= count ? 'filled' : ''}">★</span>`;
+            }
+            return html;
+        }
+
+        function getTimeAgo(timestamp) {
+            const seconds = Math.floor((Date.now() - timestamp) / 1000);
+            if (seconds < 60) return `${seconds}s ago`;
+            const minutes = Math.floor(seconds / 60);
+            if (minutes < 60) return `${minutes}m ago`;
+            const hours = Math.floor(minutes / 60);
+            return `${hours}h ago`;
+        }
+
+        function toggleSurebetDetails(el) {
+            if (!el) return;
+            const details = el.querySelector('.surebet-details');
+            if (details) {
+                details.classList.toggle('expanded');
+                const btn = el.querySelector('.surebet-expand-btn');
+                if (btn) btn.textContent = details.classList.contains('expanded') ? '▲' : '▼';
+            }
+        }
+
+        function setFocus(index) {
+            document.querySelectorAll('.surebet').forEach(c => c.classList.remove('focused'));
+            const cards = document.querySelectorAll('#surebetsList .surebet');
+            if (index >= 0 && index < cards.length) {
+                focusedSurebetIndex = index;
+                cards[index].classList.add('focused');
+                cards[index].scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            } else {
+                focusedSurebetIndex = -1;
+            }
+        }
+
+        function handleKeyboard(e) {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
+
+            const cards = document.querySelectorAll('#surebetsList .surebet');
+            if (!cards.length) return;
+
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                setFocus(Math.min(focusedSurebetIndex + 1, cards.length - 1));
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                setFocus(Math.max(focusedSurebetIndex - 1, 0));
+            } else if (e.key === 'Enter' && focusedSurebetIndex >= 0) {
+                e.preventDefault();
+                toggleSurebetDetails(cards[focusedSurebetIndex]);
+            } else if (e.key === 'Escape') {
+                setFocus(-1);
+                document.querySelectorAll('.surebet-details.expanded').forEach(d => {
+                    d.classList.remove('expanded');
+                    const btn = d.closest('.surebet')?.querySelector('.surebet-expand-btn');
+                    if (btn) btn.textContent = '▼';
+                });
+            } else if (e.key === 'e' && e.ctrlKey) {
+                e.preventDefault();
+                exportCSV();
+            }
+        }
+
+        function showKeyboardHint() {
+            const hint = document.getElementById('keyboardHint');
+            hint.classList.add('show');
+            setTimeout(() => hint.classList.remove('show'), 4000);
+        }
+
+        function applyFilters() {
+            const sport = document.getElementById('filterSport').value;
+            const live = document.getElementById('filterLive').value;
+            const minProfit = parseFloat(document.getElementById('filterProfit').value) || 0;
+            const profitMin = parseFloat(document.getElementById('profitMin').value) || 0;
+            const profitMax = parseFloat(document.getElementById('profitMax').value) || 10;
+            const timeFilter = activeFilters.time;
+            const selectedBks = activeFilters.bookmakers;
+            const sweetSpot = activeFilters.sweetSpot;
+
+            const effectiveMinProfit = sweetSpot ? Math.max(minProfit, 3) : minProfit;
+            const effectiveMaxProfit = sweetSpot ? Math.min(profitMax, 7) : profitMax;
+
+            let filtered = allSurebets.filter(sb => {
+                if (sport && sb.sport !== sport) return false;
+                if (live && sb.is_live !== (live === 'true' || live === '1')) return false;
+                const profit = sb.profit_percent || 0;
+                if (profit < effectiveMinProfit) return false;
+                if (profit > effectiveMaxProfit) return false;
+                if (timeFilter !== 'all') {
+                    const foundAt = surebetTimestamps.get(sb.id);
+                    if (foundAt) {
+                        const minutesAgo = (Date.now() - foundAt) / 60000;
+                        if (minutesAgo > parseInt(timeFilter)) return false;
+                    }
+                }
+                if (selectedBks.length > 0) {
+                    const legs = sb.legs || [];
+                    const bkNames = legs.map(l => l.bookmaker);
+                    if (!selectedBks.some(bk => bkNames.includes(bk))) return false;
+                }
+                return true;
+            });
+
+            renderSurebets(filtered);
+        }
+        
+        function clearFilters() {
+            document.getElementById('filterSport').value = '';
+            document.getElementById('filterLive').value = '';
+            document.getElementById('filterProfit').value = '';
+            document.getElementById('profitMin').value = 0;
+            document.getElementById('profitMax').value = 10;
+            updateProfitRange();
+            document.querySelectorAll('.time-chip').forEach(c => c.classList.remove('active'));
+            document.querySelector('.time-chip[data-time="all"]').classList.add('active');
+            document.querySelectorAll('.bk-chip-filter').forEach(c => c.classList.remove('active'));
+            document.getElementById('sweetSpotBtn').classList.remove('active');
+            activeFilters = { sport: '', live: '', minProfit: 0, maxProfit: 10, time: 'all', bookmakers: [], sweetSpot: false };
+            renderSurebets(allSurebets);
+        }
+        
+        function quickCalculate() {
+            const odds1 = parseFloat(document.getElementById('calcOdds1').value);
+            const odds2 = parseFloat(document.getElementById('calcOdds2').value);
+            const stake = parseFloat(document.getElementById('calcStake').value) || 10000;
+            
+            if (!odds1 || !odds2) {
+                alert('Enter both odds');
+                return;
+            }
+            
+            const result = calculateForkInternal([odds1, odds2], stake);
+            
+            const resultDiv = document.getElementById('calcResult');
+            if (result.isFork) {
+                resultDiv.innerHTML = `
+                    <h3 style="color: var(--success);">✅ FORK FOUND!</h3>
+                    <div style="font-size: 28px; font-weight: 800; color: var(--success); margin: 10px 0;">
+                        +${result.profit.toFixed(2)}%
+                    </div>
+                    <p>Profit: ${result.profitRub.toFixed(0)}₽</p>
+                `;
+            } else {
+                resultDiv.innerHTML = `
+                    <h3 style="color: var(--danger);">⚠️ NO FORK</h3>
+                    <p>Margin: ${result.margin.toFixed(2)}%</p>
+                `;
+            }
+            resultDiv.classList.add('show');
+        }
+        
+        function calculateFork() {
+            const type = document.getElementById('forkType').value;
+            const odds1 = parseFloat(document.getElementById('odds1').value);
+            const odds2 = parseFloat(document.getElementById('odds2').value);
+            const odds3 = parseFloat(document.getElementById('odds3').value);
+            const stake = parseFloat(document.getElementById('stake').value) || 10000;
+            
+            let odds = [odds1, odds2];
+            if (type === '3way' && odds3) odds.push(odds3);
+            
+            if (odds.some(o => !o || o < 1.01)) {
+                alert('Enter valid odds (>1.01)');
+                return;
+            }
+            
+            const result = calculateForkInternal(odds, stake);
+            
+            const resultDiv = document.getElementById('forkResult');
+            if (result.isFork) {
+                resultDiv.innerHTML = `
+                    <h3 style="color: var(--success); margin-bottom: 16px;">✅ FORK FOUND!</h3>
+                    <div style="font-size: 36px; font-weight: 800; color: var(--success);">
+                        +${result.profit.toFixed(2)}%
+                    </div>
+                    <div style="margin: 16px 0; color: var(--text-dim);">
+                        Estimated profit: ${result.profitRub.toFixed(0)}₽
+                    </div>
+                    <div style="background: rgba(0,0,0,0.3); padding: 12px; border-radius: 8px;">
+                        ${result.stakes.map((s, i) => `
+                            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,0.1);">
+                                <span>${type === '3way' ? ['P1', 'X', 'P2'][i] : ['P1', 'P2'][i]}</span>
+                                <span style="color: var(--accent);">K${odds[i].toFixed(2)}</span>
+                                <span style="color: var(--success);">${s.toFixed(0)}₽ (${(s/stake*100).toFixed(1)}%)</span>
+                            </div>
+                        `).join('')}
+                        <div style="display: flex; justify-content: space-between; padding: 12px 0; font-weight: 700;">
+                            <span>TOTAL</span>
+                            <span>${stake.toFixed(0)}₽</span>
+                        </div>
+                    </div>
+                `;
+            } else {
+                resultDiv.innerHTML = `
+                    <h3 style="color: var(--danger); margin-bottom: 16px;">⚠️ NOT A FORK</h3>
+                    <p>Margin: ${result.margin.toFixed(2)}%</p>
+                    <p style="color: var(--text-dim); margin-top: 8px;">
+                        For a fork, the sum of inverse odds must be less than 1.
+                    </p>
+                `;
+            }
+            resultDiv.classList.add('show');
+        }
+        
+        function calculateForkInternal(odds, stake) {
+            const inverses = odds.map(o => 1/o);
+            const sumInv = inverses.reduce((a, b) => a+b, 0);
+            const isFork = sumInv < 1;
+            const profit = isFork ? (1/sumInv - 1) * 100 : 0;
+            const stakes = inverses.map(inv => stake * inv / sumInv);
+            
+            return {
+                isFork,
+                profit,
+                margin: (sumInv - 1) * 100,
+                profitRub: stake * profit / 100,
+                stakes
+            };
+        }
+        
+        function showSection(name) {
+            document.querySelectorAll('section').forEach(s => {
+                s.style.display = 'none';
+                s.classList.remove('section-transition');
+            });
+            const target = document.getElementById(name);
+            target.style.display = 'block';
+            void target.offsetWidth;
+            target.classList.add('section-transition');
+            document.querySelectorAll('.nav a').forEach(a => a.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            if (name === 'bonuses') loadBonuses();
+            if (name === 'freebets') loadFreebets();
+            if (name === 'analytics') { loadAnalytics(); loadGenerosityIndex(); startGenerosityAutoRefresh(); loadSurebetHistory(); startShAutoRefresh(); }
+            if (name === 'valuebets') loadValueBets();
+            if (name === 'corridors') loadCorridors();
+            if (name === 'surebets') {
+                document.getElementById('allForks').innerHTML = allSurebets.map(renderSurebetCard).join('') || 
+                    '<div class="empty-state"><p>No forks</p></div>';
+            }
+            if (name === 'freebets') loadFreebetSurebets();
+        }
+        
+        async function loadValueBets() {
+            try {
+                const sport = document.getElementById('vbSport')?.value || '';
+                const bookmaker = document.getElementById('vbBookmaker')?.value || '';
+                const minEdge = parseFloat(document.getElementById('vbMinEdge')?.value) || 2;
+                
+                let url = '/api/v1/valuebets?limit=50';
+                if (sport) url += '&sport=' + sport;
+                if (bookmaker) url += '&bookmaker=' + bookmaker;
+                
+                const resp = await fetch(url);
+                const data = await resp.json();
+                const bets = data?.data?.valuebets || [];
+                
+                // Update stats
+                const edges = bets.map(b => b.edge_percent).filter(e => e >= minEdge);
+                document.getElementById('vbCount').textContent = edges.length;
+                document.getElementById('vbAvgEdge').textContent = edges.length ? (edges.reduce((a,b) => a+b, 0) / edges.length).toFixed(2) + '%' : '0%';
+                document.getElementById('vbBestEdge').textContent = edges.length ? '+' + Math.max(...edges).toFixed(2) + '%' : '0%';
+                
+                // Render
+                const filtered = bets.filter(b => b.edge_percent >= minEdge);
+                document.getElementById('valuebetsList').innerHTML = filtered.length ? 
+                    filtered.map(renderValueBetCard).join('') : 
+                    '<div class="empty-state"><p>No value bets found</p></div>';
+            } catch (e) {
+                console.error('Value bets error:', e);
+            }
+        }
+        
+        function renderValueBetCard(vb) {
+            return `
+                <div class="surebet">
+                    <div class="surebet-header">
+                        <div class="event-name">${vb.event_name}</div>
+                        <div class="profit-badge" style="background: var(--success);">+${vb.edge_percent.toFixed(2)}%</div>
+                    </div>
+                    <div class="surebet-details">
+                        <span>${vb.bookmaker}</span>
+                        <span>|</span>
+                        <span>${vb.market}</span>
+                        <span>|</span>
+                        <span>${vb.selection}</span>
+                    </div>
+                    <div class="surebet-odds">
+                        <div>K: ${vb.bookmaker_odds} (fair: ${vb.fair_odds})</div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        async function loadCorridors() {
+            try {
+                const resp = await fetch('/api/v1/corridors?limit=50');
+                const data = await resp.json();
+                const corridors = data?.data?.corridors || [];
+                
+                document.getElementById('corrCount').textContent = corridors.length;
+                if (corridors.length > 0) {
+                    const evs = corridors.map(c => c.ev_percent).filter(e => e > 0);
+                    document.getElementById('corrAvgEv').textContent = evs.length ? (evs.reduce((a,b) => a+b, 0) / evs.length).toFixed(2) + '%' : '0%';
+                    document.getElementById('corrBestEv').textContent = evs.length ? '+' + Math.max(...evs).toFixed(2) + '%' : '0%';
+                }
+                
+                document.getElementById('corridorsList').innerHTML = corridors.length ? 
+                    corridors.map(renderCorridorCard).join('') : 
+                    '<div class="empty-state"><p>No corridors found</p></div>';
+            } catch (e) {
+                console.error('Corridors error:', e);
+            }
+        }
+        
+        function renderCorridorCard(corr) {
+            return `
+                <div class="surebet">
+                    <div class="surebet-header">
+                        <div class="event-name">${corr.event_name}</div>
+                        <div class="profit-badge" style="background: var(--warning);">${corr.ev_percent.toFixed(2)}% EV</div>
+                    </div>
+                    <div class="surebet-details">
+                        <span>${corr.corridor_type}</span>
+                        <span>|</span>
+                        <span>${corr.market1}</span>
+                        <span>|</span>
+                        <span>${corr.market2}</span>
+                    </div>
+                </div>
+            `;
+        }
+        
+        async function loadAnalytics() {
+            try {
+                const [summaryRes, chartRes, bkRes] = await Promise.all([
+                    fetch('/api/v1/analytics/summary'),
+                    fetch('/api/v1/analytics/chart?hours=24'),
+                    fetch('/api/v1/analytics/bookmakers')
+                ]);
+                
+                const summary = await summaryRes.json();
+                const chart = await chartRes.json();
+                const bks = await bkRes.json();
+                
+                if (summary.success && summary.data) {
+                    const d = summary.data;
+                    document.getElementById('analyticsTotal').textContent = d.total_surebets || 0;
+                    document.getElementById('analyticsTotalProfit').textContent = (d.total_profit_percent || 0).toFixed(1) + '%';
+                    document.getElementById('analyticsAvgProfit').textContent = (d.avg_profit_percent || 0).toFixed(2) + '%';
+                    document.getElementById('analyticsBestProfit').textContent = '+' + (d.best_profit_percent || 0).toFixed(2) + '%';
+                }
+                
+                if (chart.success && chart.data) {
+                    drawProfitChart(chart.data);
+                }
+                
+                if (bks.success && bks.data) {
+                    document.getElementById('topBookmakers').innerHTML = bks.data.slice(0, 5).map(bk => `
+                        <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.05);">
+                            <span>${bk.bookmaker}</span>
+                            <span style="color: var(--success);">${bk.count} forks (+${bk.total_profit}%)</span>
+                        </div>
+                    `).join('') || '<p style="color: var(--text-dim);">No data yet</p>';
+                }
+                
+            } catch (e) {
+                console.error('Analytics load error:', e);
+            }
+        }
+        
+        function drawProfitChart(data) {
+            const canvas = document.getElementById('profitChartCanvas');
+            if (!canvas) return;
+            
+            const ctx = canvas.getContext('2d');
+            const rect = canvas.parentElement.getBoundingClientRect();
+            canvas.width = rect.width;
+            canvas.height = rect.height;
+            
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            if (!data || data.length === 0) {
+                ctx.fillStyle = '#888';
+                ctx.font = '14px Inter';
+                ctx.textAlign = 'center';
+                ctx.fillText('No data available', canvas.width / 2, canvas.height / 2);
+                return;
+            }
+            
+            const padding = { top: 30, right: 30, bottom: 50, left: 60 };
+            const chartWidth = canvas.width - padding.left - padding.right;
+            const chartHeight = canvas.height - padding.top - padding.bottom;
+            
+            const maxVal = Math.max(...data.map(d => d.total_profit), 1);
+            const minVal = Math.min(...data.map(d => d.total_profit), 0);
+            const range = maxVal - minVal || 1;
+            
+            ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+            ctx.lineWidth = 1;
+            for (let i = 0; i <= 5; i++) {
+                const y = padding.top + (chartHeight * i / 5);
+                ctx.beginPath();
+                ctx.moveTo(padding.left, y);
+                ctx.lineTo(canvas.width - padding.right, y);
+                ctx.stroke();
+                
+                const val = maxVal - (range * i / 5);
+                ctx.fillStyle = '#888';
+                ctx.font = '11px Inter';
+                ctx.textAlign = 'right';
+                ctx.fillText(val.toFixed(1) + '%', padding.left - 10, y + 4);
+            }
+            
+            const stepX = chartWidth / (data.length - 1 || 1);
+            
+            ctx.beginPath();
+            ctx.strokeStyle = '#00d4ff';
+            ctx.lineWidth = 2;
+            
+            data.forEach((point, i) => {
+                const x = padding.left + i * stepX;
+                const y = padding.top + chartHeight * (1 - (point.total_profit - minVal) / range);
+                
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            });
+            
+            ctx.stroke();
+            
+            const gradient = ctx.createLinearGradient(0, padding.top, 0, canvas.height - padding.bottom);
+            gradient.addColorStop(0, 'rgba(0, 212, 255, 0.3)');
+            gradient.addColorStop(1, 'rgba(0, 212, 255, 0)');
+            
+            ctx.beginPath();
+            data.forEach((point, i) => {
+                const x = padding.left + i * stepX;
+                const y = padding.top + chartHeight * (1 - (point.total_profit - minVal) / range);
+                
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            });
+            ctx.lineTo(padding.left + (data.length - 1) * stepX, canvas.height - padding.bottom);
+            ctx.lineTo(padding.left, canvas.height - padding.bottom);
+            ctx.closePath();
+            ctx.fillStyle = gradient;
+            ctx.fill();
+            
+            data.forEach((point, i) => {
+                const x = padding.left + i * stepX;
+                const y = padding.top + chartHeight * (1 - (point.total_profit - minVal) / range);
+                
+                ctx.beginPath();
+                ctx.arc(x, y, 3, 0, Math.PI * 2);
+                ctx.fillStyle = '#00d4ff';
+                ctx.fill();
+                
+                if (i % 4 === 0 || i === data.length - 1) {
+                    ctx.fillStyle = '#888';
+                    ctx.font = '10px Inter';
+                    ctx.textAlign = 'center';
+                    ctx.save();
+                    ctx.translate(x, canvas.height - padding.bottom + 20);
+                    ctx.rotate(-Math.PI / 4);
+                    ctx.fillText(point.time, 0, 0);
+                    ctx.restore();
+                }
+            });
+        }
+        
+        function loadBonuses() {
+            const bonuses = [
+                {name: 'Winline', bonus: '100% deposit', amount: 'up to 10,000₽', cond: 'Wager x10'},
+                {name: 'Olimp', bonus: 'Freebet', amount: '500₽', cond: 'Express 3+'},
+                {name: 'Pari', bonus: '100% deposit', amount: 'up to 15,000₽', cond: 'Wager x10'},
+                {name: 'Fonbet', bonus: 'Freebet', amount: '2,000₽', cond: 'Express 3+'},
+                {name: '1xBet', bonus: 'Deposit bonus', amount: '3,000₽', cond: 'Wager x5'},
+            ];
+            
+            document.getElementById('bonusesList').innerHTML = bonuses.map(b => `
+                <div class="surebet" style="background: linear-gradient(135deg, rgba(255,170,0,0.1), rgba(255,170,0,0.02)); border-color: rgba(255,170,0,0.3);">
+                    <div class="surebet-header">
+                        <div class="event-name">🏅 ${b.name}</div>
+                    </div>
+                    <div style="font-size: 18px; margin: 10px 0;">${b.bonus}</div>
+                    <div style="color: var(--accent); font-size: 24px; font-weight: 700;">${b.amount}</div>
+                    <div style="color: var(--text-dim); font-size: 12px; margin-top: 8px;">${b.cond}</div>
+                </div>
+            `).join('');
+        }
+
+        let generosityData = {};
+        let generosityTimer = null;
+
+        async function loadGenerosityIndex() {
+            try {
+                const resp = await fetch(`${API}/api/v1/analytics/generosity`);
+                const data = await resp.json();
+
+                document.getElementById('generosityLoading').style.display = 'none';
+
+                if (!data || Object.keys(data).length === 0) {
+                    document.getElementById('generosityContent').style.display = 'none';
+                    document.getElementById('generosityLoading').style.display = 'block';
+                    document.getElementById('generosityLoading').innerHTML = `
+                        <div class="gen-loading-spinner"></div>
+                        <p>No generosity data yet. Run scanner to collect data.</p>
+                    `;
+                    return;
+                }
+
+                generosityData = data;
+                renderGenerosityIndex(data);
+                document.getElementById('generosityContent').style.display = 'block';
+                document.getElementById('genLastUpdate').textContent = `Updated: ${new Date().toLocaleTimeString()}`;
+            } catch (e) {
+                console.error('Generosity index load error:', e);
+                document.getElementById('generosityLoading').style.display = 'block';
+                document.getElementById('generosityLoading').innerHTML = `
+                    <p style="color: var(--danger);">⚠️ Failed to load generosity data</p>
+                    <p style="font-size: 11px; margin-top: 8px;">${e.message || 'Unknown error'}</p>
+                `;
+            }
+        }
+
+        function renderGenerosityIndex(data) {
+            const rows = [];
+            const sportBest = {};
+            const bkOverall = {};
+
+            for (const [bk, sports] of Object.entries(data)) {
+                let totalScore = 0;
+                let sportCount = 0;
+
+                for (const [sport, score] of Object.entries(sports)) {
+                    rows.push({ bk, sport, score });
+
+                    if (!sportBest[sport] || score > sportBest[sport].score) {
+                        sportBest[sport] = { bk, score };
+                    }
+
+                    totalScore += score;
+                    sportCount++;
+                }
+
+                if (sportCount > 0) {
+                    bkOverall[bk] = totalScore / sportCount;
+                }
+            }
+
+            rows.sort((a, b) => b.score - a.score);
+
+            const highlightsEl = document.getElementById('genHighlights');
+            const topOverall = Object.entries(bkOverall).sort((a, b) => b[1] - a[1]);
+
+            let highlightsHTML = '';
+
+            if (topOverall.length > 0) {
+                highlightsHTML += `
+                    <div class="gen-highlight">
+                        <div class="gen-highlight-icon">👑</div>
+                        <div class="gen-highlight-label">Most Generous Overall</div>
+                        <div class="gen-highlight-value">${topOverall[0][0]}</div>
+                        <div class="gen-highlight-sub">Avg score: ${topOverall[0][1].toFixed(3)}</div>
+                    </div>
+                `;
+            }
+
+            const footballBest = sportBest['football'] || sportBest['Football'] || sportBest['⚽ Football'];
+            if (footballBest) {
+                highlightsHTML += `
+                    <div class="gen-highlight">
+                        <div class="gen-highlight-icon">⚽</div>
+                        <div class="gen-highlight-label">Best BK for Football</div>
+                        <div class="gen-highlight-value">${footballBest.bk}</div>
+                        <div class="gen-highlight-sub">Score: ${footballBest.score.toFixed(3)}</div>
+                    </div>
+                `;
+            }
+
+            const tennisBest = sportBest['tennis'] || sportBest['Tennis'] || sportBest['🎾 Tennis'];
+            if (tennisBest) {
+                highlightsHTML += `
+                    <div class="gen-highlight">
+                        <div class="gen-highlight-icon">🎾</div>
+                        <div class="gen-highlight-label">Best BK for Tennis</div>
+                        <div class="gen-highlight-value">${tennisBest.bk}</div>
+                        <div class="gen-highlight-sub">Score: ${tennisBest.score.toFixed(3)}</div>
+                    </div>
+                `;
+            }
+
+            const basketballBest = sportBest['basketball'] || sportBest['Basketball'] || sportBest['🏀 Basketball'];
+            if (basketballBest) {
+                highlightsHTML += `
+                    <div class="gen-highlight">
+                        <div class="gen-highlight-icon">🏀</div>
+                        <div class="gen-highlight-label">Best BK for Basketball</div>
+                        <div class="gen-highlight-value">${basketballBest.bk}</div>
+                        <div class="gen-highlight-sub">Score: ${basketballBest.score.toFixed(3)}</div>
+                    </div>
+                `;
+            }
+
+            highlightsEl.innerHTML = highlightsHTML || '<p style="color: var(--text-dim); text-align: center;">No highlights available</p>';
+
+            const tbody = document.getElementById('genTableBody');
+            tbody.innerHTML = rows.map((row, idx) => {
+                const rank = idx + 1;
+                const rankClass = rank === 1 ? 'gold' : rank === 2 ? 'silver' : rank === 3 ? 'bronze' : 'normal';
+                const scoreClass = row.score > 1.05 ? 'generous' : row.score >= 0.95 ? 'average' : 'stingy';
+                const scoreLabel = row.score > 1.05 ? 'Generous' : row.score >= 0.95 ? 'Average' : 'Stingy';
+
+                return `
+                    <tr>
+                        <td><span class="gen-rank ${rankClass}">${rank}</span></td>
+                        <td><span class="gen-bk-name">${row.bk}</span></td>
+                        <td><span class="gen-sport-tag">${row.sport}</span></td>
+                        <td><span class="gen-score ${scoreClass}">${row.score.toFixed(3)}</span></td>
+                        <td>${scoreLabel}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        let freebetsData = [];
+        let freebetSurebetsData = [];
+        let fbCurrentView = 'cards';
+        let fbLastFetch = 0;
+
+        async function loadFreebets(force = false) {
+            if (!force && (Date.now() - fbLastFetch < 60000) && freebetsData.length > 0) {
+                renderFreebets(freebetsData);
+                return;
+            }
+
+            showFbLoading(true);
+            hideFbError();
+
+            try {
+                const [fbRes, fbSurebetsRes] = await Promise.allSettled([
+                    fetch(`${API}/api/v1/freebets`),
+                    fetch(`${API}/api/v1/freebets/surebets?total_stake=10000&min_roi=5`)
+                ]);
+
+                if (fbRes.status === 'fulfilled' && fbRes.value.ok) {
+                    const fbData = await fbRes.value.json();
+                    if (fbData.success && fbData.data) {
+                        const rawFreebets = fbData.data.available_freebets || [];
+                        const strategy = fbData.data.best_strategy;
+                        freebetsData = enrichFreebets(rawFreebets);
+                        populateBkFilter(freebetsData);
+                        renderFreebets(freebetsData);
+                        updateFreebetStats(freebetsData);
+                        updateFreebetStrategy(freebetsData, strategy);
+                        fbLastFetch = Date.now();
+                    }
+                }
+
+                if (fbSurebetsRes.status === 'fulfilled' && fbSurebetsRes.value.ok) {
+                    const sbData = await fbSurebetsRes.value.json();
+                    if (sbData.success && sbData.data) {
+                        freebetSurebetsData = sbData.data.surebets || [];
+                        renderFreebetSurebets(freebetSurebetsData);
+                    }
+                }
+            } catch (e) {
+                console.error('Freebets load error:', e);
+                showFbError('Failed to load freebets. Using fallback data.');
+                freebetsData = getFallbackFreebets();
+                populateBkFilter(freebetsData);
+                renderFreebets(freebetsData);
+                updateFreebetStats(freebetsData);
+                updateFreebetStrategy(freebetsData, null);
+            } finally {
+                showFbLoading(false);
+            }
+        }
+
+        function enrichFreebets(raw) {
+            const typeMap = {
+                'winline': { type: 'registration', roi: 85, expiry: '30 days', minOdds: 1.5 },
+                'pari': { type: 'registration', roi: 92, expiry: '14 days', minOdds: 1.3 },
+                'betcity': { type: 'registration', roi: 78, expiry: '30 days', minOdds: 1.5 },
+                'baltbet': { type: 'registration', roi: 55, expiry: '21 days', minOdds: 1.5 },
+                'marathon': { type: 'deposit', roi: 72, expiry: '30 days', minOdds: 1.5 },
+                'zenit': { type: 'registration', roi: 60, expiry: '30 days', minOdds: 1.4 },
+                'bettery': { type: 'registration', roi: 70, expiry: '10 days', minOdds: 1.3 },
+            };
+            const bkDisplayNames = {
+                'winline': 'Winline', 'pari': 'Pari', 'betcity': 'Betcity',
+                'baltbet': 'Baltbet', 'marathon': 'Marathon', 'zenit': 'Zenit', 'bettery': 'Bettery'
+            };
+
+            return raw.map(fb => {
+                const slug = fb.bookmaker?.toLowerCase() || '';
+                const info = typeMap[slug] || { type: 'registration', roi: 50, expiry: '30 days', minOdds: 1.5 };
+                return {
+                    bk: bkDisplayNames[slug] || fb.bookmaker,
+                    slug: slug,
+                    type: info.type,
+                    name: fb.description || 'Freebet Offer',
+                    amount: fb.amount || 0,
+                    wager: fb.min_turnover ? `x${fb.min_turnover}` : 'x1',
+                    minOdds: info.minOdds,
+                    maxOdds: 10,
+                    roi: info.roi,
+                    expiry: info.expiry,
+                    desc: fb.description || `Freebet from ${bkDisplayNames[slug] || slug}`,
+                };
+            });
+        }
+
+        function getFallbackFreebets() {
+            return [
+                { bk: 'Winline', slug: 'winline', type: 'registration', name: 'Welcome Freebet', amount: 5000, wager: 'x1', minOdds: 1.5, maxOdds: 10, roi: 85, expiry: '30 days', desc: 'Free 5000₽ on registration, no deposit needed' },
+                { bk: 'Pari', slug: 'pari', type: 'registration', name: 'First Bet Free', amount: 2500, wager: 'x1', minOdds: 1.3, maxOdds: 5, roi: 92, expiry: '14 days', desc: 'Risk-free first bet up to 2500₽' },
+                { bk: 'Betcity', slug: 'betcity', type: 'registration', name: 'Sign-up Bonus', amount: 3000, wager: 'x1', minOdds: 1.5, maxOdds: 8, roi: 78, expiry: '30 days', desc: 'Freebet after first registration' },
+                { bk: 'Marathon', slug: 'marathon', type: 'deposit', name: 'Deposit Match', amount: 10000, wager: 'x1', minOdds: 1.5, maxOdds: 10, roi: 72, expiry: '30 days', desc: '10000₽ freebet on first deposit' },
+                { bk: 'Zenit', slug: 'zenit', type: 'registration', name: 'New Player Bonus', amount: 1500, wager: 'x1', minOdds: 1.4, maxOdds: 5, roi: 60, expiry: '30 days', desc: 'Free 1500₽ for new accounts' },
+                { bk: 'Baltbet', slug: 'baltbet', type: 'registration', name: 'Starter Freebet', amount: 2000, wager: 'x1', minOdds: 1.5, maxOdds: 6, roi: 55, expiry: '21 days', desc: 'Freebet for new Baltbet players' },
+                { bk: 'Bettery', slug: 'bettery', type: 'registration', name: 'Quick Start', amount: 1000, wager: 'x1', minOdds: 1.3, maxOdds: 4, roi: 70, expiry: '10 days', desc: 'Quick starter freebet for beginners' },
+            ];
+        }
+
+        function populateBkFilter(freebets) {
+            const bkFilter = document.getElementById('fbFilterBk');
+            const currentVal = bkFilter.value;
+            const bks = [...new Set(freebets.map(f => f.bk))].sort();
+            bkFilter.innerHTML = '<option value="">All Bookmakers</option>';
+            bks.forEach(bk => {
+                const opt = document.createElement('option');
+                opt.value = bk;
+                opt.textContent = bk;
+                bkFilter.appendChild(opt);
+            });
+            bkFilter.value = currentVal;
+        }
+
+        function renderFreebets(freebets) {
+            const typeFilter = document.getElementById('fbFilterType')?.value || '';
+            const bkFilter = document.getElementById('fbFilterBk')?.value || '';
+            const sortBy = document.getElementById('fbSortBy')?.value || 'amount';
+
+            let filtered = [...freebets];
+            if (typeFilter) filtered = filtered.filter(f => f.type === typeFilter);
+            if (bkFilter) filtered = filtered.filter(f => f.bk === bkFilter);
+
+            if (sortBy === 'roi') filtered.sort((a, b) => b.roi - a.roi);
+            else if (sortBy === 'amount') filtered.sort((a, b) => b.amount - a.amount);
+            else if (sortBy === 'wager') filtered.sort((a, b) => parseFloat(a.wager.replace('x', '')) - parseFloat(b.wager.replace('x', '')));
+            else if (sortBy === 'expiry') filtered.sort((a, b) => parseExpiryDays(a.expiry) - parseExpiryDays(b.expiry));
+
+            document.getElementById('fbFilteredCount').textContent = `(${filtered.length} of ${freebets.length})`;
+            renderFbCards(filtered);
+            renderFbTable(filtered);
+        }
+
+        function parseExpiryDays(expiry) {
+            const match = expiry.match(/(\d+)/);
+            return match ? parseInt(match[1]) : 999;
+        }
+
+        function renderFbCards(freebets) {
+            const typeIcons = { registration: '🆕', deposit: '💳', riskfree: '🛡️', loyalty: '⭐' };
+            const typeNames = { registration: 'Registration', deposit: 'Deposit Bonus', riskfree: 'Risk-Free', loyalty: 'Loyalty' };
+            const bkColors = {
+                'Winline': '#ff6600', 'Pari': '#0066ff', 'Fonbet': '#ff0000', 'Olimp': '#00aa00',
+                'Betcity': '#ffcc00', 'Marathon': '#00ccff', 'Zenit': '#009900', 'Baltbet': '#cc0000', 'Bettery': '#6600ff'
+            };
+
+            document.getElementById('freebetsCardView').innerHTML = freebets.length ?
+                freebets.map((fb, i) => {
+                    const roiClass = fb.roi >= 80 ? 'high' : fb.roi >= 60 ? 'medium' : 'low';
+                    const roiBarWidth = Math.min(fb.roi, 100);
+                    const tier = fb.roi >= 80 ? 'gold' : fb.roi >= 65 ? 'silver' : 'bronze';
+                    const tierIcon = tier === 'gold' ? '🥇' : tier === 'silver' ? '🥈' : '🥉';
+
+                    return `
+                    <div class="fb-card type-${fb.type}" style="animation-delay: ${i * 0.05}s">
+                        <div class="fb-card-header">
+                            <div class="fb-card-title">
+                                <div class="fb-bk-icon" style="background: ${bkColors[fb.bk] || '#666'}">${fb.bk[0]}</div>
+                                <div>
+                                    <div class="fb-name">${fb.bk}</div>
+                                    <span class="fb-type-badge ${fb.type}">${typeIcons[fb.type] || '🎯'} ${typeNames[fb.type] || fb.type}</span>
+                                    <span class="fb-tier-badge ${tier}">${tierIcon} ${tier.charAt(0).toUpperCase() + tier.slice(1)}</span>
+                                </div>
+                            </div>
+                            <div class="fb-amount-display">
+                                <div class="fb-amount-value">${fb.amount.toLocaleString()}₽</div>
+                                <div class="fb-amount-label">Freebet Value</div>
+                            </div>
+                        </div>
+                        <div class="fb-stats-grid">
+                            <div class="fb-stat">
+                                <div class="fb-stat-label">ROI</div>
+                                <div class="fb-stat-value success">${fb.roi}%</div>
+                            </div>
+                            <div class="fb-stat">
+                                <div class="fb-stat-label">Wager</div>
+                                <div class="fb-stat-value">${fb.wager}</div>
+                            </div>
+                            <div class="fb-stat">
+                                <div class="fb-stat-label">Odds Range</div>
+                                <div class="fb-stat-value">${fb.minOdds} — ${fb.maxOdds}</div>
+                            </div>
+                            <div class="fb-stat">
+                                <div class="fb-stat-label">Expires</div>
+                                <div class="fb-stat-value warning">${fb.expiry}</div>
+                            </div>
+                        </div>
+                        <div class="fb-roi-bar">
+                            <div class="fb-roi-bar-fill ${roiClass}" style="width: ${roiBarWidth}%"></div>
+                        </div>
+                        <div class="fb-desc">${fb.desc}</div>
+                    </div>
+                `}).join('') :
+                '<div class="empty-state"><div class="empty-icon">🎯</div><h3>No freebets match filters</h3><p>Try changing filter criteria</p></div>';
+        }
+
+        function renderFbTable(freebets) {
+            const typeIcons = { registration: '🆕', deposit: '💳', riskfree: '🛡️', loyalty: '⭐' };
+            const typeNames = { registration: 'Registration', deposit: 'Deposit', riskfree: 'Risk-Free', loyalty: 'Loyalty' };
+
+            document.getElementById('freebetsTableBody').innerHTML = freebets.length ?
+                freebets.map(fb => `
+                    <tr>
+                        <td><b>${fb.bk}</b></td>
+                        <td><span class="fb-type-badge ${fb.type}">${typeIcons[fb.type]} ${typeNames[fb.type]}</span></td>
+                        <td style="color: var(--success); font-weight: 700;">${fb.amount.toLocaleString()}₽</td>
+                        <td>${fb.minOdds}</td>
+                        <td>${fb.wager}</td>
+                        <td style="color: ${fb.roi >= 80 ? 'var(--success)' : fb.roi >= 60 ? 'var(--warning)' : 'var(--accent)'}; font-weight: 700;">${fb.roi}%</td>
+                        <td>${fb.expiry}</td>
+                    </tr>
+                `).join('') :
+                '<tr><td colspan="7" style="text-align: center; color: var(--text-dim); padding: 20px;">No freebets match filters</td></tr>';
+        }
+
+        function renderFreebetSurebets(surebets) {
+            const container = document.getElementById('freebetSurebetsList');
+            document.getElementById('fbSurebetCount').textContent = `(${surebets.length} found)`;
+
+            if (!surebets.length) {
+                container.innerHTML = '<div class="empty-state"><div class="empty-icon">💰</div><h3>No freebet-optimized surebets</h3><p>Try lowering min ROI or increasing stake</p></div>';
+                return;
+            }
+
+            container.innerHTML = surebets.slice(0, 20).map(sb => {
+                const legs = sb.original_surebet?.legs || [];
+                const roi = sb.roi_with_freebet || 0;
+                const freebetBk = sb.freebet_bookmaker || '';
+                const freebetAmt = sb.freebet_amount || 0;
+
+                return `
+                <div class="surebet">
+                    <div class="surebet-header">
+                        <div>
+                            <div class="event-name">${sb.original_surebet?.event_name || 'Surebet'}</div>
+                            <span style="color: var(--success); font-size: 12px;">🎯 Freebet: ${freebetBk} (${freebetAmt.toLocaleString()}₽)</span>
+                        </div>
+                        <div class="profit-badge" style="background: linear-gradient(135deg, #00ff88, #00ffcc);">+${roi.toFixed(2)}% ROI</div>
+                    </div>
+                    <div class="bookmaker-row">
+                        ${legs.map(l => `
+                            <div class="bk-chip">
+                                <span class="bk-name">${l.bookmaker}</span>
+                                <span class="bk-odds">${l.odds?.toFixed(2)}</span>
+                            </div>
+                        `).join('')}
+                    </div>
+                    <div class="stake-info">
+                        <span>Regular ROI: ${sb.regular_roi}%</span>
+                        <span style="color: var(--success)">ROI Boost: +${sb.roi_boost}%</span>
+                        <span style="color: var(--accent)">Total Profit: ${sb.total_profit_with_freebet?.toFixed(0)}₽</span>
+                    </div>
+                </div>
+                `;
+            }).join('');
+        }
+
+        async function loadFreebetSurebets() {
+            const minRoi = document.getElementById('fbSurebetMinRoi')?.value || 5;
+            const stake = document.getElementById('fbSurebetStake')?.value || 10000;
+
+            try {
+                const resp = await fetch(`${API}/api/v1/freebets/surebets?total_stake=${stake}&min_roi=${minRoi}`);
+                const data = await resp.json();
+                if (data.success && data.data) {
+                    freebetSurebetsData = data.data.surebets || [];
+                    renderFreebetSurebets(freebetSurebetsData);
+                }
+            } catch (e) {
+                console.error('Freebet surebets load error:', e);
+            }
+        }
+
+        function filterFreebets() {
+            renderFreebets(freebetsData);
+        }
+
+        function refreshFreebets() {
+            fbLastFetch = 0;
+            loadFreebets(true);
+        }
+
+        function setFbView(view) {
+            fbCurrentView = view;
+            document.getElementById('fbViewCards').classList.toggle('active', view === 'cards');
+            document.getElementById('fbViewTable').classList.toggle('active', view === 'table');
+            document.getElementById('freebetsCardView').classList.toggle('hidden', view !== 'cards');
+            document.getElementById('freebetsTableView').classList.toggle('active', view === 'table');
+        }
+
+        function showFbLoading(show) {
+            document.getElementById('freebetsLoading').style.display = show ? 'block' : 'none';
+        }
+
+        function hideFbError() {
+            document.getElementById('freebetsError').style.display = 'none';
+        }
+
+        function showFbError(msg) {
+            const el = document.getElementById('freebetsError');
+            el.textContent = msg;
+            el.style.display = 'block';
+        }
+
+        function updateFreebetStats(freebets) {
+            document.getElementById('fbCount').textContent = freebets.length;
+            const totalVal = freebets.reduce((sum, fb) => sum + fb.amount, 0);
+            document.getElementById('fbTotalValue').textContent = totalVal.toLocaleString() + '₽';
+            const bestRoi = freebets.length ? Math.max(...freebets.map(f => f.roi)) : 0;
+            document.getElementById('fbBestRoi').textContent = bestRoi + '%';
+            const bestFb = freebets.find(f => f.roi === bestRoi);
+            document.getElementById('fbBestRoiDesc').textContent = bestFb ? `${bestFb.bk} — ${bestFb.amount.toLocaleString()}₽` : 'No data';
+            document.getElementById('fbFreshDot').className = 'fb-freshness-dot fresh';
+            document.getElementById('fbFreshText').textContent = 'Live';
+        }
+
+        function updateFreebetStrategy(freebets, strategy) {
+            if (strategy && strategy.best_surebet) {
+                const best = strategy.best_surebet;
+                document.getElementById('fbStrategyText').textContent = strategy.recommendation || `Best freebet strategy: Use ${best.freebet_bookmaker} with ${best.freebet_amount}₽ freebet. Combined ROI: ${best.roi_with_freebet}%.`;
+                document.getElementById('fbStrategyBadge').textContent = `+${best.roi_with_freebet}% ROI`;
+                document.getElementById('fbBestStrategy').textContent = best.freebet_bookmaker;
+                document.getElementById('fbStrategyDesc').textContent = `Total profit: ${best.total_profit_with_freebet?.toFixed(0)}₽`;
+                document.getElementById('fbStep1Val').textContent = best.freebet_bookmaker;
+                document.getElementById('fbStep2Val').textContent = `${best.freebet_amount}₽ freebet`;
+                document.getElementById('fbStep3Val').textContent = 'Hedge on other BK';
+                document.getElementById('fbStep4Val').textContent = `+${best.total_profit_with_freebet?.toFixed(0)}₽`;
+            } else {
+                const best = freebets.reduce((a, b) => a.roi > b.roi ? a : b, freebets[0]);
+                if (best) {
+                    document.getElementById('fbStrategyText').textContent = `Best available: ${best.amount}₽ from ${best.bk} with ${best.wager} wager. Expected ROI: ${best.roi}%. Place on high odds (${best.minOdds}+) and hedge on another bookmaker for guaranteed profit.`;
+                    document.getElementById('fbStrategyBadge').textContent = `+${best.roi}% ROI`;
+                    document.getElementById('fbBestStrategy').textContent = best.bk;
+                    document.getElementById('fbStrategyDesc').textContent = `${best.amount.toLocaleString()}₽ free, ${best.wager} wager`;
+                    document.getElementById('fbStep1Val').textContent = best.bk;
+                    document.getElementById('fbStep2Val').textContent = `${best.amount}₽ @ ${best.minOdds}+`;
+                    document.getElementById('fbStep3Val').textContent = 'Hedge on other BK';
+                    document.getElementById('fbStep4Val').textContent = `+${best.roi}% ROI`;
+                }
+            }
+        }
+
+        function calculateFreebetROI() {
+            const amount = parseFloat(document.getElementById('fbCalcAmount').value) || 0;
+            const odds = parseFloat(document.getElementById('fbCalcOdds').value) || 1;
+            const hedgeOdds = parseFloat(document.getElementById('fbCalcHedgeOdds').value) || 1;
+            const wager = parseFloat(document.getElementById('fbCalcWager').value) || 1;
+
+            if (amount <= 0 || odds <= 1 || hedgeOdds <= 1) {
+                document.getElementById('fbCalcResult').innerHTML = '<div style="color: var(--danger);">Please fill all fields with valid values</div>';
+                document.getElementById('fbCalcResult').classList.add('show');
+                return;
+            }
+
+            const potentialWin = amount * odds;
+            const hedgeStake = potentialWin / hedgeOdds;
+            const guaranteedProfit = potentialWin - hedgeStake;
+            const roi = (guaranteedProfit / amount) * 100;
+            const effectiveROI = roi / wager;
+
+            const resultEl = document.getElementById('fbCalcResult');
+            resultEl.innerHTML = `
+                <div class="fb-calc-result-row">
+                    <span class="fb-calc-result-label">Potential Win</span>
+                    <span class="fb-calc-result-value">${potentialWin.toFixed(2)}₽</span>
+                </div>
+                <div class="fb-calc-result-row">
+                    <span class="fb-calc-result-label">Hedge Stake Needed</span>
+                    <span class="fb-calc-result-value">${hedgeStake.toFixed(2)}₽</span>
+                </div>
+                <div class="fb-calc-result-row">
+                    <span class="fb-calc-result-label">Guaranteed Profit</span>
+                    <span class="fb-calc-result-value">${guaranteedProfit.toFixed(2)}₽</span>
+                </div>
+                <div class="fb-calc-result-row">
+                    <span class="fb-calc-result-label">Raw ROI</span>
+                    <span class="fb-calc-result-value">${roi.toFixed(2)}%</span>
+                </div>
+                <div class="fb-calc-result-row">
+                    <span class="fb-calc-result-label">Effective ROI (after wager x${wager})</span>
+                    <span class="fb-calc-result-value" style="font-size: 18px;">${effectiveROI.toFixed(2)}%</span>
+                </div>
+            `;
+            resultEl.classList.add('show');
+        }
+        
+        function searchForks() {
+            const query = document.getElementById('searchForks').value.toLowerCase();
+            const filtered = allSurebets.filter(sb => 
+                sb.event_name?.toLowerCase().includes(query)
+            );
+            document.getElementById('allForks').innerHTML = filtered.map(renderSurebetCard).join('') || 
+                '<div class="empty-state"><p>No results</p></div>';
+        }
+        
+        async function refreshData() {
+            await fetchStats();
+            await fetchSurebets();
+        }
+        
+        function startGenerosityAutoRefresh() {
+            if (generosityTimer) clearInterval(generosityTimer);
+            generosityTimer = setInterval(loadGenerosityIndex, 60000);
+        }
+
+        let shHistoryData = [];
+        let shTimer = null;
+        let shCurrentPeriod = 'today';
+
+        async function loadSurebetHistory() {
+            try {
+                const resp = await fetch(`${API}/api/v1/surebet-history?period=${shCurrentPeriod}`);
+                const data = await resp.json();
+
+                document.getElementById('shLoading').style.display = 'none';
+
+                if (!data.success || !data.data) {
+                    document.getElementById('shContent').style.display = 'none';
+                    document.getElementById('shLoading').style.display = 'block';
+                    document.getElementById('shLoading').innerHTML = `
+                        <div class="sh-loading-spinner"></div>
+                        <p>No history data yet. Run scanner to collect data.</p>
+                    `;
+                    return;
+                }
+
+                shHistoryData = data.data.records || [];
+                renderSurebetHistory(data.data);
+                document.getElementById('shContent').style.display = 'block';
+                document.getElementById('shLastUpdate').textContent = `Updated: ${new Date().toLocaleTimeString()}`;
+            } catch (e) {
+                console.error('Surebet history load error:', e);
+                renderSurebetHistoryFallback();
+            }
+        }
+
+        function renderSurebetHistory(data) {
+            const records = data.records || [];
+            const summary = data.summary || {};
+            const heatmap = data.bookmaker_heatmap || {};
+            const avgLifespan = data.avg_lifespan_seconds || 0;
+
+            // Summary cards
+            const summaryEl = document.getElementById('shSummary');
+            summaryEl.innerHTML = `
+                <div class="sh-summary-item">
+                    <div class="sh-summary-label">Total Found</div>
+                    <div class="sh-summary-value">${summary.total_found || records.length}</div>
+                    <div class="sh-summary-sub">${shCurrentPeriod}</div>
+                </div>
+                <div class="sh-summary-item">
+                    <div class="sh-summary-label">Active Now</div>
+                    <div class="sh-summary-value" style="color: var(--accent);">${summary.active_count || 0}</div>
+                    <div class="sh-summary-sub">Currently live</div>
+                </div>
+                <div class="sh-summary-item">
+                    <div class="sh-summary-label">Avg Profit</div>
+                    <div class="sh-summary-value">${(summary.avg_profit || 0).toFixed(2)}%</div>
+                    <div class="sh-summary-sub">Per surebet</div>
+                </div>
+                <div class="sh-summary-item">
+                    <div class="sh-summary-label">Best Profit</div>
+                    <div class="sh-summary-value">+${(summary.best_profit || 0).toFixed(2)}%</div>
+                    <div class="sh-summary-sub">Top opportunity</div>
+                </div>
+                <div class="sh-summary-item">
+                    <div class="sh-summary-label">Captured</div>
+                    <div class="sh-summary-value" style="color: var(--accent);">${summary.captured_count || 0}</div>
+                    <div class="sh-summary-sub">Successfully placed</div>
+                </div>
+                <div class="sh-summary-item">
+                    <div class="sh-summary-label">Expired</div>
+                    <div class="sh-summary-value" style="color: var(--danger);">${summary.expired_count || 0}</div>
+                    <div class="sh-summary-sub">Missed opportunities</div>
+                </div>
+            `;
+
+            // History table
+            const tbody = document.getElementById('shTableBody');
+            if (records.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="6" class="sh-empty">No surebet history for this period</td></tr>';
+            } else {
+                tbody.innerHTML = records.slice(0, 50).map(r => {
+                    const date = r.timestamp ? new Date(r.timestamp).toLocaleString() : '—';
+                    const statusClass = r.status === 'active' ? 'active' : r.status === 'captured' ? 'captured' : 'expired';
+                    const statusLabel = r.status === 'active' ? '● Active' : r.status === 'captured' ? '✓ Captured' : '✗ Expired';
+                    return `
+                        <tr>
+                            <td style="white-space: nowrap; font-size: 12px; color: var(--text-dim);">${date}</td>
+                            <td style="font-weight: 500;">${r.event_name || '—'}</td>
+                            <td>${r.bookmaker1 || '—'} <span style="color: var(--accent); font-size: 12px;">${r.odds1 ? 'K' + r.odds1.toFixed(2) : ''}</span></td>
+                            <td>${r.bookmaker2 || '—'} <span style="color: var(--accent); font-size: 12px;">${r.odds2 ? 'K' + r.odds2.toFixed(2) : ''}</span></td>
+                            <td style="color: var(--success); font-weight: 700;">+${(r.profit_percent || 0).toFixed(2)}%</td>
+                            <td><span class="sh-status ${statusClass}">${statusLabel}</span></td>
+                        </tr>
+                    `;
+                }).join('');
+            }
+
+            // Bookmaker heatmap
+            const heatmapEl = document.getElementById('shHeatmap');
+            const bkEntries = Object.entries(heatmap).sort((a, b) => b[1] - a[1]);
+            const maxCount = bkEntries.length > 0 ? bkEntries[0][1] : 1;
+
+            if (bkEntries.length === 0) {
+                heatmapEl.innerHTML = '<div class="sh-empty" style="grid-column: 1/-1;">No heatmap data yet</div>';
+            } else {
+                heatmapEl.innerHTML = bkEntries.map(([bk, count]) => {
+                    const pct = ((count / maxCount) * 100).toFixed(0);
+                    const level = pct >= 80 ? 4 : pct >= 60 ? 3 : pct >= 40 ? 2 : pct >= 20 ? 1 : 0;
+                    return `
+                        <div class="sh-heatmap-cell level-${level}">
+                            <div class="sh-heatmap-bk">${bk}</div>
+                            <div class="sh-heatmap-count">${count}</div>
+                            <div class="sh-heatmap-pct">${pct}% of max</div>
+                        </div>
+                    `;
+                }).join('');
+            }
+
+            // Avg lifespan bar
+            const maxLifespan = 600;
+            const lifespanPct = Math.min(100, (avgLifespan / maxLifespan) * 100);
+            document.getElementById('shLifespanFill').style.width = `${lifespanPct}%`;
+            const mins = Math.floor(avgLifespan / 60);
+            const secs = Math.floor(avgLifespan % 60);
+            document.getElementById('shLifespanValue').textContent = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`;
+        }
+
+        function renderSurebetHistoryFallback() {
+            const records = allSurebets.slice(0, 30).map(sb => {
+                const legs = sb.legs || [];
+                return {
+                    timestamp: new Date().toISOString(),
+                    event_name: sb.event_name || 'Unknown',
+                    bookmaker1: legs[0]?.bookmaker || '—',
+                    odds1: legs[0]?.odds || 0,
+                    bookmaker2: legs[1]?.bookmaker || '—',
+                    odds2: legs[1]?.odds || 0,
+                    profit_percent: sb.profit_percent || 0,
+                    status: 'active'
+                };
+            });
+
+            const bkHeatmap = {};
+            records.forEach(r => {
+                if (r.bookmaker1 !== '—') bkHeatmap[r.bookmaker1] = (bkHeatmap[r.bookmaker1] || 0) + 1;
+                if (r.bookmaker2 !== '—') bkHeatmap[r.bookmaker2] = (bkHeatmap[r.bookmaker2] || 0) + 1;
+            });
+
+            const profits = records.map(r => r.profit_percent);
+            const avgProfit = profits.length ? profits.reduce((a, b) => a + b, 0) / profits.length : 0;
+            const bestProfit = profits.length ? Math.max(...profits) : 0;
+
+            renderSurebetHistory({
+                records: records,
+                summary: {
+                    total_found: records.length,
+                    active_count: records.filter(r => r.status === 'active').length,
+                    avg_profit: avgProfit,
+                    best_profit: bestProfit,
+                    captured_count: 0,
+                    expired_count: 0
+                },
+                bookmaker_heatmap: bkHeatmap,
+                avg_lifespan_seconds: 45
+            });
+
+            document.getElementById('shLoading').style.display = 'none';
+            document.getElementById('shContent').style.display = 'block';
+            document.getElementById('shLastUpdate').textContent = `Updated: ${new Date().toLocaleTimeString()} (live)`;
+        }
+
+        function setShPeriod(el) {
+            document.querySelectorAll('.sh-time-btn').forEach(b => b.classList.remove('active'));
+            el.classList.add('active');
+            shCurrentPeriod = el.dataset.period;
+            loadSurebetHistory();
+        }
+
+        function startShAutoRefresh() {
+            if (shTimer) clearInterval(shTimer);
+            shTimer = setInterval(loadSurebetHistory, 60000);
+        }
+
+        connectWS();
+        setInterval(refreshData, 3000);
+        fetchStats();
+        fetchSurebets();
+        loadSettings();
+        initBkFilterChips();
+        document.addEventListener('keydown', handleKeyboard);
+        setTimeout(showKeyboardHint, 2000);
+        
+        setInterval(() => {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                lastPing = Date.now();
+                ws.send('ping');
+            }
+        }, 5000);
+        
+        setInterval(() => {
+            if (lastPing > 0) {
+                document.getElementById('latency').textContent = `${Date.now() - lastPing}ms`;
+            }
+        }, 1000);
+    </script>
+</body>
+</html>

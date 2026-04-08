@@ -1,0 +1,16 @@
+[package]
+name = "bot"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+shared = { path = "../shared" }
+engine = { path = "../engine" }
+scanner = { path = "../scanner" }
+tokio.workspace = true
+teloxide.workspace = true
+tracing.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+chrono.workspace = true
+anyhow.workspace = true

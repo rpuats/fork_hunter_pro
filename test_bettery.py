@@ -1,0 +1,10 @@
+import asyncio, sys
+sys.path.insert(0, r'C:\Users\Administrator\Desktop\ai\Grok вилки\fork_hunter_pro')
+from scanner.parsers import BetteryPlaywrightParser
+
+async def scan():
+    p = BetteryPlaywrightParser()
+    events = await asyncio.wait_for(p.get_events(), timeout=90)
+    print(f'BETTERY: {len(events)} events found')
+
+asyncio.run(scan())

@@ -1,0 +1,27 @@
+[package]
+name = "scanner"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+shared = { path = "../shared" }
+engine = { path = "../engine" }
+persistence = { path = "../persistence" }
+parsers = { path = "../parsers" }
+corridor_scanner = { path = "../corridor_scanner" }
+express_forks = { path = "../express_forks" }
+bankroll_manager = { path = "../bankroll_manager" }
+bonus_hunter = { path = "../bonus_hunter" }
+auto_betting = { path = "../auto_betting" }
+tokio.workspace = true
+tracing.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+futures.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+parking_lot.workspace = true
+chrono.workspace = true
+moka.workspace = true
+uuid.workspace = true
+dashmap.workspace = true

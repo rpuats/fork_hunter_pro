@@ -1,0 +1,16 @@
+[package]
+name = "persistence"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+shared = { path = "../shared" }
+engine = { path = "../engine" }
+sqlx.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+thiserror.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+moka.workspace = true
+anyhow = "1.0"

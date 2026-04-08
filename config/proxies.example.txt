@@ -1,0 +1,39 @@
+# Ghost Imperium - Proxy Configuration Example
+# ==============================================
+# Supported formats:
+#   - http://user:pass@host:port
+#   - https://user:pass@host:port
+#   - socks5://user:pass@host:port
+#   - socks5h://user:pass@host:port (DNS through proxy)
+#   - host:port (defaults to HTTP)
+#
+# Lines starting with # are ignored
+# Empty lines are ignored
+
+# HTTP proxies with authentication
+http://user1:password1@185.162.128.1:8080
+http://user2:password2@45.156.27.100:3128
+
+# SOCKS5 proxies
+socks5://user3:password3@192.168.1.100:1080
+socks5h://user4:password4@10.0.0.50:1080
+
+# Simple proxies (no auth, defaults to HTTP)
+203.0.113.50:8080
+198.51.100.25:3128
+
+# HTTPS proxies
+https://secure_user:secure_pass@proxy.example.com:443
+
+# Russian datacenter proxies (recommended for Russian bookmakers)
+http://ru_proxy_1:pass@185.162.128.1:8080
+http://ru_proxy_2:pass@185.162.128.2:8080
+socks5://ru_proxy_3:pass@45.156.27.100:1080
+
+# Mobile proxies (best for avoiding detection)
+http://mobile_user:pass@mobile-proxy.example.com:8080
+socks5://mobile_user:pass@mobile-proxy.example.com:1080
+
+# Residential proxies (premium, best success rate)
+http://residential_user:pass@residential-proxy.example.com:8080
+socks5://residential_user:pass@residential-proxy.example.com:1080

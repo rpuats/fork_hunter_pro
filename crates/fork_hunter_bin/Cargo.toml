@@ -1,0 +1,25 @@
+[package]
+name = "fork_hunter_bin"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+shared = { path = "../shared" }
+engine = { path = "../engine" }
+persistence = { path = "../persistence" }
+scanner = { path = "../scanner" }
+api = { path = "../api" }
+bot = { path = "../bot" }
+parsers = { path = "../parsers" }
+corridor_scanner = { path = "../corridor_scanner" }
+express_forks = { path = "../express_forks" }
+bankroll_manager = { path = "../bankroll_manager" }
+bonus_hunter = { path = "../bonus_hunter" }
+auto_betting = { path = "../auto_betting" }
+tokio = { version = "1", features = ["full"] }
+axum = { version = "0.7", features = ["ws"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+anyhow = "1.0"
+serde_json = "1.0"
+reqwest = { version = "0.12", features = ["json", "cookies"] }

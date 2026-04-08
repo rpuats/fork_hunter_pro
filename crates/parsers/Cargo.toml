@@ -1,0 +1,23 @@
+[package]
+name = "parsers"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+shared = { path = "../shared" }
+tokio.workspace = true
+reqwest = { workspace = true, features = ["blocking", "gzip", "brotli"] }
+tracing.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+async-trait.workspace = true
+regex.workspace = true
+url.workspace = true
+chrono.workspace = true
+rand.workspace = true
+parking_lot.workspace = true
+futures.workspace = true
+which = "6.0"
+flate2 = "1.0"
+headless_chrome = "1.0"

@@ -1,0 +1,16 @@
+[package]
+name = "express_forks"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+shared = { path = "../shared" }
+engine = { path = "../engine" }
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+tracing.workspace = true
+dashmap.workspace = true
+parking_lot.workspace = true
+itertools = "0.12"

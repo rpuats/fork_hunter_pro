@@ -1,0 +1,63 @@
+{
+  "date": "2026-03-31T12:18:19.412289",
+  "detection": {
+    "100": {
+      "old_ms": 0.49,
+      "new_ms": 0.592,
+      "speedup": 0.83
+    },
+    "500": {
+      "old_ms": 1.051,
+      "new_ms": 1.051,
+      "speedup": 1.0
+    },
+    "1000": {
+      "old_ms": 2.039,
+      "new_ms": 2.111,
+      "speedup": 0.97
+    },
+    "5000": {
+      "old_ms": 7.804,
+      "new_ms": 8.521,
+      "speedup": 0.92
+    }
+  },
+  "event_pool": {
+    "100": {
+      "batch_ms": 0.197,
+      "eps": 507465,
+      "pool_size": 8
+    },
+    "500": {
+      "batch_ms": 1.1,
+      "eps": 454402,
+      "pool_size": 8
+    },
+    "1000": {
+      "batch_ms": 2.05,
+      "eps": 487708,
+      "pool_size": 8
+    }
+  },
+  "memory": {
+    "event_pool": {
+      "growth_kb": 2.8,
+      "peak_kb": 753.4
+    },
+    "finder": {
+      "old": {
+        "growth_kb": 12.5,
+        "peak_kb": 39.6
+      },
+      "new": {
+        "growth_kb": 15.9,
+        "peak_kb": 128.7
+      }
+    },
+    "object_pool": {
+      "ops_sec": 2138168,
+      "reuse_rate": 100.0
+    }
+  },
+  "total_seconds": 4.6
+}

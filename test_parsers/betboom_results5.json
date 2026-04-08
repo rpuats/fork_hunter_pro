@@ -1,0 +1,616 @@
+[
+  {
+    "events": [
+      {
+        "container_class": "bb-KI bb-h0",
+        "text_sample": "П12.65П21.47",
+        "odds_count": 2,
+        "odds_sample": [
+          {
+            "class": "bb-OI bb-k0",
+            "text": "2.65",
+            "tag": "SPAN"
+          },
+          {
+            "class": "bb-OI bb-k0",
+            "text": "1.47",
+            "tag": "SPAN"
+          }
+        ]
+      },
+      {
+        "container_class": "bb-KI bb-h0",
+        "text_sample": "П12.34X4.03П22.72",
+        "odds_count": 3,
+        "odds_sample": [
+          {
+            "class": "bb-OI bb-k0",
+            "text": "2.34",
+            "tag": "SPAN"
+          },
+          {
+            "class": "bb-OI bb-k0",
+            "text": "4.03",
+            "tag": "SPAN"
+          },
+          {
+            "class": "bb-OI bb-k0",
+            "text": "2.72",
+            "tag": "SPAN"
+          }
+        ]
+      },
+      {
+        "container_class": "bb-Nm",
+        "text_sample": "П15.11X4.52П21.54Ещё+ 3369",
+        "odds_count": 3,
+        "odds_sample": [
+          {
+            "class": "bb-Rm",
+            "text": "5.11",
+            "tag": "SPAN"
+          },
+          {
+            "class": "bb-Rm",
+            "text": "4.52",
+            "tag": "SPAN"
+          },
+          {
+            "class": "bb-Rm",
+            "text": "1.54",
+            "tag": "SPAN"
+          }
+        ]
+      },
+      {
+        "container_class": "bb-Nm",
+        "text_sample": "П11.02X17.07П234.15Ещё+ 1308",
+        "odds_count": 3,
+        "odds_sample": [
+          {
+            "class": "bb-Rm",
+            "text": "1.02",
+            "tag": "SPAN"
+          },
+          {
+            "class": "bb-Rm",
+            "text": "17.07",
+            "tag": "SPAN"
+          },
+          {
+            "class": "bb-Rm",
+            "text": "34.15",
+            "tag": "SPAN"
+          }
+        ]
+      },
+      {
+        "container_class": "bb-Nm",
+        "text_sample": "П11.82X3.95П24.0Ещё+ 1172",
+        "odds_count": 2,
+        "odds_sample": [
+          {
+            "class": "bb-Rm",
+            "text": "1.82",
+            "tag": "SPAN"
+          },
+          {
+            "class": "bb-Rm",
+            "text": "3.95",
+            "tag": "SPAN"
+          }
+        ]
+      },
+      {
+        "container_class": "bb-Nm",
+        "text_sample": "П13.53X3.58П21.99Ещё+ 3461",
+        "odds_count": 3,
+        "odds_sample": [
+          {
+            "class": "bb-Rm",
+            "text": "3.53",
+            "tag": "SPAN"
+          },
+          {
+            "class": "bb-Rm",
+            "text": "3.58",
+            "tag": "SPAN"
+          },
+          {
+            "class": "bb-Rm",
+            "text": "1.99",
+            "tag": "SPAN"
+          }
+        ]
+      },
+      {
+        "container_class": "bb-Nm",
+        "text_sample": "П12.22X2.97П23.75Ещё+ 2283",
+        "odds_count": 3,
+        "odds_sample": [
+          {
+            "class": "bb-Rm",
+            "text": "2.22",
+            "tag": "SPAN"
+          },
+          {
+            "class": "bb-Rm",
+            "text": "2.97",
+            "tag": "SPAN"
+          },
+          {
+            "class": "bb-Rm",
+            "text": "3.75",
+            "tag": "SPAN"
+          }
+        ]
+      },
+      {
+        "container_class": "bb-Nm",
+        "text_sample": "П12.24X3.39П23.19Ещё+ 2597",
+        "odds_count": 3,
+        "odds_sample": [
+          {
+            "class": "bb-Rm",
+            "text": "2.24",
+            "tag": "SPAN"
+          },
+          {
+            "class": "bb-Rm",
+            "text": "3.39",
+            "tag": "SPAN"
+          },
+          {
+            "class": "bb-Rm",
+            "text": "3.19",
+            "tag": "SPAN"
+          }
+        ]
+      },
+      {
+        "container_class": "bb-Nm",
+        "text_sample": "П11.55X3.89П26.44Ещё+ 2278",
+        "odds_count": 3,
+        "odds_sample": [
+          {
+            "class": "bb-Rm",
+            "text": "1.55",
+            "tag": "SPAN"
+          },
+          {
+            "class": "bb-Rm",
+            "text": "3.89",
+            "tag": "SPAN"
+          },
+          {
+            "class": "bb-Rm",
+            "text": "6.44",
+            "tag": "SPAN"
+          }
+        ]
+      },
+      {
+        "container_class": "bb-Nm",
+        "text_sample": "П11.8X3.51П24.66Ещё+ 2443",
+        "odds_count": 2,
+        "odds_sample": [
+          {
+            "class": "bb-Rm",
+            "text": "3.51",
+            "tag": "SPAN"
+          },
+          {
+            "class": "bb-Rm",
+            "text": "4.66",
+            "tag": "SPAN"
+          }
+        ]
+      },
+      {
+        "container_class": "bb-Nm",
+        "text_sample": "П12.56X3.19П22.84Ещё+ 2343",
+        "odds_count": 3,
+        "odds_sample": [
+          {
+            "class": "bb-Rm",
+            "text": "2.56",
+            "tag": "SPAN"
+          },
+          {
+            "class": "bb-Rm",
+            "text": "3.19",
+            "tag": "SPAN"
+          },
+          {
+            "class": "bb-Rm",
+            "text": "2.84",
+            "tag": "SPAN"
+          }
+        ]
+      },
+      {
+        "container_class": "bb-Nm",
+        "text_sample": "П11.9X3.29П24.44Ещё+ 2271",
+        "odds_count": 2,
+        "odds_sample": [
+          {
+            "class": "bb-Rm",
+            "text": "3.29",
+            "tag": "SPAN"
+          },
+          {
+            "class": "bb-Rm",
+            "text": "4.44",
+            "tag": "SPAN"
+          }
+        ]
+      },
+      {
+        "container_class": "bb-Nm",
+        "text_sample": "П11.52X4.25П26.21Ещё+ 2491",
+        "odds_count": 3,
+        "odds_sample": [
+          {
+            "class": "bb-Rm",
+            "text": "1.52",
+            "tag": "SPAN"
+          },
+          {
+            "class": "bb-Rm",
+            "text": "4.25",
+            "tag": "SPAN"
+          },
+          {
+            "class": "bb-Rm",
+            "text": "6.21",
+            "tag": "SPAN"
+          }
+        ]
+      },
+      {
+        "container_class": "bb-Nm",
+        "text_sample": "П11.54X4.19П25.94Ещё+ 2497",
+        "odds_count": 3,
+        "odds_sample": [
+          {
+            "class": "bb-Rm",
+            "text": "1.54",
+            "tag": "SPAN"
+          },
+          {
+            "class": "bb-Rm",
+            "text": "4.19",
+            "tag": "SPAN"
+          },
+          {
+            "class": "bb-Rm",
+            "text": "5.94",
+            "tag": "SPAN"
+          }
+        ]
+      },
+      {
+        "container_class": "bb-Nm",
+        "text_sample": "П14.19X3.34П21.93Ещё+ 2286",
+        "odds_count": 3,
+        "odds_sample": [
+          {
+            "class": "bb-Rm",
+            "text": "4.19",
+            "tag": "SPAN"
+          },
+          {
+            "class": "bb-Rm",
+            "text": "3.34",
+            "tag": "SPAN"
+          },
+          {
+            "class": "bb-Rm",
+            "text": "1.93",
+            "tag": "SPAN"
+          }
+        ]
+      },
+      {
+        "container_class": "bb-Nm",
+        "text_sample": "П12.02X3.15П23.75Ещё+ 529",
+        "odds_count": 3,
+        "odds_sample": [
+          {
+            "class": "bb-Rm",
+            "text": "2.02",
+            "tag": "SPAN"
+          },
+          {
+            "class": "bb-Rm",
+            "text": "3.15",
+            "tag": "SPAN"
+          },
+          {
+            "class": "bb-Rm",
+            "text": "3.75",
+            "tag": "SPAN"
+          }
+        ]
+      },
+      {
+        "container_class": "bb-Nm",
+        "text_sample": "П12.72X3.57П22.33Ещё+ 396",
+        "odds_count": 3,
+        "odds_sample": [
+          {
+            "class": "bb-Rm",
+            "text": "2.72",
+            "tag": "SPAN"
+          },
+          {
+            "class": "bb-Rm",
+            "text": "3.57",
+            "tag": "SPAN"
+          },
+          {
+            "class": "bb-Rm",
+            "text": "2.33",
+            "tag": "SPAN"
+          }
+        ]
+      },
+      {
+        "container_class": "bb-Nm",
+        "text_sample": "П11.28X5.81П28.08Ещё+ 415",
+        "odds_count": 3,
+        "odds_sample": [
+          {
+            "class": "bb-Rm",
+            "text": "1.28",
+            "tag": "SPAN"
+          },
+          {
+            "class": "bb-Rm",
+            "text": "5.81",
+            "tag": "SPAN"
+          },
+          {
+            "class": "bb-Rm",
+            "text": "8.08",
+            "tag": "SPAN"
+          }
+        ]
+      },
+      {
+        "container_class": "bb-Nm",
+        "text_sample": "П11.02X18.25П221.7Ещё+ 363",
+        "odds_count": 2,
+        "odds_sample": [
+          {
+            "class": "bb-Rm",
+            "text": "1.02",
+            "tag": "SPAN"
+          },
+          {
+            "class": "bb-Rm",
+            "text": "18.25",
+            "tag": "SPAN"
+          }
+        ]
+      },
+      {
+        "container_class": "bb-Nm",
+        "text_sample": "П11.78X3.65П24.7Ещё+ 628",
+        "odds_count": 2,
+        "odds_sample": [
+          {
+            "class": "bb-Rm",
+            "text": "1.78",
+            "tag": "SPAN"
+          },
+          {
+            "class": "bb-Rm",
+            "text": "3.65",
+            "tag": "SPAN"
+          }
+        ]
+      },
+      {
+        "container_class": "bb-Nm",
+        "text_sample": "П14.42X4.22П21.71Ещё+ 650",
+        "odds_count": 3,
+        "odds_sample": [
+          {
+            "class": "bb-Rm",
+            "text": "4.42",
+            "tag": "SPAN"
+          },
+          {
+            "class": "bb-Rm",
+            "text": "4.22",
+            "tag": "SPAN"
+          },
+          {
+            "class": "bb-Rm",
+            "text": "1.71",
+            "tag": "SPAN"
+          }
+        ]
+      },
+      {
+        "container_class": "bb-Nm",
+        "text_sample": "П11.76X4.0П23.95Ещё+ 741",
+        "odds_count": 2,
+        "odds_sample": [
+          {
+            "class": "bb-Rm",
+            "text": "1.76",
+            "tag": "SPAN"
+          },
+          {
+            "class": "bb-Rm",
+            "text": "3.95",
+            "tag": "SPAN"
+          }
+        ]
+      },
+      {
+        "container_class": "bb-Nm",
+        "text_sample": "П11.22X6.41П213.72Ещё+ 597",
+        "odds_count": 3,
+        "odds_sample": [
+          {
+            "class": "bb-Rm",
+            "text": "1.22",
+            "tag": "SPAN"
+          },
+          {
+            "class": "bb-Rm",
+            "text": "6.41",
+            "tag": "SPAN"
+          },
+          {
+            "class": "bb-Rm",
+            "text": "13.72",
+            "tag": "SPAN"
+          }
+        ]
+      },
+      {
+        "container_class": "bb-Nm",
+        "text_sample": "П13.35X3.85П21.99Ещё+ 602",
+        "odds_count": 3,
+        "odds_sample": [
+          {
+            "class": "bb-Rm",
+            "text": "3.35",
+            "tag": "SPAN"
+          },
+          {
+            "class": "bb-Rm",
+            "text": "3.85",
+            "tag": "SPAN"
+          },
+          {
+            "class": "bb-Rm",
+            "text": "1.99",
+            "tag": "SPAN"
+          }
+        ]
+      },
+      {
+        "container_class": "bb-Nm",
+        "text_sample": "П11.46X4.62П26.64Ещё+ 637",
+        "odds_count": 3,
+        "odds_sample": [
+          {
+            "class": "bb-Rm",
+            "text": "1.46",
+            "tag": "SPAN"
+          },
+          {
+            "class": "bb-Rm",
+            "text": "4.62",
+            "tag": "SPAN"
+          },
+          {
+            "class": "bb-Rm",
+            "text": "6.64",
+            "tag": "SPAN"
+          }
+        ]
+      },
+      {
+        "container_class": "bb-Nm",
+        "text_sample": "П11.73X3.85П24.5Ещё+ 619",
+        "odds_count": 2,
+        "odds_sample": [
+          {
+            "class": "bb-Rm",
+            "text": "1.73",
+            "tag": "SPAN"
+          },
+          {
+            "class": "bb-Rm",
+            "text": "3.85",
+            "tag": "SPAN"
+          }
+        ]
+      },
+      {
+        "container_class": "bb-Nm",
+        "text_sample": "П14.32X3.67П21.84Ещё+ 631",
+        "odds_count": 3,
+        "odds_sample": [
+          {
+            "class": "bb-Rm",
+            "text": "4.32",
+            "tag": "SPAN"
+          },
+          {
+            "class": "bb-Rm",
+            "text": "3.67",
+            "tag": "SPAN"
+          },
+          {
+            "class": "bb-Rm",
+            "text": "1.84",
+            "tag": "SPAN"
+          }
+        ]
+      },
+      {
+        "container_class": "bb-Nm",
+        "text_sample": "П13.0X3.65П22.21Ещё+ 619",
+        "odds_count": 2,
+        "odds_sample": [
+          {
+            "class": "bb-Rm",
+            "text": "3.65",
+            "tag": "SPAN"
+          },
+          {
+            "class": "bb-Rm",
+            "text": "2.21",
+            "tag": "SPAN"
+          }
+        ]
+      },
+      {
+        "container_class": "bb-Nm",
+        "text_sample": "П12.55X3.4П22.65Ещё+ 530",
+        "odds_count": 2,
+        "odds_sample": [
+          {
+            "class": "bb-Rm",
+            "text": "2.55",
+            "tag": "SPAN"
+          },
+          {
+            "class": "bb-Rm",
+            "text": "2.65",
+            "tag": "SPAN"
+          }
+        ]
+      },
+      {
+        "container_class": "bb-Nm",
+        "text_sample": "П13.16X3.26П22.35Ещё+ 623",
+        "odds_count": 3,
+        "odds_sample": [
+          {
+            "class": "bb-Rm",
+            "text": "3.16",
+            "tag": "SPAN"
+          },
+          {
+            "class": "bb-Rm",
+            "text": "3.26",
+            "tag": "SPAN"
+          },
+          {
+            "class": "bb-Rm",
+            "text": "2.35",
+            "tag": "SPAN"
+          }
+        ]
+      }
+    ]
+  }
+]

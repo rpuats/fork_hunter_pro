@@ -1,0 +1,72 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+.venv/
+venv/
+
+# Env
+.env
+.env.*
+!.env.example
+
+# Logs / runtime
+*.log
+logs/
+data/
+*.sqlite
+*.db
+
+# Rust
+target/
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Project artifacts
+*_results.txt
+*_output.txt
+*_err.txt
+*_err.log
+*_debug.json
+*_events.json
+*_structure*.json
+*_structure.txt
+*_page.html
+*.png
+bridge*.txt
+bridge*.log
+server*.log
+server*_err.log
+run*.log
+test_*.json
+test_*.txt
+final_test.txt
+sportbet_*.json
+sportbet_*.txt
+olimp_*.json
+pari_*.json
+leon_*.json
+zenit_*.txt
+winline_*.json
+winline_*.log
+fonbet_*.html
+marathon_*.json
+ligastavok_cookies.*
+ghost_imperium.db
+ghost_imperium.log
+LIVE_COMMUNICATION.log
+mytest_*.log
+cargo_check_output*.txt
+cargo_test_output.txt
+
+# Temporary/debug scripts dump
+temp_*.py
+debug_*.py
+inspect_*.py
+_check_*.py
+_*.py

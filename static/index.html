@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ghost Imperium — Сканер вилок</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/recharts@2.12.7/umd/Recharts.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; }
+        .animate-pulse-slow { animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .5; } }
+        .scrollbar-thin::-webkit-scrollbar { width: 6px; }
+        .scrollbar-thin::-webkit-scrollbar-track { background: #1e293b; }
+        .scrollbar-thin::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+        .glass { background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(12px); }
+        .gradient-border { border-image: linear-gradient(135deg, #6366f1, #8b5cf6, #d946ef) 1; }
+    </style>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        slate: { 850: '#1a1f35', 900: '#0f172a', 950: '#020617' },
+                        accent: { DEFAULT: '#6366f1', light: '#818cf8', dark: '#4f46e5' }
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useCallback, useMemo } = React;
+        const { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, Cell } = Recharts;
+
+        // ═══════════════════════════════════════════════════
+        // WebSocket Hook
+        // ═══════════════════════════════════════════════════
+        function useWebSocket(url) {
+            const [connected, setConnected] = useState(false);
+            const [messages, setMessages] = useState([]);
+            const wsRef = useRef(null);
+            const reconnectTimer = useRef(null);
+
+            const connect = useCallback(() => {
+                if (wsRef.current?.readyState === WebSocket.OPEN) return;
+                
+                const ws = new WebSocket(url);
+                wsRef.current = ws;
+
+                ws.onopen = () => {
+                    setConnected(true);
+                    console.log('🟢 WebSocket connected');
+                };
+
+                ws.onmessage = (e) => {
+                    try {
+                        const data = JSON.parse(e.data);
+                        setMessages(prev => [data, ...prev].slice(0, 500));
+                    } catch (err) {
+                        console.error('Parse error:', err);
+                    }
+                };
+
+                ws.onclose = () => {
+                    setConnected(false);
+                    console.log('🔴 WebSocket disconnected, reconnecting...');
+                    reconnectTimer.current = setTimeout(connect, 3000);
+                };
+
+                ws.onerror = (err) => {
+                    console.error('WebSocket error:', err);
+                };
+            }, [url]);
+
+            useEffect(() => {
+                connect();
+                return () => {
+                    if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
+                    wsRef.current?.close();
+                };
+            }, [connect]);
+
+            return { connected, messages };
+        }
+
+        // ═══════════════════════════════════════════════════
+        // API Hook
+        // ═══════════════════════════════════════════════════
+        function useApi(base) {
+            const [health, setHealth] = useState(null);
+            const [metrics, setMetrics] = useState(null);
+            const [freebets, setFreebets] = useState([]);
+            const [generosity, setGenerosity] = useState([]);
+            const [history, setHistory] = useState(null);
+
+            const fetchAll = useCallback(async () => {
+                try {
+                    const [h, m, f, g, s] = await Promise.all([
+                        fetch(`${base}/health`).then(r => r.json()).catch(() => null),
+                        fetch(`${base}/api/v1/metrics`).then(r => r.json()).catch(() => null),
+                        fetch(`${base}/api/v1/freebets`).then(r => r.json()).then(r => r?.data || []).catch(() => []),
+                        fetch(`${base}/api/v1/analytics/generosity`).then(r => r.json()).then(r => r?.data || []).catch(() => []),
+                        fetch(`${base}/api/v1/history/stats`).then(r => r.json()).then(r => r?.data).catch(() => null),
+                    ]);
+                    setHealth(h); setMetrics(m); setFreebets(f); setGenerosity(g); setHistory(s);
+                } catch (e) { console.error('API fetch error:', e); }
+            }, [base]);
+
+            useEffect(() => {
+                fetchAll();
+                const interval = setInterval(fetchAll, 15000);
+                return () => clearInterval(interval);
+            }, [fetchAll]);
+
+            return { health, metrics, freebets, generosity, history, refresh: fetchAll };
+        }
+
+        // ═══════════════════════════════════════════════════
+        // Stat Card Component
+        // ═══════════════════════════════════════════════════
+        function StatCard({ icon, label, value, color = "accent", subtext }) {
+            return (
+                <div className="glass rounded-xl p-5 border border-slate-700/50 hover:border-accent/50 transition-all duration-300">
+                    <div className="flex items-center justify-between mb-2">
+                        <span className="text-slate-400 text-sm font-medium">{label}</span>
+                        <span className="text-2xl">{icon}</span>
+                    </div>
+                    <div className={`text-3xl font-bold text-${color}`}>{value}</div>
+                    {subtext && <div className="text-slate-500 text-xs mt-1">{subtext}</div>}
+                </div>
+            );
+        }
+
+        // ═══════════════════════════════════════════════════
+        // Surebet Row Component
+        // ═══════════════════════════════════════════════════
+        function SurebetRow({ bet, index }) {
+            const profitColor = bet.profit_percent > 5 ? 'text-emerald-400' : bet.profit_percent > 2 ? 'text-amber-400' : 'text-slate-300';
+            const profitBg = bet.profit_percent > 5 ? 'bg-emerald-400/10' : bet.profit_percent > 2 ? 'bg-amber-400/10' : 'bg-slate-700/50';
+
+            return (
+                <tr className="border-b border-slate-700/50 hover:bg-slate-800/50 transition-colors">
+                    <td className="px-4 py-3">
+                        <span className="text-xs text-slate-500">#{index + 1}</span>
+                    </td>
+                    <td className="px-4 py-3">
+                        <div className="font-medium text-sm">{bet.home_team}</div>
+                        <div className="text-xs text-slate-400">vs {bet.away_team}</div>
+                    </td>
+                    <td className="px-4 py-3">
+                        <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-slate-700/50 text-slate-300">
+                            {bet.league}
+                        </span>
+                    </td>
+                    <td className="px-4 py-3">
+                        <div className={`inline-flex items-center px-2.5 py-1 rounded-full text-sm font-bold ${profitBg} ${profitColor}`}>
+                            +{bet.profit_percent?.toFixed(2)}%
+                        </div>
+                    </td>
+                    <td className="px-4 py-3">
+                        <div className="space-y-1">
+                            {bet.legs?.map((leg, i) => (
+                                <div key={i} className="flex items-center gap-2 text-xs">
+                                    <span className="px-1.5 py-0.5 rounded bg-accent/20 text-accent font-mono">{leg.bookmaker}</span>
+                                    <span className="text-slate-400">{leg.selection}</span>
+                                    <span className="font-semibold text-slate-200">@ {leg.odds.toFixed(2)}</span>
+                                    <span className="text-slate-500">({leg.stake?.toFixed(0)}₽)</span>
+                                </div>
+                            ))}
+                        </div>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-slate-500">
+                        {bet.detected_at ? new Date(bet.detected_at).toLocaleTimeString('ru-RU') : '—'}
+                    </td>
+                </tr>
+            );
+        }
+
+        // ═══════════════════════════════════════════════════
+        // Generosity Bar Chart
+        // ═══════════════════════════════════════════════════
+        function GenerosityChart({ data }) {
+            const chartData = (data || []).map(d => ({
+                name: d.bookmaker.toUpperCase(),
+                score: d.score?.toFixed(1),
+                margin: d.avg_margin?.toFixed(1),
+            })).slice(0, 7);
+
+            if (!chartData.length) return <div className="text-slate-500 text-sm">Нет данных</div>;
+
+            return (
+                <ResponsiveContainer width="100%" height={200}>
+                    <BarChart data={chartData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
+                        <XAxis dataKey="name" tick={{fill: '#94a3b8', fontSize: 11}} />
+                        <YAxis tick={{fill: '#94a3b8', fontSize: 11}} />
+                        <Tooltip 
+                            contentStyle={{backgroundColor: '#1e293b', border: '1px solid #334155', borderRadius: '8px'}}
+                            labelStyle={{color: '#e2e8f0'}}
+                        />
+                        <Bar dataKey="score" name="Щедрость">
+                            {chartData.map((_, i) => (
+                                <Cell key={i} fill={i === 0 ? '#6366f1' : i === 1 ? '#8b5cf6' : '#475569'} />
+                            ))}
+                        </Bar>
+                    </BarChart>
+                </ResponsiveContainer>
+            );
+        }
+
+        // ═══════════════════════════════════════════════════
+        // Main Dashboard
+        // ═══════════════════════════════════════════════════
+        function Dashboard() {
+            const API_BASE = window.location.origin;
+            const WS_URL = `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws`;
+            
+            const { connected, messages } = useWebSocket(WS_URL);
+            const { health, metrics, freebets, generosity, history, refresh } = useApi(API_BASE);
+            const [filterSport, setFilterSport] = useState('all');
+            const [filterMinProfit, setFilterMinProfit] = useState(0);
+            const [filterBk, setFilterBk] = useState('all');
+            const [filterBkList, setFilterBkList] = useState([]);
+
+            // Extract surebets from WebSocket messages
+            const surebets = useMemo(() => {
+                const bets = messages.filter(m => m.type === 'SurebetFound' || m.surebet || m.profit_percent != null)
+                    .map(m => m.surebet || m);
+                return bets.filter(b => b.home_team && b.profit_percent != null);
+            }, [messages]);
+
+            const uniqueBks = useMemo(() => {
+                const bks = new Set();
+                surebets.forEach(b => b.legs?.forEach(l => bks.add(l.bookmaker)));
+                const list = [...bks];
+                setFilterBkList(list);
+                return list;
+            }, [surebets]);
+
+            const filteredSurebets = useMemo(() => {
+                return surebets.filter(b => {
+                    if (filterMinProfit > 0 && b.profit_percent < filterMinProfit) return false;
+                    if (filterSport !== 'all' && b.sport !== filterSport) return false;
+                    if (filterBk !== 'all') {
+                        const hasBk = b.legs?.some(l => l.bookmaker === filterBk);
+                        if (!hasBk) return false;
+                    }
+                    return true;
+                });
+            }, [surebets, filterSport, filterMinProfit, filterBk]);
+
+            const stats = useMemo(() => ({
+                totalSurebets: surebets.length,
+                avgProfit: surebets.length > 0 ? (surebets.reduce((s, b) => s + (b.profit_percent || 0), 0) / surebets.length).toFixed(2) : '0.00',
+                maxProfit: surebets.length > 0 ? Math.max(...surebets.map(b => b.profit_percent || 0)).toFixed(2) : '0.00',
+                totalStake: surebets.reduce((s, b) => s + (b.total_stake || 0), 0).toFixed(0),
+            }), [surebets]);
+
+            return (
+                <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
+                    {/* Header */}
+                    <header className="border-b border-slate-700/50 bg-slate-900/80 backdrop-blur-sm sticky top-0 z-50">
+                        <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-accent to-purple-500 flex items-center justify-center text-xl">👻</div>
+                                <div>
+                                    <h1 className="text-xl font-bold bg-gradient-to-r from-accent-light to-purple-400 bg-clip-text text-transparent">Ghost Imperium</h1>
+                                    <p className="text-xs text-slate-500">Сканер вилок v2.0 (Rust)</p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-4">
+                                <div className={`flex items-center gap-2 text-sm px-3 py-1.5 rounded-full ${connected ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
+                                    <span className={`w-2 h-2 rounded-full ${connected ? 'bg-emerald-400 animate-pulse-slow' : 'bg-red-400'}`}></span>
+                                    {connected ? 'Live' : 'Offline'}
+                                </div>
+                                <button onClick={refresh} className="px-3 py-1.5 rounded-lg bg-slate-700/50 hover:bg-slate-600/50 text-sm transition-colors">
+                                    🔄 Обновить
+                                </button>
+                            </div>
+                        </div>
+                    </header>
+
+                    <main className="max-w-7xl mx-auto px-4 py-6 space-y-6">
+                        {/* Stats */}
+                        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                            <StatCard icon="🔥" label="Вилок найдено" value={stats.totalSurebets} color="accent" subtext="За сессию" />
+                            <StatCard icon="💰" label="Средний профит" value={`${stats.avgProfit}%`} color="emerald" subtext="На вилку" />
+                            <StatCard icon="📈" label="Макс профит" value={`${stats.maxProfit}%`} color="emerald" subtext="Лучшая" />
+                            <StatCard icon="💵" label="Оборот" value={`${stats.totalStake}₽`} color="amber" subtext="Сумма ставок" />
+                            <StatCard icon="📊" label="Сообщений WS" value={messages.length} color="slate" subtext="За сессию" />
+                        </div>
+
+                        {/* Filters */}
+                        <div className="glass rounded-xl p-4 border border-slate-700/50">
+                            <div className="flex flex-wrap items-center gap-4">
+                                <span className="text-sm font-medium text-slate-400">Фильтры:</span>
+                                <select 
+                                    value={filterMinProfit} 
+                                    onChange={e => setFilterMinProfit(parseFloat(e.target.value))}
+                                    className="bg-slate-800 border border-slate-600 rounded-lg px-3 py-1.5 text-sm focus:border-accent focus:outline-none"
+                                >
+                                    <option value={0}>Мин. профит: все</option>
+                                    <option value={1}>от 1%</option>
+                                    <option value={2}>от 2%</option>
+                                    <option value={5}>от 5%</option>
+                                </select>
+                                <select 
+                                    value={filterSport} 
+                                    onChange={e => setFilterSport(e.target.value)}
+                                    className="bg-slate-800 border border-slate-600 rounded-lg px-3 py-1.5 text-sm focus:border-accent focus:outline-none"
+                                >
+                                    <option value="all">Все виды спорта</option>
+                                    <option value="Football">⚽ Футбол</option>
+                                    <option value="Basketball">🏀 Баскетбол</option>
+                                    <option value="Hockey">🏒 Хоккей</option>
+                                    <option value="Tennis">🎾 Теннис</option>
+                                </select>
+                                <select 
+                                    value={filterBk} 
+                                    onChange={e => setFilterBk(e.target.value)}
+                                    className="bg-slate-800 border border-slate-600 rounded-lg px-3 py-1.5 text-sm focus:border-accent focus:outline-none"
+                                >
+                                    <option value="all">Все БК</option>
+                                    {filterBkList.map(bk => (
+                                        <option key={bk} value={bk}>{bk.toUpperCase()}</option>
+                                    ))}
+                                </select>
+                                <span className="text-xs text-slate-500 ml-auto">
+                                    Показано: {filteredSurebets.length} из {surebets.length}
+                                </span>
+                            </div>
+                        </div>
+
+                        {/* Main Content Grid */}
+                        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                            {/* Surebets Table */}
+                            <div className="lg:col-span-2 glass rounded-xl border border-slate-700/50 overflow-hidden">
+                                <div className="px-4 py-3 border-b border-slate-700/50 flex items-center justify-between">
+                                    <h2 className="font-semibold text-sm">🔍 Найденные вилки</h2>
+                                    <span className="text-xs text-slate-500">Автообновление через WebSocket</span>
+                                </div>
+                                <div className="overflow-x-auto scrollbar-thin max-h-[600px] overflow-y-auto">
+                                    <table className="w-full text-left">
+                                        <thead className="sticky top-0 bg-slate-800/90 backdrop-blur-sm">
+                                            <tr className="text-xs text-slate-400 uppercase">
+                                                <th className="px-4 py-2 font-medium">#</th>
+                                                <th className="px-4 py-2 font-medium">Матч</th>
+                                                <th className="px-4 py-2 font-medium">Лига</th>
+                                                <th className="px-4 py-2 font-medium">Профит</th>
+                                                <th className="px-4 py-2 font-medium">Ставки</th>
+                                                <th className="px-4 py-2 font-medium">Время</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {filteredSurebets.length > 0 ? (
+                                                filteredSurebets.slice(0, 50).map((bet, i) => (
+                                                    <SurebetRow key={`${bet.id}-${i}`} bet={bet} index={i} />
+                                                ))
+                                            ) : (
+                                                <tr>
+                                                    <td colSpan="6" className="px-4 py-12 text-center text-slate-500">
+                                                        <div className="text-4xl mb-2">🔍</div>
+                                                        <div>Вилок пока не найдено</div>
+                                                        <div className="text-xs mt-1">Запустите сканер или подождите данных</div>
+                                                    </td>
+                                                </tr>
+                                            )}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            {/* Sidebar */}
+                            <div className="space-y-6">
+                                {/* Generosity Index */}
+                                <div className="glass rounded-xl border border-slate-700/50 p-4">
+                                    <h3 className="font-semibold text-sm mb-3">🏆 Индекс щедрости БК</h3>
+                                    <GenerosityChart data={generosity} />
+                                    {generosity.length > 0 && (
+                                        <div className="mt-3 space-y-2">
+                                            {generosity.slice(0, 5).map((g, i) => (
+                                                <div key={i} className="flex items-center justify-between text-sm">
+                                                    <span className="text-slate-300">
+                                                        <span className={`inline-flex items-center justify-center w-5 h-5 rounded-full text-xs mr-2 ${i === 0 ? 'bg-accent text-white' : i === 1 ? 'bg-purple-500 text-white' : 'bg-slate-700 text-slate-400'}`}>{i+1}</span>
+                                                        {g.bookaker}
+                                                    </span>
+                                                    <span className="font-mono text-accent">{g.score?.toFixed(1)}</span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Freebets */}
+                                {freebets.length > 0 && (
+                                    <div className="glass rounded-xl border border-slate-700/50 p-4">
+                                        <h3 className="font-semibold text-sm mb-3">🎁 Фрибет-вилки</h3>
+                                        <div className="space-y-2">
+                                            {freebets.slice(0, 5).map((fb, i) => (
+                                                <div key={i} className="text-xs bg-slate-800/50 rounded-lg p-2">
+                                                    <div className="font-medium text-emerald-400">+{fb.guaranteed_profit?.toFixed(0)}₽</div>
+                                                    <div className="text-slate-400">{fb.bookmaker}</div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* History Stats */}
+                                {history && (
+                                    <div className="glass rounded-xl border border-slate-700/50 p-4">
+                                        <h3 className="font-semibold text-sm mb-3">📊 История</h3>
+                                        <div className="space-y-2 text-sm">
+                                            <div className="flex justify-between">
+                                                <span className="text-slate-400">Всего вилок</span>
+                                                <span className="font-mono">{history.total || 0}</span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span className="text-slate-400">Средний профит</span>
+                                                <span className="font-mono text-emerald-400">{(history.avg_profit || 0).toFixed(2)}%</span>
+                                            </div>
+                                            <div className="flex justify-between">
+                                                <span className="text-slate-400">Оборот</span>
+                                                <span className="font-mono">{(history.total_stake || 0).toFixed(0)}₽</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    </main>
+
+                    {/* Footer */}
+                    <footer className="border-t border-slate-800 mt-8 py-4 text-center text-xs text-slate-600">
+                        Ghost Imperium v2.0 — Rust • Axum • React • WebSocket • {new Date().getFullYear()}
+                    </footer>
+                </div>
+            );
+        }
+
+        // ═══════════════════════════════════════════════════
+        // Render
+        // ═══════════════════════════════════════════════════
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<Dashboard />);
+    </script>
+</body>
+</html>
