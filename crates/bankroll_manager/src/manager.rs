@@ -4,6 +4,7 @@ use parking_lot::RwLock;
 use shared::{BankrollConfig, BankrollState, BookmakerBalance};
 use std::sync::Arc;
 
+use super::allocation::DepositAllocator;
 use super::kelly::KellyCalculator;
 use super::rebalance::RebalanceEngine;
 
@@ -99,6 +100,11 @@ impl BankrollManager {
         let state = self.state.read();
         let config = self.config.read();
         RebalanceEngine::calculate_rebalance(&state, config.rebalance_threshold)
+    }
+
+    pub fn get_deposit_allocation_guidance(&self) -> shared::DepositAllocationGuidance {
+        let state = self.state.read();
+        DepositAllocator::build_guidance(&state.bookmakers, state.total_budget)
     }
 
     pub fn record_bet_result(&self, _bookmaker: &str, profit: f64) {

@@ -5,6 +5,7 @@ use shared::{BonusConfig, BonusInfo, BonusStatus, BonusType};
 use std::sync::Arc;
 
 use super::calculator::BonusCalculator;
+use super::freebet::FreebetPlanner;
 use super::plan::BonusPlanner;
 
 #[derive(Clone)]
@@ -96,6 +97,13 @@ impl BonusHunter {
     pub fn update_wager_progress(&self, bookmaker: &str, wager_done: f64) {
         let mut planner = self.planner.lock();
         planner.update_progress(bookmaker, wager_done);
+    }
+
+    pub fn build_freebet_plan(
+        &self,
+        request: &shared::FreebetPlanRequest,
+    ) -> shared::FreebetConversionPlan {
+        FreebetPlanner::build_plan(request)
     }
 
     pub fn get_all_active(&self) -> Vec<BonusInfo> {

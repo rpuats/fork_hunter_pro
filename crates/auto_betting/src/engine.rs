@@ -1,10 +1,14 @@
 use chrono::Utc;
-use shared::{AutoBetConfig, AutoBetStatus, BetPlacement, BetResult, BetStatus, Event, Surebet};
+use shared::{
+    AutoBetConfig, AutoBetStatus, BetPlacement, BetResult, BetStatus, Event,
+    StakeValidationRequest, Surebet,
+};
 use std::sync::Arc;
 use tracing::{error, info, warn};
 
 use super::limiter::{BetLimiter, BetLimiterStats};
 use super::stealth::StealthBetting;
+use super::validator::StakeValidator;
 
 #[derive(Clone)]
 pub struct AutoBetEngine {
@@ -62,8 +66,23 @@ impl AutoBetEngine {
         for leg in &surebet.legs {
             self.stealth.wait_stealth().await;
 
+            let validation = StakeValidator::validate(&StakeValidationRequest {
+                bookmaker: leg.bookmaker.clone(),
+                desired_stake: leg.stake,
+                min_stake: None,
+                max_stake: Some(self.config.read().max_stake_per_bet),
+                bookmaker_available_balance: None,
+                bankroll_available_balance: None,
+                allow_auto_adjust: true,
+            });
+            if matches!(validation.decision, shared::StakeValidationDecision::Reject) {
+                return Err(validation.reasons.join("; "));
+            }
+
+            let stake = validation.adjusted_stake;
+
             let mut limiter = self.limiter.lock();
-            if let Err(e) = limiter.can_bet(leg.stake) {
+            if let Err(e) = limiter.can_bet(stake) {
                 warn!(error = e.to_string(), "Bet limit reached");
                 return Err(e.to_string());
             }
@@ -88,14 +107,14 @@ impl AutoBetEngine {
                 market: leg.market.clone(),
                 selection: leg.selection.clone(),
                 odds: leg.odds,
-                stake: leg.stake,
+                stake,
                 status: BetStatus::Placed,
                 placed_at: Utc::now(),
                 result: None,
                 error: None,
             };
 
-            limiter.record_bet(leg.stake);
+            limiter.record_bet(stake);
             placements.push(placement);
         }
 

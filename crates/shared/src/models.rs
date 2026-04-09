@@ -352,7 +352,7 @@ pub struct BonusStep {
     pub status: BonusStepStatus,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum BonusStepStatus {
     Pending,
     Placed,
@@ -389,7 +389,7 @@ pub struct BetPlacement {
     pub error: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum BetStatus {
     Pending,
     Placed,
@@ -398,10 +398,120 @@ pub enum BetStatus {
     Error,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum BetResult {
     Won(f64),
     Lost,
     Void,
     Cashout(f64),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum StakeValidationDecision {
+    Accept,
+    Adjust,
+    Reject,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StakeValidationRequest {
+    pub bookmaker: String,
+    pub desired_stake: f64,
+    pub min_stake: Option<f64>,
+    pub max_stake: Option<f64>,
+    pub bookmaker_available_balance: Option<f64>,
+    pub bankroll_available_balance: Option<f64>,
+    pub allow_auto_adjust: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StakeValidationResult {
+    pub decision: StakeValidationDecision,
+    pub adjusted_stake: f64,
+    pub reasons: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum DepositUrgency {
+    Low,
+    Medium,
+    High,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DepositAllocationTarget {
+    pub bookmaker: String,
+    pub current_available: f64,
+    pub target_available: f64,
+    pub recommended_deposit: f64,
+    pub deposit_gap: f64,
+    pub urgency: DepositUrgency,
+    pub note: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DepositAllocationGuidance {
+    pub total_budget_limit: f64,
+    pub current_available_total: f64,
+    pub target_per_bookmaker: f64,
+    pub total_recommended_deposit: f64,
+    pub targets: Vec<DepositAllocationTarget>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FreebetPlanRequest {
+    pub freebet_bookmaker: String,
+    pub qualifying_bookmaker: String,
+    pub hedge_bookmaker: String,
+    pub market: String,
+    pub qualifying_selection: String,
+    pub freebet_selection: String,
+    pub hedge_selection: String,
+    pub freebet_amount: f64,
+    pub qualifying_odds: f64,
+    pub back_odds: f64,
+    pub lay_odds: f64,
+    pub estimated_qualifying_loss: f64,
+    pub exchange_like_hedge: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum FreebetStepType {
+    QualifyingBet,
+    FreebetBet,
+    Hedge,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FreebetPlanStep {
+    pub step_number: u32,
+    pub step_type: FreebetStepType,
+    pub bookmaker: String,
+    pub market: String,
+    pub selection: String,
+    pub odds: f64,
+    pub stake: f64,
+    pub note: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FreebetHedgeLeg {
+    pub bookmaker: String,
+    pub market: String,
+    pub selection: String,
+    pub odds: f64,
+    pub stake: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FreebetConversionPlan {
+    pub id: Uuid,
+    pub bookmaker: String,
+    pub freebet_amount: f64,
+    pub qualifying_cost: f64,
+    pub conversion_rate: f64,
+    pub estimated_profit: f64,
+    pub hedge: FreebetHedgeLeg,
+    pub steps: Vec<FreebetPlanStep>,
+    pub created_at: DateTime<Utc>,
 }
