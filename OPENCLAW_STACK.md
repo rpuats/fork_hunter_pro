@@ -21,12 +21,17 @@
 
 1. `./bootstrap.ps1`
 2. `./worktrees.ps1`
-3. `New-AgentWorktree -Name rust-core -Bootstrap`
-4. `New-AgentWorktree -Name parsers -Bootstrap`
-5. `New-AgentWorktree -Name api-bot -Bootstrap`
-6. при необходимости `New-AgentWorktree -Name integration -Bootstrap`
-7. orchestrator раздаёт scoped tasks
-8. workers оставляют итог в `agent-output.md`
+3. `New-ForkHunterSwarm -Bootstrap`
+4. orchestrator раздаёт scoped tasks
+5. workers оставляют итог в `agent-output.md`
+6. integration собирает и валидирует итог
+
+Уже созданные worktrees:
+- `.worktrees/rust-core`
+- `.worktrees/parsers`
+- `.worktrees/api-bot`
+- `.worktrees/integration`
+- `.worktrees/legacy-python`
 
 ## Рекомендуемая архитектура агентов
 
@@ -73,9 +78,20 @@
 - при наличии `npm` ставит Codex CLI и Claude Code CLI
 - по флагу `-InstallOptionalTools` ставит `cargo-nextest` и `cargo-watch`
 
+## Установленные skills / plugins
+
+Поставлены только те, которые реально усиливают поток работы:
+
+- `agent-team-orchestration`
+- `git-worktree-manager`
+- `codex-orchestrator`
+
+Сознательно не был форсирован:
+- `codex-sub-agents` — помечен ClawHub как suspicious, без ручного ревью ставить не стоит
+
 ## Suggested next OpenClaw tasks
 
 1. Держать docs синхронными с реальной формой workspace
 2. Разбивать крупные задачи по crates/domain areas
 3. Оставить отдельный `legacy-python` поток только для миграции и сравнения поведения
-4. При росте количества параллельных задач — добавить orchestrator checklist, а не усложнять root checkout
+4. При росте количества параллельных задач использовать `New-ForkHunterSwarm` и `AGENT_SWARM.md`, а не усложнять root checkout

@@ -179,7 +179,7 @@ py -m pip install -r requirements.txt
 py -m pytest --collect-only -q
 ```
 
-Если нужна организация параллельной работы агентов и worktrees, см. `DEV_SETUP.md` и `OPENCLAW_WORKFLOW.md`.
+Если нужна организация параллельной работы агентов и worktrees, см. `DEV_SETUP.md`, `OPENCLAW_WORKFLOW.md` и `AGENT_SWARM.md`.
 
 ## 📊 Формулы
 

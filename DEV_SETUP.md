@@ -83,15 +83,16 @@ Use git worktrees instead of letting multiple agents edit one checkout.
 ### Create worktrees
 ```powershell
 .\worktrees.ps1
+New-ForkHunterSwarm -Bootstrap
+```
+
+Equivalent manual flow:
+
+```powershell
 New-AgentWorktree -Name rust-core -Bootstrap
 New-AgentWorktree -Name parsers -Bootstrap
 New-AgentWorktree -Name api-bot -Bootstrap
 New-AgentWorktree -Name integration -Bootstrap
-```
-
-Optional extra split when someone must touch the old stack:
-
-```powershell
 New-AgentWorktree -Name legacy-python -Bootstrap
 ```
 

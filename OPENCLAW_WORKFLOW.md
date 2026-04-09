@@ -40,15 +40,16 @@ Legacy Python в корне сохраняется как:
 
 ```powershell
 .\worktrees.ps1
+New-ForkHunterSwarm -Bootstrap
+```
+
+Эквивалент вручную:
+
+```powershell
 New-AgentWorktree -Name rust-core -Bootstrap
 New-AgentWorktree -Name parsers -Bootstrap
 New-AgentWorktree -Name api-bot -Bootstrap
 New-AgentWorktree -Name integration -Bootstrap
-```
-
-Если нужна точечная работа по старому стеку:
-
-```powershell
 New-AgentWorktree -Name legacy-python -Bootstrap
 ```
 
