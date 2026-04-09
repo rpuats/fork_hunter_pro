@@ -1,5 +1,5 @@
 use crate::base::BookmakerParser;
-use crate::{bettery, fonbet, leon, marathon, olimp, pari, sportbet};
+use crate::{bet24, bettery, fonbet, leon, marathon, pari, sportbet};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -17,8 +17,16 @@ impl ParserFactory {
         parsers.insert("bettery".to_string(), Arc::new(bettery::BetteryParser::new(client.clone())));
         parsers.insert("fonbet".to_string(), Arc::new(fonbet::FonbetParser::new(client.clone())));
         parsers.insert("leon".to_string(), Arc::new(leon::LeonParser::new(client.clone())));
-        parsers.insert("olimp".to_string(), Arc::new(olimp::OlimpParser::new(client.clone())));
         parsers.insert("sportbet".to_string(), Arc::new(sportbet::SportbetParser::new(client.clone())));
+
+        // 24bet parser uses canonical slug `_24bet`, but keep legacy alias `bet24`
+        // so existing callers do not break during migration.
+        let bet24_parser: Arc<dyn BookmakerParser + Send + Sync> = Arc::new(bet24::_24betParser::new(client.clone()));
+        parsers.insert("_24bet".to_string(), bet24_parser.clone());
+        parsers.insert("bet24".to_string(), bet24_parser);
+
+        // Olimp API имеет сложную структуру (competitions как map) — временно отключён
+        // parsers.insert("olimp".to_string(), Arc::new(olimp::OlimpParser::new(client.clone())));
 
         ParserFactory { parsers }
     }
@@ -37,5 +45,11 @@ impl ParserFactory {
 
     pub fn contains(&self, slug: &str) -> bool {
         self.parsers.contains_key(slug)
+    }
+
+    pub fn registered_slugs(&self) -> Vec<String> {
+        let mut slugs: Vec<String> = self.parsers.keys().cloned().collect();
+        slugs.sort();
+        slugs
     }
 }
