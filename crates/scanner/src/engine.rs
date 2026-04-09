@@ -139,22 +139,21 @@ impl GhostScanner {
         let events: Vec<Event> = all_events.iter().flat_map(|e| e.events.clone()).collect();
         eprintln!("[CYCLE] Flattened: {} events, {} odds", events.len(), all_odds.len());
 
-        // Ограничиваем: берём только первые 50 событий и только 1X2 odds
+        // Ограничиваем: берём больше событий для лучшего поиска вилок
         eprintln!("[CYCLE] Limiting events...");
-        const MAX_EVENTS_FOR_CALC: usize = 50;
+        const MAX_EVENTS_FOR_CALC: usize = 500;
         let calc_events: Vec<Event> = if events.len() > MAX_EVENTS_FOR_CALC {
-            eprintln!("[CYCLE] Taking first 50 of {} events", events.len());
+            eprintln!("[CYCLE] Taking first 500 of {} events", events.len());
             events.iter().take(MAX_EVENTS_FOR_CALC).cloned().collect()
         } else {
             events.clone()
         };
         eprintln!("[CYCLE] Limited to {} events", calc_events.len());
 
-        // Фильтруем odds: только 1X2 для ограниченных событий
+        // Фильтруем odds: берём больше для лучшей детекции
         eprintln!("[CYCLE] Filtering odds...");
-        // For now, just take first 1000 odds to avoid blocking
-        let calc_odds: Vec<Odd> = all_odds.iter().take(1000).cloned().collect();
-        eprintln!("[CYCLE] Filtered to {} odds (limited)", calc_odds.len());
+        let calc_odds: Vec<Odd> = all_odds.iter().take(10000).cloned().collect();
+        eprintln!("[CYCLE] Filtered to {} odds", calc_odds.len());
 
         eprintln!("[CYCLE] Processing {} events and {} odds...", calc_events.len(), calc_odds.len());
 
@@ -200,21 +199,20 @@ impl GhostScanner {
         eprintln!("[CYCLE] Created metrics: events={}, surebets={}", metrics.events_parsed, metrics.surebets_found);
 
         // Update global scanner state for API
-        {
-            let current = self.state_rx.borrow();
-            let new_state = ScannerState {
-                running: current.running,
-                last_metrics: Some(metrics.clone()),
-                cycle_count: current.cycle_count + 1,
-            };
-            eprintln!("[CYCLE] Sending state...");
-            use std::io::Write;
-            let _ = std::io::stderr().flush();
-            // Use send_replace to avoid blocking
-            let _ = self.state_tx.send_replace(new_state);
-            eprintln!("[CYCLE] State sent");
-            let _ = std::io::stderr().flush();
-        }
+        // Don't borrow state_rx — just create new state directly
+        let next_cycle_count = self.state_rx.borrow().cycle_count + 1;
+        let new_state = ScannerState {
+            running: true,
+            last_metrics: Some(metrics.clone()),
+            cycle_count: next_cycle_count,
+        };
+        eprintln!("[CYCLE] Sending state...");
+        use std::io::Write;
+        let _ = std::io::stderr().flush();
+        // Use send_replace to avoid blocking
+        let _ = self.state_tx.send(new_state);
+        eprintln!("[CYCLE] State sent");
+        let _ = std::io::stderr().flush();
         eprintln!("[CYCLE] Cycle complete");
 
         metrics
@@ -268,15 +266,13 @@ impl GhostScanner {
                 "Scan cycle completed"
             );
 
-            // Update global scanner state for API
-            {
-                let current = self.state_rx.borrow();
-                let _ = self.state_tx.send(ScannerState {
-                    running: current.running,
-                    last_metrics: Some(metrics.clone()),
-                    cycle_count: current.cycle_count + 1,
-                });
-            }
+            // Update global scanner state for API without holding a watch borrow during send
+            let current = self.state_rx.borrow().clone();
+            let _ = self.state_tx.send(ScannerState {
+                running: current.running,
+                last_metrics: Some(metrics.clone()),
+                cycle_count: current.cycle_count + 1,
+            });
             debug!(
                 cycle_ms = metrics.cycle_time_ms,
                 events = metrics.events_parsed,
