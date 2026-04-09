@@ -1,25 +1,32 @@
 # OpenClaw Workflow for fork_hunter_pro
 
-Практичный workflow для параллельной разработки в этом репозитории.
+Практичный workflow для параллельной разработки без хаоса в mixed repo.
 
 ## 1. Что здесь главное
 
-Основной путь разработки — **Rust workspace**:
+Основной путь разработки — **Rust workspace** в `crates/`.
+
+Текущий workspace включает:
 
 - `crates/shared` — общие модели, конфиг, ошибки
 - `crates/engine` — математика, нормализация, детекторы
-- `crates/parsers` — парсеры БК
+- `crates/persistence` — история, кэш, storage-слой
 - `crates/scanner` — orchestration рантайма сканера
-- `crates/persistence` — история и кэш
 - `crates/api` — HTTP/WebSocket слой
 - `crates/bot` — Telegram
-- `crates/fork_hunter_bin` — точка входа
+- `crates/parsers` — парсеры БК
+- `crates/fork_hunter_bin` — основной entrypoint
+- `crates/corridor_scanner` — отдельный corridor flow
+- `crates/express_forks` — express-related logic
+- `crates/bankroll_manager` — bankroll domain
+- `crates/bonus_hunter` — bonus hunting domain
+- `crates/auto_betting` — auto-betting domain
 
 Legacy Python в корне сохраняется как:
 
-- референс поведения
+- референс поведения старой системы
 - набор старых тестов/утилит
-- временная площадка для сравнения парсеров
+- временная площадка для сравнения парсеров и миграции
 
 Не смешивай несколько агентов в одном рабочем дереве.
 
@@ -29,15 +36,20 @@ Legacy Python в корне сохраняется как:
 
 Создай отдельные worktrees под роли.
 
-> Важно: `git worktree` начнёт нормально работать только после первого коммита в репозитории.
-
+> Важно: `git worktree` нормально работает только после первого коммита в репозитории.
 
 ```powershell
 .\worktrees.ps1
-New-AgentWorktree -Name rust-core
-New-AgentWorktree -Name parsers
-New-AgentWorktree -Name api-bot
-New-AgentWorktree -Name integration
+New-AgentWorktree -Name rust-core -Bootstrap
+New-AgentWorktree -Name parsers -Bootstrap
+New-AgentWorktree -Name api-bot -Bootstrap
+New-AgentWorktree -Name integration -Bootstrap
+```
+
+Если нужна точечная работа по старому стеку:
+
+```powershell
+New-AgentWorktree -Name legacy-python -Bootstrap
 ```
 
 ### Роли
@@ -49,7 +61,7 @@ New-AgentWorktree -Name integration
   - `crates/persistence`
 - `parsers`
   - `crates/parsers`
-  - выборочные fixture/tests для парсеров
+  - выборочные fixtures/tests для парсеров
 - `api-bot`
   - `crates/api`
   - `crates/bot`
@@ -58,6 +70,10 @@ New-AgentWorktree -Name integration
   - cross-crate wiring
   - smoke tests
   - docs / final polish
+- `legacy-python`
+  - root Python scripts
+  - старые `tests/`
+  - сравнение поведения до/после миграции
 
 ---
 
@@ -75,6 +91,7 @@ New-AgentWorktree -Name integration
 
 - работает только в своей области
 - не трогает чужие crates
+- не делает cleanup legacy Python без прямой задачи
 - валидирует только свой slice
 - оставляет краткий итог в `agent-output.md`
 
@@ -84,7 +101,7 @@ New-AgentWorktree -Name integration
 
 ```powershell
 .\worktrees.ps1
-Initialize-AgentWorkspace -Name parsers -Task "Улучшить factor catalog / parser factory и прогнать parser tests"
+Initialize-AgentWorkspace -Name parsers -Task "Улучшить parser factory / bookmaker coverage и прогнать parser tests"
 ```
 
 Это создаст внутри worktree:
@@ -109,12 +126,14 @@ Initialize-AgentWorkspace -Name parsers -Task "Улучшить factor catalog /
 - корневые Python-скрипты
 - historical fixtures/json/html/log files
 - старые benchmark/debug artifacts
+- root package (`.`), если задача реально про legacy/runtime bridge
 
 ### Не делать без явной цели
 
 - массовое удаление legacy Python
 - переписывание старых тестов только ради чистоты
 - перенос всех артефактов по всему repo одним махом
+- запуск нескольких агентов в одном checkout
 
 ---
 
@@ -124,7 +143,7 @@ Initialize-AgentWorkspace -Name parsers -Task "Улучшить factor catalog /
 
 ```powershell
 cargo check
-cargo test -p engine -p shared -p scanner -p persistence
+cargo test -p shared -p engine -p scanner -p persistence
 ```
 
 ### parsers
@@ -146,6 +165,13 @@ cargo run -p fork_hunter_bin
 ```powershell
 cargo check --workspace
 cargo test --workspace
+```
+
+### legacy-python
+
+```powershell
+py -m pip install -r requirements.txt
+pytest tests
 ```
 
 ---
@@ -175,15 +201,17 @@ claude --permission-mode bypassPermissions --print "Work only on crates/api and 
 ## 8. Что сейчас считается хорошим next step
 
 1. Держать Rust как mainline
-2. Любые крупные задачи дробить по crates
+2. Любые крупные задачи дробить по crates/domain areas
 3. Использовать integration-worktree для сборки итогов
 4. Обновлять docs по фактической, а не исторической структуре repo
+5. Оставлять legacy Python как reference, пока migration boundaries ещё живы
 
 ---
 
 ## 9. Suggested task queue
 
-- `rust-core`: вычистить architecture docs под реальный workspace
+- `rust-core`: привести architecture/docs к реальному workspace
 - `parsers`: стабилизировать parser factory + coverage по букмекерам
 - `api-bot`: сверить endpoints/WS/state wiring с runtime
 - `integration`: smoke-run `fork_hunter_bin`, собрать known issues
+- `legacy-python`: сократить шум только через documented keep/remove policy

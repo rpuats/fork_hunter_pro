@@ -71,7 +71,12 @@ function Initialize-AgentWorkspace {
     '## Scope',
     $Task,
     '',
+    '## Repo reality',
+    '- Mainline: Rust workspace under crates/',
+    '- Legacy/reference: Python scripts and tests in repo root',
+    '',
     '## Guardrails',
+    '- Stay inside the assigned scope/crates/docs',
     '- Prefer Rust workspace changes first',
     '- Do not do destructive cleanup of legacy Python',
     '- Validate only the slice you changed',
@@ -144,3 +149,6 @@ Write-Host '  Initialize-AgentWorkspace -Name rust-core -Task "..."'
 Write-Host '  Sync-AgentWorktree -Name rust-core'
 Write-Host '  List-AgentWorktrees'
 Write-Host '  Remove-AgentWorktree -Name rust-core'
+Write-Host ''
+Write-Host 'Suggested worker names:'
+Write-Host '  rust-core, parsers, api-bot, integration, legacy-python'

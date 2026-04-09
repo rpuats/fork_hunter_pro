@@ -28,6 +28,9 @@ target/
 Thumbs.db
 
 # Project artifacts
+.worktrees/
+AGENT_TASK.md
+agent-output.md
 *_results.txt
 *_output.txt
 *_err.txt
@@ -45,10 +48,11 @@ server*_err.log
 run*.log
 test_*.json
 test_*.txt
-final_test.txt
+final*.txt
 sportbet_*.json
 sportbet_*.txt
 olimp_*.json
+olimp_*.txt
 pari_*.json
 leon_*.json
 zenit_*.txt
