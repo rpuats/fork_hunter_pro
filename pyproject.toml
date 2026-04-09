@@ -4,13 +4,7 @@ version = "1.0.0"
 description = "Professional sports arbitrage scanner"
 requires-python = ">=3.10"
 
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-python_files = ["test_*.py"]
-python_classes = ["Test*"]
-python_functions = ["test_*"]
-addopts = "-v --tb=short"
-asyncio_mode = "auto"
+# pytest configuration lives in pytest.ini to avoid split sources of truth.
 
 [tool.ruff]
 line-length = 120

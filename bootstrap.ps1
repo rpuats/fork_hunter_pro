@@ -19,6 +19,37 @@ function Test-CommandAvailable {
   return [bool](Get-Command $CommandName -ErrorAction SilentlyContinue)
 }
 
+function Test-PythonAvailable {
+  return (Test-CommandAvailable -CommandName 'py') -or (Test-CommandAvailable -CommandName 'python')
+}
+
+function Assert-CommandAvailable {
+  param(
+    [Parameter(Mandatory=$true)][string]$CommandName,
+    [Parameter(Mandatory=$true)][string]$InstallHint
+  )
+
+  if (-not (Test-CommandAvailable -CommandName $CommandName)) {
+    throw "Required command '$CommandName' was not found. $InstallHint"
+  }
+}
+
+function Invoke-Python {
+  param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Args)
+
+  if (Test-CommandAvailable -CommandName 'py') {
+    & py @Args
+    return
+  }
+
+  if (Test-CommandAvailable -CommandName 'python') {
+    & python @Args
+    return
+  }
+
+  throw 'Python launcher not found. Install Python or rerun with -SkipPython.'
+}
+
 function Ensure-NpmGlobalPackage {
   param(
     [Parameter(Mandatory=$true)][string]$Match,
@@ -46,18 +77,31 @@ if ((Test-Path '.env.example') -and (-not (Test-Path '.env'))) {
   Copy-Item '.env.example' '.env'
 }
 
-if ((-not $SkipPython) -and (Test-Path 'requirements.txt')) {
-  Write-Host 'Installing Python requirements (legacy tooling)...'
-  py -m pip install -r requirements.txt
+if ((-not $SkipPython) -and ((Test-Path 'requirements.txt') -or (Test-Path 'pyproject.toml'))) {
+  if (-not (Test-PythonAvailable)) {
+    throw 'Python is required for the legacy tooling in this repo. Install Python 3.10+ or rerun with -SkipPython.'
+  }
+
+  if (Test-Path 'requirements.txt') {
+    Write-Host 'Installing Python requirements (legacy tooling/reference scripts)...'
+    Invoke-Python -m pip install -r requirements.txt
+  }
+
+  if (-not $Quick) {
+    Write-Host 'Collecting legacy Python tests...'
+    Invoke-Python -m pytest --collect-only -q
+  }
 }
 
 if ((-not $SkipRust) -and (Test-Path 'Cargo.toml')) {
-  Write-Host 'Running cargo check...'
-  cargo check
+  Assert-CommandAvailable -CommandName 'cargo' -InstallHint 'Install Rust via rustup or rerun with -SkipRust.'
+
+  Write-Host 'Running cargo check for workspace...'
+  cargo check --workspace
 
   if (-not $Quick) {
     Write-Host 'Running focused Rust tests...'
-    cargo test -p shared -p engine -p parsers --quiet
+    cargo test -p shared -p engine -p parsers -p scanner -p persistence --quiet
   }
 }
 
@@ -72,7 +116,11 @@ if ($InstallOptionalTools -and (Test-CommandAvailable -CommandName 'cargo')) {
 }
 
 Write-Host 'Bootstrap complete.'
+Write-Host 'Validated layers:'
+Write-Host ("  - Rust workspace: {0}" -f ((Test-Path 'Cargo.toml') -and (-not $SkipRust)))
+Write-Host ("  - Legacy Python: {0}" -f (((Test-Path 'requirements.txt') -or (Test-Path 'pyproject.toml')) -and (-not $SkipPython)))
 Write-Host 'Next steps:'
-Write-Host '  1) .\worktrees.ps1'
-Write-Host '  2) New-AgentWorktree -Name rust-core -Bootstrap'
-Write-Host '  3) Read OPENCLAW_WORKFLOW.md'
+Write-Host '  1) Review .env and fill secrets only if needed'
+Write-Host '  2) .\worktrees.ps1'
+Write-Host '  3) New-AgentWorktree -Name rust-core -Bootstrap'
+Write-Host '  4) Read DEV_SETUP.md and OPENCLAW_WORKFLOW.md'

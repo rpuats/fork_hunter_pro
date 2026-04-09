@@ -16,12 +16,34 @@
 
 ## 🚀 Быстрый старт
 
-```bash
-# Установка зависимостей
-pip install -r requirements.txt
+Сейчас репозиторий живёт в **dual-stack** режиме:
+- **Rust workspace** в `crates/` — основная линия разработки
+- **Legacy Python** в корне — старые скрипты, тесты и утилиты для справки/точечной проверки
 
-# Запуск (mock mode по умолчанию)
-python ghost_imperium.py
+### Рекомендуемый bootstrap (Windows / PowerShell)
+
+```powershell
+# Быстрая проверка окружения + cargo check
+.\bootstrap.ps1 -Quick
+
+# Полная локальная валидация окружения
+.\bootstrap.ps1
+```
+
+`bootstrap.ps1` делает следующее:
+- создаёт `.env` из `.env.example`, если файла ещё нет
+- ставит Python-зависимости для legacy-слоя
+- гоняет `cargo check --workspace`
+- в полном режиме дополнительно собирает Python test collection и запускает фокусные Rust-тесты
+
+### Ручной запуск по слоям
+
+```powershell
+# Rust mainline
+cargo run -p fork_hunter_bin
+
+# Legacy Python entrypoint (если нужен старый поток)
+py ghost_imperium.py
 ```
 
 ## 📁 Структура проекта
@@ -123,35 +145,41 @@ ghost_imperium/
 
 ## ⚙️ Конфигурация
 
+Базовый шаблон лежит в `.env.example`. Bootstrap копирует его в `.env` автоматически.
+
 ```env
-# Scanner
-SCANNER_INTERVAL=3
+# Core scanner
+RUST_LOG=info
+APP_ENV=development
+SCANNER_INTERVAL_MS=3000
 MIN_PROFIT_PERCENT=0.5
 
 # API
-API_HOST=0.0.0.0
+API_HOST=127.0.0.1
 API_PORT=8000
 
-# Mock Mode (для тестирования)
+# Legacy Python mode / local DB
 USE_MOCK_DATA=true
+DATABASE_URL=ghost_imperium.db
 
 # Telegram
-TELEGRAM_BOT_TOKEN=your_token
-TELEGRAM_CHAT_ID=your_chat_id
-
-# Database
-DATABASE_URL=ghost_imperium.db
+TELEGRAM_BOT_TOKEN=
+TELEGRAM_CHAT_ID=
 ```
 
 ## 🧪 Тестирование
 
-```bash
-# Все тесты
-pytest
+```powershell
+# Rust workspace
+cargo check --workspace
+cargo test -p shared -p engine -p parsers -p scanner -p persistence
 
-# Тест калькулятора
-python -c "from core.finder import SurebetCalculator; ..."
+# Legacy Python
+py -m pip install -r requirements.txt
+py -m pytest --collect-only -q
 ```
+
+Если нужна организация параллельной работы агентов и worktrees, см. `DEV_SETUP.md` и `OPENCLAW_WORKFLOW.md`.
 
 ## 📊 Формулы
 
