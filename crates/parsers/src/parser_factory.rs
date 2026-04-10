@@ -1,5 +1,5 @@
 use crate::base::BookmakerParser;
-use crate::{bet24, bettery, fonbet, leon, marathon, pari, sportbet};
+use crate::{bet24, bettery, fonbet, leon, marathon, pari, sportbet, winline};
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -18,6 +18,9 @@ impl ParserFactory {
         parsers.insert("fonbet".to_string(), Arc::new(fonbet::FonbetParser::new(client.clone())));
         parsers.insert("leon".to_string(), Arc::new(leon::LeonParser::new(client.clone())));
         parsers.insert("sportbet".to_string(), Arc::new(sportbet::SportbetParser::new(client.clone())));
+
+        // Winline — Python Playwright parser (fallback)
+        parsers.insert("winline".to_string(), Arc::new(winline::WinlineParser::new(client.clone())));
 
         // 24bet parser uses canonical slug `_24bet`, but keep legacy alias `bet24`
         // so existing callers do not break during migration.

@@ -5,27 +5,90 @@ use std::collections::HashMap;
 
 static TEAM_ALIASES: Lazy<HashMap<&str, Vec<&str>>> = Lazy::new(|| {
     let mut map: HashMap<&str, Vec<&str>> = HashMap::new();
-    map.insert("Real Madrid", vec!["Реал Мадрид", "Реал", "Real Madrid CF"]);
-    map.insert("Barcelona", vec!["Барселона", "Барса", "FC Barcelona"]);
+    // Испанские
+    map.insert("Real Madrid", vec!["Реал Мадрид", "Реал", "Real Madrid CF", "Real"]);
+    map.insert("Barcelona", vec!["Барселона", "Барса", "FC Barcelona", "Barça"]);
+    map.insert("Atletico Madrid", vec!["Атлетико", "Атлетико Мадрид", "Atlético"]);
+    // Английские
     map.insert("Manchester United", vec!["Манчестер Юнайтед", "Ман Юнайтед", "Man Utd", "MUFC"]);
     map.insert("Manchester City", vec!["Манчестер Сити", "Ман Сити", "Man City", "MCFC"]);
     map.insert("Liverpool", vec!["Ливерпуль", "LFC"]);
     map.insert("Chelsea", vec!["Челси", "CFC"]);
-    map.insert("Arsenal", vec!["Арсенал", "AFC"]);
-    map.insert("Bayern Munich", vec!["Бавария", "Bayern", "FC Bayern"]);
-    map.insert("PSG", vec!["ПСЖ", "Paris Saint-Germain", "Пари Сен-Жермен"]);
+    map.insert("Arsenal", vec!["Арсенал", "AFC", "Арсенал Лондон"]);
+    map.insert("Tottenham", vec!["Тоттенхэм", "Spurs", "Тоттенхэм Хотспур"]);
+    map.insert("Newcastle United", vec!["Ньюкасл", "Newcastle"]);
+    // Немецкие
+    map.insert("Bayern Munich", vec!["Бавария", "Bayern", "FC Bayern", "Бавария Мюнхен"]);
+    map.insert("Borussia Dortmund", vec!["Боруссия Дортмунд", "BVB", "Боруссия Д"]);
+    map.insert("RB Leipzig", vec!["РБ Лейпциг", "Leipzig", "Лейпциг"]);
+    // Французские
+    map.insert("PSG", vec!["ПСЖ", "Paris Saint-Germain", "Пари Сен-Жермен", "Париж"]);
+    map.insert("Olympique Marseille", vec!["Олимпик Марсель", "Марсель", "OM"]);
+    // Итальянские
     map.insert("Juventus", vec!["Ювентус", "Juve"]);
     map.insert("AC Milan", vec!["Милан", "ACM"]);
-    map.insert("Inter Milan", vec!["Интер", "Inter"]);
-    map.insert("CSKA Moscow", vec!["ЦСКА", "ЦСКА Москва", "PFC CSKA"]);
+    map.insert("Inter Milan", vec!["Интер", "Inter", "Интер Милан"]);
+    map.insert("AS Roma", vec!["Рома", "AS Roma", "А Рома"]);
+    map.insert("Napoli", vec!["Наполи", "SSC Napoli"]);
+    // Российские
+    map.insert("CSKA Moscow", vec!["ЦСКА", "ЦСКА Москва", "PFC CSKA", "ЦСКА М"]);
     map.insert("Spartak Moscow", vec!["Спартак", "Спартак Москва", "FC Spartak"]);
-    map.insert("Zenit", vec!["Зенит", "Зенит СПб", "FC Zenit"]);
-    map.insert("Lokomotiv Moscow", vec!["Локомотив", "Локо Москва", "FC Lokomotiv"]);
+    map.insert("Zenit", vec!["Зенит", "Зенит СПб", "FC Zenit", "Зенит Санкт-Петербург"]);
+    map.insert("Lokomotiv Moscow", vec!["Локомотив", "Локо Москва", "FC Lokomotiv", "Локомотив М"]);
+    map.insert("Dynamo Moscow", vec!["Динамо Москва", "Динамо М", "FC Dynamo"]);
+    map.insert("Krasnodar", vec!["Краснодар", "FC Krasnodar"]);
+    map.insert("Rostov", vec!["Ростов", "FC Rostov"]);
     map
 });
 
 static CLEANUP_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"[^a-zA-Zа-яА-Я0-9\s\-]").unwrap());
 static EXTRA_SPACE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\s+").unwrap());
+
+/// Вычисление расстояния Левенштейна
+fn levenshtein(a: &str, b: &str) -> usize {
+    let a_chars: Vec<char> = a.chars().collect();
+    let b_chars: Vec<char> = b.chars().collect();
+    let m = a_chars.len();
+    let n = b_chars.len();
+    
+    if m == 0 { return n; }
+    if n == 0 { return m; }
+    
+    let mut dp = vec![vec![0usize; n + 1]; m + 1];
+    
+    for i in 0..=m { dp[i][0] = i; }
+    for j in 0..=n { dp[0][j] = j; }
+    
+    for i in 1..=m {
+        for j in 1..=n {
+            let cost = if a_chars[i-1] == b_chars[j-1] { 0 } else { 1 };
+            dp[i][j] = std::cmp::min(
+                std::cmp::min(dp[i-1][j] + 1, dp[i][j-1] + 1),
+                dp[i-1][j-1] + cost,
+            );
+        }
+    }
+    
+    dp[m][n]
+}
+
+/// Проверка fuzzy совпадения с порогом расстояния
+fn fuzzy_match(input: &str, candidates: &[&str], max_dist: usize) -> Option<String> {
+    let input_lower = input.to_lowercase();
+    let mut best = None;
+    let mut best_dist = usize::MAX;
+    
+    for candidate in candidates {
+        let cand_lower = candidate.to_lowercase();
+        let dist = levenshtein(&input_lower, &cand_lower);
+        if dist <= max_dist && dist < best_dist {
+            best_dist = dist;
+            best = Some(candidate.to_string());
+        }
+    }
+    
+    best
+}
 
 #[derive(Clone)]
 pub struct Normalizer {
@@ -49,12 +112,24 @@ impl Normalizer {
         let cleaned = self.clean_team_name(team);
         let lower = cleaned.to_lowercase();
 
+        // 1. Точное совпадение
         if let Some(canonical) = self.aliases.get(&lower) {
             return canonical.clone();
         }
 
+        // 2. Частичное совпадение (contains)
         for (alias, canonical) in &self.aliases {
             if lower.contains(alias) || alias.contains(&lower) {
+                return canonical.clone();
+            }
+        }
+
+        // 3. Fuzzy matching с порогами
+        let all_aliases: Vec<&str> = self.aliases.keys().map(|s| s.as_str()).collect();
+        let max_dist = if cleaned.len() <= 4 { 1 } else if cleaned.len() <= 8 { 2 } else { 3 };
+        
+        if let Some(fuzzy) = fuzzy_match(&lower, &all_aliases, max_dist) {
+            if let Some(canonical) = self.aliases.get(&fuzzy.to_lowercase()) {
                 return canonical.clone();
             }
         }
@@ -215,5 +290,27 @@ mod tests {
         let norm = Normalizer::new();
         assert_eq!(norm.normalize_team("Team (FC)"), "Team FC");
         assert_eq!(norm.normalize_team("  Extra   Spaces  "), "Extra Spaces");
+    }
+
+    #[test]
+    fn test_fuzzy_matching() {
+        let norm = Normalizer::new();
+        // Опечатки
+        assert_eq!(norm.normalize_team("Манчестр Юнайтед"), "Manchester United");
+        assert_eq!(norm.normalize_team("Реал Мадри"), "Real Madrid");
+        // Сокращения
+        assert_eq!(norm.normalize_team("Барса"), "Barcelona");
+        assert_eq!(norm.normalize_team("LFC"), "Liverpool");
+        // Разные регистры
+        assert_eq!(norm.normalize_team("real"), "Real Madrid");
+        assert_eq!(norm.normalize_team("MAN UTD"), "Manchester United");
+    }
+
+    #[test]
+    fn test_levenshtein() {
+        assert_eq!(levenshtein("kitten", "sitting"), 3);
+        assert_eq!(levenshtein("", "abc"), 3);
+        assert_eq!(levenshtein("abc", ""), 3);
+        assert_eq!(levenshtein("abc", "abc"), 0);
     }
 }

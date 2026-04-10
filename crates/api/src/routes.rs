@@ -20,6 +20,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/v1/scanner/status", get(get_scanner_status))
         .route("/api/v1/surebets", get(get_surebets))
         .route("/api/v1/freebets", get(get_freebets))
+        .route("/api/v1/value-bets", get(get_value_bets))
         .route("/api/v1/analytics/generosity", get(get_generosity))
         .route("/api/v1/history/stats", get(get_history_stats))
         .route("/api/v1/corridors", get(get_corridors))

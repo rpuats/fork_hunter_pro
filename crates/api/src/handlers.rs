@@ -6,8 +6,7 @@ use engine::freebet::FreebetHunter;
 use engine::generosity::GenerosityIndexCalc;
 use persistence::history::SurebetHistory;
 use scanner::ScannerRunner;
-use serde::Serialize;
-use shared::models::{FreebetOpportunity, GenerosityIndex, ScannerMetrics, Surebet};
+use shared::models::{FreebetOpportunity, GenerosityIndex, ScannerMetrics, Surebet, ValueBet};
 use shared::{CorridorOpportunity, ExpressFork};
 use serde::{Deserialize, Serialize};
 
@@ -125,14 +124,10 @@ pub async fn get_surebets(
     State(state): State<AppState>,
     Query(params): Query<SurebetsQuery>,
 ) -> Result<Json<ApiResponse<Vec<Surebet>>>, StatusCode> {
-    let limit = params.limit.unwrap_or(50);
-    match state.history.get_recent(limit).await {
-        Ok(surebets) => Ok(Json(ApiResponse::ok(surebets))),
-        Err(e) => {
-            tracing::error!(error = e.to_string(), "Failed to get surebets");
-            Err(StatusCode::INTERNAL_SERVER_ERROR)
-        }
-    }
+    let limit = params.limit.unwrap_or(50) as usize;
+    // Читаем из кэша сканнера вместо SQLite
+    let surebets = state.scanner.get_surebets(limit);
+    Ok(Json(ApiResponse::ok(surebets)))
 }
 
 pub async fn get_freebets(
@@ -143,6 +138,16 @@ pub async fn get_freebets(
     // Пока возвращаем пустой список — реальная интеграция требует запуска сканера
     let opportunities = state.freebet_hunter.scan_freebets();
     Json(ApiResponse::ok(opportunities))
+}
+
+pub async fn get_value_bets(
+    State(state): State<AppState>,
+    Query(params): Query<SurebetsQuery>,
+) -> Json<ApiResponse<Vec<ValueBet>>> {
+    let limit = params.limit.unwrap_or(50) as usize;
+    // Value bets вычисляются на лету из текущего состояния сканнера
+    let value_bets = state.scanner.get_value_bets(limit);
+    Json(ApiResponse::ok(value_bets))
 }
 
 pub async fn get_generosity(

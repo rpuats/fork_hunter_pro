@@ -101,6 +101,10 @@ pub struct GhostScanner {
     pub state_rx: watch::Receiver<ScannerState>,
     // Pipeline кэш для мгновенного доступа калькулятора
     pipeline_cache: PipelineCache,
+    // Кэш найденных вилок для API (ключ дедупликации → вилка)
+    surebets_cache: Arc<parking_lot::RwLock<std::collections::HashMap<String, shared::Surebet>>>,
+    // Кэш value bets
+    value_bets_cache: Arc<parking_lot::RwLock<Vec<shared::ValueBet>>>,
 }
 
 impl GhostScanner {
@@ -165,7 +169,35 @@ impl GhostScanner {
             state_tx,
             state_rx,
             pipeline_cache,
+            surebets_cache: Arc::new(parking_lot::RwLock::new(std::collections::HashMap::with_capacity(10000))),
+            value_bets_cache: Arc::new(parking_lot::RwLock::new(Vec::with_capacity(1000))),
         }
+    }
+
+    /// Получить последние вилки из кэша
+    pub fn get_surebets(&self, limit: usize) -> Vec<shared::Surebet> {
+        let cache = self.surebets_cache.read();
+        let mut surebets: Vec<_> = cache.values().cloned().collect();
+        surebets.sort_by(|a, b| b.profit_percent.partial_cmp(&a.profit_percent).unwrap_or(std::cmp::Ordering::Equal));
+        surebets.into_iter().take(limit).collect()
+    }
+
+    /// Получить value bets
+    pub fn get_value_bets(&self, limit: usize) -> Vec<shared::ValueBet> {
+        let cache = self.value_bets_cache.read();
+        cache.iter().take(limit).cloned().collect()
+    }
+    
+    /// Генерация ключа дедупликации
+    fn surebet_dedup_key(surebet: &shared::Surebet) -> String {
+        format!(
+            "{}|{}|{}|{}|{}",
+            surebet.home_team,
+            surebet.away_team,
+            surebet.legs.first().map(|l| l.market.clone()).unwrap_or_default(),
+            surebet.legs.first().map(|l| l.line.map(|x| format!("{:.1}", x)).unwrap_or_default()).unwrap_or_default(),
+            surebet.is_live
+        )
     }
 
     pub async fn run_cycle(&self) -> ScannerMetrics {
@@ -176,73 +208,57 @@ impl GhostScanner {
         debug!("Cycle starting...");
         let cycle_start = Instant::now();
 
-        // PIPELINE MODE: 
-        // 1. Если кэш пуст — запускаем fetch и ЖДЁМ первый результат
-        // 2. Если кэш заполнен — мгновенно обрабатываем
-        // 3. Параллельно запускаем следующий fetch в фоне
+        // ВСЕГДА фетчим данные — pipeline cache отключён
+        info!("🔄 Fetching parsers...");
+        let results = Self::fetch_parsers_parallel(&self.parsers, &self.circuit_breakers).await;
+        let fetched_odds: Vec<Odd> = results.iter().flat_map(|e| e.odds.clone()).collect();
+        let fetched_events: Vec<Event> = results.iter().flat_map(|e| e.events.clone()).collect();
         
-        let (events, all_odds) = self.pipeline_cache.clone_data();
-        let event_count = events.len();
-        let odd_count = all_odds.len();
-        
-        if event_count == 0 || odd_count == 0 {
-            // ПЕРВЫЙ ЗАПУСК: ждём первый fetch
-            info!("Pipeline cache empty — fetching parsers for first time...");
-            let cache = self.pipeline_cache.clone();
-            let parsers = self.parsers.clone();
-            let breakers = self.circuit_breakers.clone();
-            
-            // Fetch parsers synchronously for first cycle
-            info!("Pipeline cache empty — fetching parsers for first time...");
-            let cache = self.pipeline_cache.clone();
-            let parsers = self.parsers.clone();
-            let breakers = self.circuit_breakers.clone();
-            let results = Self::fetch_parsers_parallel(&parsers, &breakers).await;
-            let fetched_odds: Vec<Odd> = results.iter().flat_map(|e| e.odds.clone()).collect();
-            let fetched_events: Vec<Event> = results.iter().flat_map(|e| e.events.clone()).collect();
-            
-            // DEBUG: покажем что вернули парсеры
-            info!("📊 Parser results: {} events, {} odds from {} parsers", 
-                  fetched_events.len(), fetched_odds.len(), results.len());
-            for result in &results {
-                info!("  - {} events, {} odds", result.events.len(), result.odds.len());
-            }
-            
-            cache.update(fetched_events.clone(), fetched_odds.clone());
-            info!("First fetch complete: {} events, {} odds", fetched_events.len(), fetched_odds.len());
-            
-            // Now process
-            self.process_events(fetched_events, fetched_odds, cycle_start)
-        } else {
-            // КЭШ ГОТОВ: запускаем фоновое обновление и обрабатываем мгновенно
-            let age = self.pipeline_cache.age_ms();
-            debug!("Processing cached data (age={}ms): {} events, {} odds", 
-                   age, event_count, odd_count);
-            
-            // Запускаем fetch в фоне для СЛЕДУЮЩЕГО цикла
-            let cache = self.pipeline_cache.clone();
-            let parsers = self.parsers.clone();
-            let breakers = self.circuit_breakers.clone();
-            tokio::spawn(async move {
-                let results = Self::fetch_parsers_parallel(&parsers, &breakers).await;
-                let new_odds: Vec<Odd> = results.iter().flat_map(|e| e.odds.clone()).collect();
-                let new_events: Vec<Event> = results.iter().flat_map(|e| e.events.clone()).collect();
-                cache.update(new_events, new_odds);
-            });
-            
-            self.process_events(events, all_odds, cycle_start)
+        info!("📊 Fetched: {} events, {} odds from {} parsers", 
+              fetched_events.len(), fetched_odds.len(), results.len());
+        for result in &results {
+            info!("  - {} events, {} odds", result.events.len(), result.odds.len());
         }
+        
+        self.process_events(fetched_events, fetched_odds, cycle_start)
     }
 
     /// Быстрая обработка событий из кэша — КЛЮЧЕВОЕ ИЗМЕНЕНИЕ
     /// Группируем события по матчу (home+away+sport), потом ищем вилки МЕЖДУ БК
     fn process_events(&self, events: Vec<Event>, all_odds: Vec<Odd>, cycle_start: Instant) -> ScannerMetrics {
-        // HIGH PERFORMANCE: 5000 событий, 100K odds
+        // ДЕДУПЛИКАЦИЯ + БАЛАНСИРОВКА по БК
+        // Проблема: .take(5000) берёт все events от одной БК
+        // Решение: равномерно распределяем по всем БК
         const MAX_EVENTS: usize = 5000;
         const MAX_ODDS: usize = 100_000;
-
-        let calc_events: Vec<Event> = events.into_iter().take(MAX_EVENTS).collect();
-        let calc_odds: Vec<Odd> = all_odds.into_iter().take(MAX_ODDS).collect();
+        
+        let mut events_by_bk: HashMap<String, Vec<Event>> = HashMap::new();
+        for event in &events {
+            events_by_bk.entry(event.bookmaker_slug.clone()).or_default().push(event.clone());
+        }
+        
+        let max_per_bk = MAX_EVENTS / events_by_bk.len().max(1);
+        let mut calc_events = Vec::with_capacity(MAX_EVENTS);
+        for (_, bk_events) in &events_by_bk {
+            let take = bk_events.len().min(max_per_bk);
+            calc_events.extend(bk_events.iter().take(take).cloned());
+        }
+        
+        // Аналогично для odds
+        let mut odds_by_bk: HashMap<String, Vec<Odd>> = HashMap::new();
+        for odd in &all_odds {
+            odds_by_bk.entry(odd.bookmaker_slug.clone()).or_default().push(odd.clone());
+        }
+        
+        let max_odds_per_bk = MAX_ODDS / odds_by_bk.len().max(1);
+        let mut calc_odds = Vec::with_capacity(MAX_ODDS);
+        for (_, bk_odds) in &odds_by_bk {
+            let take = bk_odds.len().min(max_odds_per_bk);
+            calc_odds.extend(bk_odds.iter().take(take).cloned());
+        }
+        
+        info!("📦 Balanced: {} events from {} BKs, {} odds from {} BKs",
+              calc_events.len(), events_by_bk.len(), calc_odds.len(), odds_by_bk.len());
 
         let normalized: Vec<Event> = calc_events.iter()
             .map(|e| self.normalizer.normalize_event(e.clone()))
@@ -260,13 +276,24 @@ impl GhostScanner {
         }
 
         // Группируем odds по fingerprint
-        // КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: используем HashMap для быстрого поиска по event_id
-        let mut event_by_id: HashMap<String, &Event> = HashMap::with_capacity(normalized.len());
-        for event in &normalized {
+        // КЛЮЧЕВОЕ: odds должны быть только от событий в calc_events!
+        let mut event_by_id: HashMap<String, &Event> = HashMap::with_capacity(calc_events.len());
+        for event in &calc_events {
             event_by_id.insert(event.id.clone(), event);
         }
         
+        // Фильтруем odds — только от событий в calc_events
+        let calc_odds: Vec<Odd> = calc_odds.into_iter()
+            .filter(|o| event_by_id.contains_key(&o.event_id))
+            .collect();
+        
+        info!("🧹 Odds filter: {} → {} odds (only from calc_events)", {
+            // count would be before filter - we can't know, but log result
+            calc_odds.len()
+        }, calc_odds.len());
+        
         let mut odds_by_match: HashMap<String, Vec<&Odd>> = HashMap::new();
+
         for odd in &calc_odds {
             if let Some(event) = event_by_id.get(&odd.event_id) {
                 let fp = Self::event_fingerprint(event);
@@ -274,18 +301,16 @@ impl GhostScanner {
             }
         }
 
-        // DEBUG: print stats
-        let total_odds_with_fp = odds_by_match.values().map(|v| v.len()).sum::<usize>();
-        let matches_with_odds = odds_by_match.len();
+        // Статистика
         let matches_with_multi_bk = odds_by_match.iter()
             .filter(|(_, odds)| {
                 let bks: std::collections::HashSet<&str> = odds.iter().map(|o| o.bookmaker_slug.as_str()).collect();
                 bks.len() >= 2
             })
             .count();
-        
-        info!("📊 {} events → {} matches ({} with odds, {} with 2+ BK), {} total odds",
-              calc_events.len(), matches.len(), matches_with_odds, matches_with_multi_bk, calc_odds.len());
+
+        info!("📊 {} events → {} matches ({} with 2+ BK), {} total odds",
+              calc_events.len(), matches.len(), matches_with_multi_bk, calc_odds.len());
 
         // Show first 5 matches with multi-BK odds
         let mut shown = 0;
@@ -332,13 +357,44 @@ impl GhostScanner {
             }
 
             // Ищем вилки между разными БК для этого матча
-            let surebets = self.find_cross_bk_surebets(match_events, &match_odds);
-            if !surebets.is_empty() {
-                info!("Found {} surebets for match '{}'", surebets.len(), fp);
-            }
-            total_surebets += surebets.len();
+            let raw_surebets = self.find_cross_bk_surebets(match_events, &match_odds);
+            
+            // Фильтруем дубликаты через bloom filter
+            let mut new_surebets = 0;
+            let mut verified_surebets = 0;
+            for surebet in &raw_surebets {
+                if self.calculator.is_seen(surebet) {
+                    continue; // Уже видели эту вилку
+                }
 
-            for surebet in &surebets {
+                self.calculator.mark_seen(surebet);
+                new_surebets += 1;
+
+                // Верификация: проверяем что все legs от разных БК
+                let leg_bks: std::collections::HashSet<&str> = surebet.legs.iter().map(|l| l.bookmaker.as_str()).collect();
+                let is_verified = leg_bks.len() == surebet.legs.len();
+                if is_verified { verified_surebets += 1; }
+
+                // Создаём верифицированную вилку
+                let mut verified_surebet = surebet.clone();
+                verified_surebet.verified = is_verified;
+
+                // Сохраняем в кэш для API с дедупликацией
+                {
+                    let mut cache = self.surebets_cache.write();
+                    let dedup_key = Self::surebet_dedup_key(surebet);
+
+                    // Вставляем/обновляем только если profit выше
+                    let should_insert = match cache.get(&dedup_key) {
+                        Some(existing) => surebet.profit_percent > existing.profit_percent,
+                        None => true,
+                    };
+
+                    if should_insert {
+                        cache.insert(dedup_key, verified_surebet);
+                    }
+                }
+
                 let payload = serde_json::to_value(surebet).unwrap_or_default();
                 let _ = self.event_bus.publish(BusEvent::SurebetFound {
                     surebet_id: surebet.id.to_string(),
@@ -346,11 +402,24 @@ impl GhostScanner {
                     timestamp: Utc::now(),
                 });
             }
+            
+            if new_surebets > 0 {
+                info!("🎯 Found {} NEW surebets for match '{}' ({} verified, {} total, {} duplicates)",
+                      new_surebets, fp, verified_surebets, raw_surebets.len(), raw_surebets.len() - new_surebets);
+            }
+            total_surebets += new_surebets;
         }
 
         // Fallback: старый метод для сравнения
         let legacy_surebets = self.calculator.find_surebets(&normalized, &calc_odds);
         total_surebets += legacy_surebets.len();
+
+        // Value bets detection
+        let value_bets = self.value_detector.detect_values(&normalized, &calc_odds);
+        {
+            let mut cache = self.value_bets_cache.write();
+            *cache = value_bets.into_iter().take(1000).collect();
+        }
 
         let cycle_time = cycle_start.elapsed().as_millis() as u64;
         
@@ -443,15 +512,7 @@ impl GhostScanner {
         // Считаем уникальные БК
         let unique_bks: std::collections::HashSet<&str> = odds.iter().map(|o| o.bookmaker_slug.as_str()).collect();
         if unique_bks.len() < 2 {
-            return surebets; // Нужны минимум 2 БК
-        }
-
-        // Debug: первые 10 odds
-        if odds.len() <= 30 {
-            let sample: Vec<String> = odds.iter().take(10).map(|o|
-                format!("{}:{}@{:.2}", o.bookmaker_slug, o.selection, o.odds)
-            ).collect();
-            debug!("Checking {} odds from {} BKs: {:?}", odds.len(), unique_bks.len(), sample);
+            return surebets;
         }
 
         // Группируем odds по market+line
@@ -462,42 +523,35 @@ impl GhostScanner {
             by_market.entry(key).or_default().push(odd);
         }
 
-        // Debug: покажем топ рынков
-        let mut market_counts: Vec<_> = by_market.iter().map(|(k, v)| (k, v.len())).collect();
-        market_counts.sort_by(|a, b| b.1.cmp(&a.1));
-        if !market_counts.is_empty() {
-            debug!("Top markets: {:?}", &market_counts[..market_counts.len().min(5)]);
-        }
-
         // Для каждого рынка ищем вилки между БК
         for (market, market_odds) in &by_market {
             let lower = market.to_lowercase();
-            
+
             if lower.starts_with("1x2") || lower.starts_with("исход") || lower.starts_with("match") {
                 // 3-way: ищем 1, X, 2 от разных БК
                 let ones: Vec<&&Odd> = market_odds.iter().filter(|o| o.selection == "1" || o.selection.to_lowercase() == "п1").cloned().collect();
                 let xs: Vec<&&Odd> = market_odds.iter().filter(|o| o.selection == "X" || o.selection.to_lowercase() == "х").cloned().collect();
                 let twos: Vec<&&Odd> = market_odds.iter().filter(|o| o.selection == "2" || o.selection.to_lowercase() == "п2").cloned().collect();
 
-                if ones.is_empty() || xs.is_empty() || twos.is_empty() { 
-                    if market_odds.len() >= 3 {
-                        info!("Market '{}' has {} odds but missing outcomes: 1={}, X={}, 2={}", 
-                              market, market_odds.len(), ones.len(), xs.len(), twos.len());
-                    }
-                    continue; 
+                if ones.is_empty() || xs.is_empty() || twos.is_empty() {
+                    continue;
                 }
-                
-                info!("Market '{}' — {}x1, {}xX, {}x2 from different BKs", market, ones.len(), xs.len(), twos.len());
 
                 for &o1 in &ones {
                     for &ox in &xs {
                         for &o2 in &twos {
-                            // Проверяем что минимум 2 разные БК
-                            let bks: std::collections::HashSet<&str> = [o1.bookmaker_slug.as_str(), ox.bookmaker_slug.as_str(), o2.bookmaker_slug.as_str()].iter().cloned().collect();
-                            if bks.len() < 2 { continue; }
+                            // КРИТИЧНО: все 3 исхода должны быть от РАЗНЫХ БК
+                            // Иначе это не арбитраж, а маржа одной БК
+                            let bk1 = o1.bookmaker_slug.as_str();
+                            let bkx = ox.bookmaker_slug.as_str();
+                            let bk2 = o2.bookmaker_slug.as_str();
+                            
+                            if bk1 == bkx || bk1 == bk2 || bkx == bk2 {
+                                continue; // Минимум 2 одинаковые БК — не арбитраж
+                            }
 
                             if let Some(profit) = shared::odds::calculate_surebet_profit(&[o1.odds, ox.odds, o2.odds]) {
-                                if profit < self.calculator.min_profit { continue; } // Используем конфиг
+                                if profit < self.calculator.min_profit { continue; }
 
                                 let stakes = shared::odds::calculate_stakes(&[o1.odds, ox.odds, o2.odds], 1000.0);
                                 let payout = stakes[0] * o1.odds;
@@ -601,7 +655,7 @@ impl GhostScanner {
 
             let fut = async move {
                 let result = tokio::time::timeout(
-                    std::time::Duration::from_secs(30),
+                    std::time::Duration::from_secs(60),
                     parser.fetch_all()
                 ).await;
 
@@ -711,10 +765,6 @@ impl GhostScanner {
 
     pub fn get_express_forks(&self, limit: usize) -> Vec<ExpressFork> {
         self.express_fork_scanner.get_recent(limit)
-    }
-
-    pub fn get_value_bets(&self, events: &[Event], all_odds: &[Odd]) -> Vec<ValueBet> {
-        self.value_detector.detect_values(events, all_odds)
     }
 
     pub fn get_best_bonuses(&self, limit: usize) -> Vec<BonusInfo> {

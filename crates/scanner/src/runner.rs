@@ -1,6 +1,6 @@
 use crate::engine::{GhostScanner, ScannerState};
 use shared::models::ScannerMetrics;
-use shared::{CorridorOpportunity, ExpressFork};
+use shared::{CorridorOpportunity, ExpressFork, Surebet, ValueBet};
 use std::sync::Arc;
 use std::sync::Mutex;
 use tracing::{info, warn};
@@ -85,5 +85,13 @@ impl ScannerRunner {
 
     pub fn get_express_forks(&self, limit: usize) -> Vec<ExpressFork> {
         self.scanner.get_express_forks(limit)
+    }
+
+    pub fn get_surebets(&self, limit: usize) -> Vec<Surebet> {
+        self.scanner.get_surebets(limit)
+    }
+
+    pub fn get_value_bets(&self, limit: usize) -> Vec<ValueBet> {
+        self.scanner.get_value_bets(limit)
     }
 }
