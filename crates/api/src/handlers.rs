@@ -197,13 +197,17 @@ pub async fn get_bookmakers(
     let _metrics = state.scanner.get_metrics();
 
     let bookmakers = vec![
-        serde_json::json!({ "name": "Pari", "slug": "pari", "status": "active", "events": 6608 }),
-        serde_json::json!({ "name": "Fonbet", "slug": "fonbet", "status": "active", "events": 6826 }),
-        serde_json::json!({ "name": "Bettery", "slug": "bettery", "status": "active", "events": 6843 }),
-        serde_json::json!({ "name": "Marathon", "slug": "marathon", "status": "active", "events": 6566 }),
-        serde_json::json!({ "name": "24bet", "slug": "bet24", "status": "active", "events": 6557 }),
-        serde_json::json!({ "name": "Leon", "slug": "leon", "status": "active", "events": 3676 }),
-        serde_json::json!({ "name": "Sportbet", "slug": "sportbet", "status": "active", "events": 258 }),
+        serde_json::json!({ "name": "Pari", "slug": "pari", "status": "active", "events": 0 }),
+        serde_json::json!({ "name": "Fonbet", "slug": "fonbet", "status": "active", "events": 0 }),
+        serde_json::json!({ "name": "Bettery", "slug": "bettery", "status": "active", "events": 0 }),
+        serde_json::json!({ "name": "Marathon", "slug": "marathon", "status": "active", "events": 0 }),
+        serde_json::json!({ "name": "24bet", "slug": "bet24", "status": "active", "events": 0 }),
+        serde_json::json!({ "name": "Leon", "slug": "leon", "status": "active", "events": 0 }),
+        serde_json::json!({ "name": "Sportbet", "slug": "sportbet", "status": "active", "events": 0 }),
+        serde_json::json!({ "name": "Winline", "slug": "winline", "status": "active", "events": 0 }),
+        serde_json::json!({ "name": "Zenit", "slug": "zenit", "status": "active", "events": 0 }),
+        serde_json::json!({ "name": "Betcity", "slug": "betcity", "status": "active", "events": 0 }),
+        serde_json::json!({ "name": "Baltbet", "slug": "baltbet", "status": "active", "events": 0 }),
     ];
     
     Json(ApiResponse::ok(bookmakers))
@@ -211,18 +215,18 @@ pub async fn get_bookmakers(
 
 pub async fn get_capabilities() -> Json<ApiResponse<ApiSurfacePlan>> {
     let parser_coverage = vec![
-        serde_json::json!({"slug": "pari", "status": "active", "parser_type": "api", "source": "crates/parsers/src/pari.rs", "notes": "Registered in ParserFactory and exposed via /api/v1/bookmakers."}),
-        serde_json::json!({"slug": "fonbet", "status": "active", "parser_type": "api", "source": "crates/parsers/src/fonbet.rs", "notes": "Registered in ParserFactory."}),
-        serde_json::json!({"slug": "bettery", "status": "active", "parser_type": "api", "source": "crates/parsers/src/bettery.rs", "notes": "Registered in ParserFactory."}),
-        serde_json::json!({"slug": "marathon", "status": "active", "parser_type": "api", "source": "crates/parsers/src/marathon.rs", "notes": "Registered in ParserFactory."}),
-        serde_json::json!({"slug": "leon", "status": "active", "parser_type": "api", "source": "crates/parsers/src/leon.rs", "notes": "Registered in ParserFactory."}),
-        serde_json::json!({"slug": "sportbet", "status": "active", "parser_type": "api", "source": "crates/parsers/src/sportbet.rs", "notes": "Registered in ParserFactory, lower observed event volume in current placeholder bookmaker stats."}),
-        serde_json::json!({"slug": "bet24", "status": "in_progress", "parser_type": "api", "source": "crates/parsers/src/bet24.rs", "notes": "Module is newly added and registered in ParserFactory but still untracked in git status during this audit."}),
-        serde_json::json!({"slug": "olimp", "status": "blocked", "parser_type": "api", "source": "crates/parsers/src/olimp.rs", "notes": "Implementation exists, but ParserFactory keeps it disabled because competition payload structure is not normalized yet."}),
-        serde_json::json!({"slug": "winline", "status": "not_ported", "parser_type": "legacy", "source": "legacy/python only", "notes": "Referenced in config defaults/tests, but not registered in current Rust ParserFactory."}),
-        serde_json::json!({"slug": "betcity", "status": "not_ported", "parser_type": "legacy", "source": "legacy/python only", "notes": "Module export exists, but no active registration in current Rust ParserFactory."}),
-        serde_json::json!({"slug": "zenit", "status": "not_ported", "parser_type": "legacy", "source": "legacy/python only", "notes": "Module export exists, but no active registration in current Rust ParserFactory."}),
-        serde_json::json!({"slug": "baltbet", "status": "not_ported", "parser_type": "legacy", "source": "legacy/python only", "notes": "Module export exists, but no active registration in current Rust ParserFactory."})
+        serde_json::json!({"slug": "pari", "status": "active", "parser_type": "api", "source": "crates/parsers/src/pari.rs", "notes": "HTTP API parser, fully functional."}),
+        serde_json::json!({"slug": "fonbet", "status": "active", "parser_type": "api", "source": "crates/parsers/src/fonbet.rs", "notes": "HTTP API parser, fully functional."}),
+        serde_json::json!({"slug": "bettery", "status": "active", "parser_type": "api", "source": "crates/parsers/src/bettery.rs", "notes": "HTTP API parser, fully functional."}),
+        serde_json::json!({"slug": "marathon", "status": "active", "parser_type": "api", "source": "crates/parsers/src/marathon.rs", "notes": "HTTP API parser, fully functional."}),
+        serde_json::json!({"slug": "leon", "status": "active", "parser_type": "api", "source": "crates/parsers/src/leon.rs", "notes": "HTTP API parser, fully functional."}),
+        serde_json::json!({"slug": "sportbet", "status": "active", "parser_type": "api", "source": "crates/parsers/src/sportbet.rs", "notes": "HTTP API parser, fully functional."}),
+        serde_json::json!({"slug": "bet24", "status": "active", "parser_type": "api", "source": "crates/parsers/src/bet24.rs", "notes": "HTTP API parser, fully functional."}),
+        serde_json::json!({"slug": "winline", "status": "active", "parser_type": "python", "source": "crates/parsers/src/winline.rs", "notes": "Python wrapper via subprocess. Active."}),
+        serde_json::json!({"slug": "zenit", "status": "active", "parser_type": "python", "source": "crates/parsers/src/zenit.rs", "notes": "Python wrapper via subprocess. Active."}),
+        serde_json::json!({"slug": "betcity", "status": "active", "parser_type": "python", "source": "crates/parsers/src/betcity.rs", "notes": "Python wrapper via subprocess. Active."}),
+        serde_json::json!({"slug": "baltbet", "status": "active", "parser_type": "python", "source": "crates/parsers/src/baltbet.rs", "notes": "Python wrapper via subprocess. Active."}),
+        serde_json::json!({"slug": "olimp", "status": "blocked", "parser_type": "api", "source": "crates/parsers/src/olimp.rs", "notes": "Implementation exists, but disabled in factory."})
     ];
 
     let capabilities = vec![
