@@ -98,7 +98,7 @@ impl Default for ScannerConfig {
     fn default() -> Self {
         Self {
             scan_interval_secs: 5,
-            min_profit_percent: 1.0,
+            min_profit_percent: 0.1,
             max_profit_percent: 30.0,
             parallel_parsers: 4,
             request_timeout_secs: 30,

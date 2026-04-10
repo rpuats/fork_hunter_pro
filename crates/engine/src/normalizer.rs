@@ -78,17 +78,47 @@ impl Normalizer {
     }
 
     pub fn normalize_league(&self, league: &str) -> String {
-        let league = league.trim().to_string();
-        match league.to_lowercase().as_str() {
-            "рпл" | "rpl" | "russian premier league" => "Russian Premier League".into(),
-            "апл" | "epl" | "premier league" | "english premier league" => "Premier League".into(),
-            "ла лига" | "la liga" | "primera division" => "La Liga".into(),
-            "бундеслига" | "bundesliga" => "Bundesliga".into(),
-            "серия а" | "serie a" => "Serie A".into(),
-            "лига 1" | "ligue 1" => "Ligue 1".into(),
-            "лч" | "ucl" | "champions league" | "uefa champions league" => "UEFA Champions League".into(),
-            "ле" | "uel" | "europa league" | "uefa europa league" => "UEFA Europa League".into(),
-            _ => league,
+        let lower = league.trim().to_lowercase();
+        match lower.as_str() {
+            // Russian Premier League
+            "рпл" | "rpl" | "russian premier league" | "россия" | "российская премьер-лига" 
+            => "Russian Premier League".into(),
+            
+            // English Premier League  
+            "апл" | "epl" | "premier league" | "english premier league" | "англия"
+            | "английская премьер-лига" | "английская премьер лига"
+            => "Premier League".into(),
+            
+            // Spanish La Liga
+            "ла лига" | "la liga" | "primera division" | "испания" | "примера"
+            => "La Liga".into(),
+            
+            // German Bundesliga
+            "бундеслига" | "bundesliga" | "германия"
+            => "Bundesliga".into(),
+            
+            // Italian Serie A
+            "серия а" | "serie a" | "италия"
+            => "Serie A".into(),
+            
+            // French Ligue 1
+            "лига 1" | "ligue 1" | "франция"
+            => "Ligue 1".into(),
+            
+            // UEFA Champions League
+            "лч" | "ucl" | "champions league" | "uefa champions league" | "лига чемпионов"
+            => "UEFA Champions League".into(),
+            
+            // UEFA Europa League
+            "ле" | "uel" | "europa league" | "uefa europa league" | "лига европы"
+            => "UEFA Europa League".into(),
+            
+            // Russian Cup
+            "кубок россии" | "russian cup"
+            => "Russian Cup".into(),
+            
+            // Fallback: return original trimmed
+            _ => league.trim().to_string(),
         }
     }
 
