@@ -3,6 +3,26 @@ name = "fork_hunter_bin"
 version = "0.1.0"
 edition = "2021"
 
+[[bin]]
+name = "fork_hunter_bin"
+path = "src/main.rs"
+
+[[bin]]
+name = "debug_matching"
+path = "src/debug_matching.rs"
+
+[[bin]]
+name = "check_1x2"
+path = "src/check_1x2.rs"
+
+[[bin]]
+name = "final_check"
+path = "src/final_check.rs"
+
+[[bin]]
+name = "check_fp"
+path = "src/check_fp.rs"
+
 [dependencies]
 shared = { path = "../shared" }
 engine = { path = "../engine" }

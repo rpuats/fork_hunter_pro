@@ -66,6 +66,11 @@ impl SurebetCalculator {
         self.seen_surebets.write().set(&key);
     }
 
+    pub fn is_seen(&self, surebet: &Surebet) -> bool {
+        let key = self.surebet_key(surebet);
+        self.seen_surebets.read().check(&key)
+    }
+
     pub fn cache_odds(&self, event_id: &str, odds: Vec<Odd>) {
         self.recent_events.insert(event_id.to_string(), odds);
     }

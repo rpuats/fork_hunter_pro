@@ -2,45 +2,72 @@
 
 ## 🏆 GHOST IMPERIUM (РФ БК Сканер) — СТАТУС
 
-**Статус**: ~75% готовности к v1.0
-**Рабочих БК**: 7/7 (Winline, Pari, Betcity, Marathon, Zenit, Baltbet, Bettery)
-**Тесты**: 431 passed, 0 failed, 3.88s
-**Цикл сканирования**: 0.62s (цель <15s — ПРЕВЫШЕНА в 24x!)
-**Stealth Score**: 8/10 (было 2/10)
-**Найдено идей**: 31 (L6 Architect в infinite loop)
+**Статус**: v0.1.0 — SCANNER OPERATIONAL ✅
+**Рабочих БК (Rust)**: 7/7 (Pari, Fonbet, Bettery, Marathon, 24bet, Leon, Sportbet)
+**Рабочих БК (Legacy Python)**: 7/7 (Winline, Pari, Betcity, Marathon, Zenit, Baltbet, Bettery)
+**Тесты**: 91 passed, 0 failed ✅
+**Cross-BK Match Rate**: 97.5% (3832/3928 events) ✅
+**Вилок найдено**: 0 (рынок эффективен — маржа 6-12%, это НОРМА)
+**Цикл сканирования**: ~30 секунд
+**Мин. прибыль**: 0.1% (понижено для тестов, было 1.0%)
 
-### Модули созданы:
-- `scanner/parsers/stealth.py` — общий stealth (UA/viewport/WebGL/proxy)
-- `core/freebet_hunter.py` — фрибет-хантер (7 РФ БК)
-- `core/generosity_index.py` — индекс щедрости БК
-- `core/momentum_scanner.py` — ловля вилок во время событий
-- `core/odds_verifier.py` — проверка вилок перед уведомлением
-- `core/mirror_detector.py` — обнаружение зеркальных линий
-- `core/odds_error_detector.py` — обнаружение ошибочных коэффициентов
-- `core/surebet_history.py` — история и аналитика вилок
+### 🔧 Исправления (10.04.2026):
+1. ✅ **Баг калькулятора** — `group_by_market()` не группировал Over/Under вместе
+2. ✅ **Баг 24bet парсера** — `Sport::Other` вместо `Sport::Football`
+3. ✅ **Нормализация лиг** — добавлены "АПЛ", "Английская Премьер-Лига", и др.
+4. ✅ **Fingerprint v2** — использует Normalizer + включает лигу
+5. ✅ **9 диагностических тестов** — `cross_bk_matching` suite
 
-### API Endpoints:
-- GET `/api/v1/freebets` — фрибет-вилки
-- GET `/api/v1/freebets/surebets` — оптимизированные вилки под фрибеты
-- GET `/api/v1/analytics/generosity` — индекс щедрости БК
-- GET `/api/v1/surebet-history` — история вилок
+### Диагностика:
+- **См.:** `DIAGNOSTIC_REPORT.md` — полный отчёт
+- **См.:** `FIXES_2026_04_10.md` — детали исправлений
+- **См.:** `crates/engine/tests/cross_bk_matching.rs` — тесты матчинга
 
-### Парсеры:
+### Модули Rust (продакшн):
+- ✅ `crates/engine/calculator.rs` — калькулятор вилок (8 тестов)
+- ✅ `crates/engine/normalizer.rs` — нормализатор (6 тестов)
+- ✅ `crates/engine/event_pool.rs` — пул событий
+- ✅ `crates/engine/freebet.rs` — фрибет-хантер
+- ✅ `crates/engine/generosity.rs` — индекс щедрости
+- ✅ `crates/engine/mirror.rs` — детектор зеркальных линий
+- ✅ `crates/engine/momentum.rs` — ловля вилок во время событий
+- ✅ `crates/engine/verifier.rs` — верификатор вилок
+- ✅ `crates/engine/odds_errors.rs` — детектор ошибок в кэфах
+- ✅ `crates/engine/value.rs` — детектор value ставок
+- ✅ `crates/engine/corridor.rs` — коридоры
+
+### Скраперы Rust:
 | БК | Статус | События | Файл |
 |----|--------|---------|------|
-| Winline | ✅ | 39-58 | winline_playwright.py |
-| Pari | ✅ | 34-52 (5/10 с тоталами) | pari_playwright.py |
-| Betcity | ✅ | 311-373 | betcity_playwright.py |
-| Marathon | ✅ | 11-14 | marathon_playwright.py |
-| Zenit | ✅ | 32-83 | zenit_playwright.py |
-| Baltbet | ✅ | 126-161 | baltbet_playwright.py |
-| Bettery | ✅ | 4-10 | bettery_playwright.py |
-| Melbet | ❌ | BLOCKED (SPA/WebSocket) | melbet_intercept.py |
-| Pinnacle | ❌ | BLOCKED (geo) | pinnacle_parser.py |
-| Tennisi | ❌ | Timeout | tennisi_playwright.py |
-| Bet-M | ❌ | Timeout | betm_playwright.py |
-| Olimp/OlimpBet | ❌ | SPA | olimp_parser.py |
-| BetBoom | ❌ | Headless detection | betboom_playwright.py |
+| Pari | ✅ | ~6600 | pari.rs |
+| Fonbet | ✅ | ~6800 | fonbet.rs |
+| Bettery | ✅ | ~6800 | bettery.rs |
+| Marathon | ✅ | ~6500 | marathon.rs |
+| 24bet | ✅ (fixed) | ~6500 | bet24.rs |
+| Leon | ✅ | ~3600 | leon.rs |
+| Sportbet | ✅ | ~250 | sportbet.rs |
+| Olimp | ⚠️ blocked | — | olimp.rs |
+| Winline | ❌ not_ported | — | legacy/python |
+| Betcity | ❌ not_ported | — | legacy/python |
+| Zenit | ❌ not_ported | — | legacy/python |
+| Baltbet | ❌ not_ported | — | legacy/python |
+
+### API Endpoints:
+- GET `/api/v1/health` — проверка здоровья
+- GET `/api/v1/metrics` — метрики сканнера
+- GET `/api/v1/scanner/status` — статус сканнера
+- GET `/api/v1/surebets` — вилки
+- GET `/api/v1/freebets` — фрибеты
+- GET `/api/v1/bookmakers` — список БК
+- GET `/api/v1/analytics/generosity` — индекс щедрости
+- GET `/api/v1/corridors` — коридоры
+- GET `/api/v1/express-forks` — экспресс-вилки
+- GET `/api/v1/capabilities` — возможности системы
+- GET `/ws` — WebSocket
+
+### Desktop UI (React):
+- ✅ `desktop-ui/` — 6 страниц, mock данные
+- ⏳ Подключение к реальному pipeline — СЛЕДУЮЩИЙ ШАГ
 
 ---
 

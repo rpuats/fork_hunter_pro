@@ -30,7 +30,7 @@ async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "fork_hunter=info,tower_http=info".into()),
+                .unwrap_or_else(|_| "fork_hunter=info,scanner=info,engine=info,parsers=info,tower_http=info".into()),
         )
         .init();
 
@@ -95,6 +95,38 @@ async fn main() -> anyhow::Result<()> {
     let history = SurebetHistory::new(&config.database.url).await?;
     let history = Arc::new(history);
 
+    // Telegram bot (optional — запускается если есть токен в конфиге)
+    let telegram_handle = if let Some(token) = std::env::var("TELEGRAM_BOT_TOKEN").ok() {
+        let admin_chats: Vec<i64> = std::env::var("TELEGRAM_ADMIN_CHATS")
+            .unwrap_or_default()
+            .split(',')
+            .filter_map(|s| s.trim().parse().ok())
+            .collect();
+
+        if !admin_chats.is_empty() {
+            let bot = Arc::new(bot::telegram::TelegramBot::new(
+                &token,
+                admin_chats,
+                config.scanner.min_profit_percent,
+                false,
+            ));
+            tracing::info!("Telegram bot starting...");
+            Some(bot.spawn())
+        } else {
+            tracing::warn!("TELEGRAM_ADMIN_CHATS not set, bot will only respond to commands");
+            let bot = Arc::new(bot::telegram::TelegramBot::new(
+                &token,
+                vec![],
+                config.scanner.min_profit_percent,
+                false,
+            ));
+            Some(bot.spawn())
+        }
+    } else {
+        tracing::info!("TELEGRAM_BOT_TOKEN not set, skipping Telegram bot");
+        None
+    };
+
     let scanner = Arc::new(GhostScanner::new(
         parsers,
         calculator,
@@ -148,6 +180,11 @@ async fn main() -> anyhow::Result<()> {
 
     scanner_runner.stop();
     scanner_handle.abort();
+
+    if let Some(handle) = telegram_handle {
+        handle.abort();
+        tracing::info!("Telegram bot stopped");
+    }
 
     tracing::info!("Ghost Imperium shut down gracefully");
     Ok(())

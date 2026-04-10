@@ -74,8 +74,22 @@ impl TelegramBot {
 
     /// Запуск бота в отдельном tokio task — НЕ блокирует вызывающий код
     pub fn spawn(self: std::sync::Arc<Self>) -> tokio::task::JoinHandle<()> {
+        let admin_chats = self.admin_chats.clone();
+        let min_profit = self.min_profit;
+        let bot = self.bot.clone();
+
         tokio::spawn(async move {
-            let bot = self.bot.clone();
+            // Try to get bot info first — don't panic if token is invalid
+            match bot.get_me().await {
+                Ok(me) => {
+                    let username = me.username.clone().unwrap_or_else(|| "unknown".to_string());
+                    info!("Telegram bot authorized as @{}", username);
+                }
+                Err(e) => {
+                    error!("Telegram bot failed to start — check TELEGRAM_BOT_TOKEN: {}", e);
+                    return;
+                }
+            }
 
             let handler = |msg: Message, bot: Bot| async move {
                 if let Some(text) = msg.text() {
@@ -101,6 +115,7 @@ impl TelegramBot {
                 Ok(())
             };
 
+            let _ = (admin_chats, min_profit); // Used by notify_surebet
             info!("Telegram bot starting (async spawn mode)...");
             teloxide::repl(bot, handler).await;
             info!("Telegram bot stopped");

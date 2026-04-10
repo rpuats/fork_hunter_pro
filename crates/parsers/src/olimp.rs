@@ -24,15 +24,6 @@ impl OlimpParser {
             base_api_url: "https://www.olimp.bet/api/v4".to_string(),
         }
     }
-
-    /// Sport IDs for Olimp
-    const SPORT_IDS: &'static [(u32, &str)] = &[
-        (1, "football"),
-        (2, "basketball"),
-        (3, "hockey"),
-        (4, "tennis"),
-        (5, "volleyball"),
-    ];
 }
 
 #[async_trait]
@@ -43,12 +34,10 @@ impl BookmakerParser for OlimpParser {
 
     async fn fetch_events(&self) -> Result<Vec<Event>, Box<dyn std::error::Error + Send + Sync>> {
         let mut all_events = Vec::new();
-        for (sport_id, _) in Self::SPORT_IDS {
-            for is_live in [true, false] {
-                match self.fetch_sport(*sport_id, is_live).await {
-                    Ok((events, _)) => all_events.extend(events),
-                    Err(e) => warn!(error = %e, "Olimp fetch events failed"),
-                }
+        for (section, is_live) in [("live", true), ("line/top", false)] {
+            match self.fetch_section(section, is_live).await {
+                Ok((events, _)) => all_events.extend(events),
+                Err(e) => warn!(error = %e, "Olimp fetch events failed"),
             }
         }
         info!(count = all_events.len(), "Olimp events parsed");
@@ -57,12 +46,10 @@ impl BookmakerParser for OlimpParser {
 
     async fn fetch_odds(&self, _event_id: &str) -> Result<Vec<Odd>, Box<dyn std::error::Error + Send + Sync>> {
         let mut all_odds = Vec::new();
-        for (sport_id, _) in Self::SPORT_IDS {
-            for is_live in [true, false] {
-                match self.fetch_sport(*sport_id, is_live).await {
-                    Ok((_, odds)) => all_odds.extend(odds),
-                    Err(e) => warn!(error = %e, "Olimp fetch odds failed"),
-                }
+        for (section, is_live) in [("live", true), ("line/top", false)] {
+            match self.fetch_section(section, is_live).await {
+                Ok((_, odds)) => all_odds.extend(odds),
+                Err(e) => warn!(error = %e, "Olimp fetch odds failed"),
             }
         }
         Ok(all_odds)
@@ -73,33 +60,18 @@ impl BookmakerParser for OlimpParser {
         let mut all_events = Vec::new();
         let mut all_odds = Vec::new();
 
-        // Fetch all sports in parallel
-        let mut futures = Vec::new();
-        for (sport_id, _) in Self::SPORT_IDS {
-            for is_live in [true, false] {
-                let sport_id = *sport_id;
-                let client = self.client.clone();
-                let base_api_url = self.base_api_url.clone();
-                futures.push(tokio::spawn(async move {
-                    OlimpParser::fetch_sport_static(&client, &base_api_url, sport_id, is_live).await
-                }));
-            }
-        }
+        // Fetch live and prematch in parallel
+        let live_fut = self.fetch_section("live", true);
+        let prematch_fut = self.fetch_section("line/top", false);
+        let (live_res, prematch_res) = tokio::join!(live_fut, prematch_fut);
 
-        let results = futures::future::join_all(futures).await;
-        for result in results {
-            match result {
-                Ok(Ok((events, odds))) => {
-                    all_events.extend(events);
-                    all_odds.extend(odds);
-                }
-                Ok(Err(e)) => {
-                    warn!(error = %e, "Olimp sport fetch failed");
-                }
-                Err(e) => {
-                    warn!(error = %e, "Olimp task failed");
-                }
-            }
+        if let Ok((events, odds)) = live_res {
+            all_events.extend(events);
+            all_odds.extend(odds);
+        }
+        if let Ok((events, odds)) = prematch_res {
+            all_events.extend(events);
+            all_odds.extend(odds);
         }
 
         let elapsed = start.elapsed().as_millis() as u64;
@@ -112,41 +84,29 @@ impl BookmakerParser for OlimpParser {
 }
 
 impl OlimpParser {
-    async fn fetch_sport(&self, sport_id: u32, is_live: bool) -> Result<(Vec<Event>, Vec<Odd>), Box<dyn std::error::Error + Send + Sync>> {
-        Self::fetch_sport_static(&self.client, &self.base_api_url, sport_id, is_live).await
-    }
+    async fn fetch_section(&self, section: &str, is_live: bool) -> Result<(Vec<Event>, Vec<Odd>), Box<dyn std::error::Error + Send + Sync>> {
+        // CRITICAL: Olimp uses /v4/0/ which returns ALL sports at once
+        let url = format!("{}/v4/0/{}/sports-with-competitions-with-events?vids%5B%5D=", self.base_api_url, section);
 
-    async fn fetch_sport_static(
-        client: &Arc<Client>,
-        base_api_url: &str,
-        sport_id: u32,
-        is_live: bool,
-    ) -> Result<(Vec<Event>, Vec<Odd>), Box<dyn std::error::Error + Send + Sync>> {
-        let section = if is_live { "live" } else { "line" };
-        let top = if is_live { "" } else { "/top" };
-        let url = format!("{}/{}/{}{}/sports-with-competitions-with-events?vids%5B%5D=", base_api_url, sport_id, section, top);
+        debug!(url = url, "Olimp: fetching section");
 
-        debug!(url = url, "Olimp: fetching");
-
-        let resp = client.get(&url)
+        let resp = self.client.get(&url)
             .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
             .header("Accept", "application/json, text/plain, */*")
             .header("Accept-Language", "ru-RU,ru;q=0.9")
             .header("Referer", "https://www.olimp.bet/")
-            .header("Accept-Encoding", "identity")
-            .timeout(Duration::from_secs(20))
+            .timeout(Duration::from_secs(30))
             .send()
             .await?;
 
         if !resp.status().is_success() {
-            debug!(status = %resp.status(), sport = sport_id, "Olimp: API failed");
+            debug!(status = %resp.status(), "Olimp: API failed");
             return Ok((Vec::new(), Vec::new()));
         }
 
         let text = resp.text().await?;
         debug!(response_length = text.len(), "Olimp: received data");
-        
-        // Try to parse as JSON
+
         let json: serde_json::Value = match serde_json::from_str(&text) {
             Ok(j) => j,
             Err(e) => {
@@ -154,19 +114,20 @@ impl OlimpParser {
                 return Ok((Vec::new(), Vec::new()));
             }
         };
-        Self::parse_api_response(&json, sport_id, is_live)
+
+        // Parse ALL sports from this single response
+        Self::parse_api_response_all_sports(&json, is_live)
     }
 
-    fn parse_api_response(
+    fn parse_api_response_all_sports(
         json: &serde_json::Value,
-        sport_id: u32,
         is_live: bool,
     ) -> Result<(Vec<Event>, Vec<Odd>), Box<dyn std::error::Error + Send + Sync>> {
         let mut events = Vec::new();
         let mut all_odds = Vec::new();
         let now = Utc::now();
 
-        // API returns array of sport objects: [{ payload: { sport: {...}, competitionsWithEvents: [...] } }]
+        // API returns array of sport objects: [{ operationId, payload: { sport: {...}, competitionsWithEvents: [...] } }]
         let sports_array = match json.as_array() {
             Some(a) => a,
             None => return Ok((Vec::new(), Vec::new())),
@@ -176,6 +137,27 @@ impl OlimpParser {
             let payload = match sport_obj.get("payload") {
                 Some(p) => p,
                 None => continue,
+            };
+
+            let sport_info = payload.get("sport").unwrap_or(&serde_json::Value::Null);
+            let sport_id = sport_info.get("id").and_then(|v| v.as_str()).unwrap_or("0");
+            let sport_name = sport_info.get("name").or_else(|| sport_info.get("names").and_then(|n| n.get("0")))
+                .and_then(|v| v.as_str()).unwrap_or("");
+
+            let sport = match sport_id {
+                "1" | "3" => Sport::Football,
+                "2" => Sport::Basketball,
+                "4" => Sport::Hockey,
+                "5" => Sport::Tennis,
+                "6" => Sport::Volleyball,
+                "7" => Sport::TableTennis,
+                "8" => Sport::Baseball,
+                "9" => Sport::Handball,
+                "10" => Sport::Badminton,
+                "11" => Sport::WaterPolo,
+                "12" => Sport::Cricket,
+                "13" => Sport::Darts,
+                _ => Sport::Other,
             };
 
             let competitions = match payload.get("competitionsWithEvents").and_then(|c| c.as_array()) {
@@ -194,12 +176,11 @@ impl OlimpParser {
                         };
 
                         let event_key = format!("olimp-{}", event_id);
-                        let sport = Self::sport_id_to_sport(sport_id);
 
                         let event = Event {
                             id: event_key.clone(),
                             sport,
-                            league: league_name.to_string(),
+                            league: if !league_name.is_empty() { league_name.to_string() } else { sport_name.to_string() },
                             home_team: home.clone(),
                             away_team: away.clone(),
                             start_time: None,
@@ -246,7 +227,7 @@ impl OlimpParser {
             }
         }
 
-        debug!(sport = sport_id, events = events.len(), odds = all_odds.len(), "Olimp: parsed");
+        debug!(sports = sports_array.len(), events = events.len(), odds = all_odds.len(), "Olimp: parsed");
         Ok((events, all_odds))
     }
 
@@ -273,17 +254,6 @@ impl OlimpParser {
             "ТМ" | "TM" | "under" | "меньше" => OddsType::Under,
             "Ф1" | "Ф2" | "handicap" => OddsType::Handicap,
             _ => OddsType::Custom,
-        }
-    }
-
-    fn sport_id_to_sport(id: u32) -> Sport {
-        match id {
-            1 => Sport::Football,
-            2 => Sport::Basketball,
-            3 => Sport::Hockey,
-            4 => Sport::Tennis,
-            5 => Sport::Volleyball,
-            _ => Sport::Football,
         }
     }
 }

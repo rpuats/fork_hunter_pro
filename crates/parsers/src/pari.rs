@@ -217,12 +217,41 @@ impl PariParser {
 
     fn factor_to_market(fid: u64) -> (String, String, OddsType) {
         match fid {
+            // 1X2
             921 => ("1X2".into(), "1".into(), OddsType::Home),
             922 => ("1X2".into(), "X".into(), OddsType::Draw),
             923 => ("1X2".into(), "2".into(), OddsType::Away),
+            // Totals
             930 => ("Total".into(), "Over".into(), OddsType::Over),
             931 => ("Total".into(), "Under".into(), OddsType::Under),
-            910 | 912 => ("Handicap".into(), "1".into(), OddsType::Handicap),
+            924 | 1002 | 1010 | 1054 => ("Total".into(), "Over".into(), OddsType::Over),
+            925 | 1003 | 1011 | 1055 => ("Total".into(), "Under".into(), OddsType::Under),
+            // Handicaps
+            910 | 912 | 1004 | 1006 | 1012 => ("Handicap".into(), "1".into(), OddsType::Handicap),
+            1005 | 1013 => ("Handicap".into(), "2".into(), OddsType::Handicap),
+            // BTTS (Both Teams Score)
+            926 => ("BTTS".into(), "Yes".into(), OddsType::Custom),
+            927 => ("BTTS".into(), "No".into(), OddsType::Custom),
+            // Even/Odd
+            928 => ("EvenOdd".into(), "Even".into(), OddsType::Custom),
+            929 => ("EvenOdd".into(), "Odd".into(), OddsType::Custom),
+            // Double Chance
+            1014 => ("DoubleChance".into(), "1X".into(), OddsType::Custom),
+            1015 => ("DoubleChance".into(), "12".into(), OddsType::Custom),
+            1016 => ("DoubleChance".into(), "X2".into(), OddsType::Custom),
+            // Individual Totals (ИТБ/ИТМ)
+            1020 | 1022 | 1024 => ("IndividualTotal".into(), "Over".into(), OddsType::Over),
+            1021 | 1023 | 1025 => ("IndividualTotal".into(), "Under".into(), OddsType::Under),
+            // 1H/2H Results
+            1030 => ("1H_Result".into(), "1".into(), OddsType::Home),
+            1031 => ("1H_Result".into(), "X".into(), OddsType::Draw),
+            1032 => ("1H_Result".into(), "2".into(), OddsType::Away),
+            1033 => ("2H_Result".into(), "1".into(), OddsType::Home),
+            1034 => ("2H_Result".into(), "X".into(), OddsType::Draw),
+            1035 => ("2H_Result".into(), "2".into(), OddsType::Away),
+            // Correct Score (partial)
+            1040..=1050 => ("CorrectScore".into(), format!("score_{}", fid), OddsType::Custom),
+            // Fallback
             _ => (format!("factor_{}", fid), format!("{}", fid), OddsType::Custom),
         }
     }

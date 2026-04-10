@@ -17,6 +17,7 @@ pub mod fonbet;
 pub mod leon;
 pub mod olimp;
 pub mod sportbet;
+pub mod bet24;
 
 pub use base::BookmakerParser;
 pub use parser_factory::ParserFactory;
