@@ -1,5 +1,5 @@
 use chrono::Utc;
-use shared::{BonusInfo, BonusPlan, BonusStep, BonusStatus, BonusStepStatus};
+use shared::{BonusInfo, BonusPlan, BonusStatus, BonusStep, BonusStepStatus};
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -23,7 +23,12 @@ impl BonusPlanner {
         let steps: Vec<BonusStep> = (0..total_steps)
             .map(|i| BonusStep {
                 step_number: i + 1,
-                description: format!("Step {}/{}: Place bet with odds >= {:.2}", i + 1, total_steps, bonus.min_odds),
+                description: format!(
+                    "Step {}/{}: Place bet with odds >= {:.2}",
+                    i + 1,
+                    total_steps,
+                    bonus.min_odds
+                ),
                 market: "1X2".into(),
                 selection: "Value bet".into(),
                 bookmaker: bonus.bookmaker.clone(),
@@ -47,7 +52,8 @@ impl BonusPlanner {
             status: BonusStatus::Claimed,
         };
 
-        self.active_plans.insert(bonus.bookmaker.clone(), plan.clone());
+        self.active_plans
+            .insert(bonus.bookmaker.clone(), plan.clone());
         plan
     }
 
@@ -64,7 +70,8 @@ impl BonusPlanner {
                 plan.status = BonusStatus::Completed;
             }
 
-            let completed_steps = (plan.progress_percent / 100.0 * plan.steps.len() as f64) as usize;
+            let completed_steps =
+                (plan.progress_percent / 100.0 * plan.steps.len() as f64) as usize;
             for (i, step) in plan.steps.iter_mut().enumerate() {
                 if i < completed_steps {
                     step.status = BonusStepStatus::Won;
@@ -77,7 +84,9 @@ impl BonusPlanner {
 
     pub fn get_next_step(&self, bookmaker: &str) -> Option<&BonusStep> {
         self.active_plans.get(bookmaker).and_then(|plan| {
-            plan.steps.iter().find(|s| matches!(s.status, BonusStepStatus::Pending))
+            plan.steps
+                .iter()
+                .find(|s| matches!(s.status, BonusStepStatus::Pending))
         })
     }
 
@@ -126,9 +135,9 @@ mod tests {
     fn test_create_plan() {
         let mut planner = BonusPlanner::new();
         let bonus = make_test_bonus("pari", 5000.0, 5.0);
-        
+
         let plan = planner.create_plan(&bonus);
-        
+
         assert_eq!(plan.bookmaker, "pari");
         assert_eq!(plan.bonus_amount, 5000.0);
         assert_eq!(plan.wager_required, 25000.0); // 5000 * 5
@@ -145,7 +154,7 @@ mod tests {
 
         planner.update_progress("marathon", 1500.0);
         let plan = planner.get_plan("marathon").unwrap();
-        
+
         assert_eq!(plan.wager_done, 1500.0);
         assert_eq!(plan.wager_required, 3000.0);
         assert!((plan.progress_percent - 50.0).abs() < 0.1);
@@ -159,7 +168,7 @@ mod tests {
 
         planner.update_progress("winline", 4000.0); // 2000 * 2 = 4000
         let plan = planner.get_plan("winline").unwrap();
-        
+
         assert_eq!(plan.status, BonusStatus::Completed);
         assert!((plan.progress_percent - 100.0).abs() < 0.1);
     }
@@ -195,7 +204,7 @@ mod tests {
         // Переусердствуем — больше чем требуется
         planner.update_progress("bk1", 5000.0);
         let plan = planner.get_plan("bk1").unwrap();
-        
+
         assert_eq!(plan.progress_percent, 100.0);
         assert_eq!(plan.status, BonusStatus::Completed);
     }

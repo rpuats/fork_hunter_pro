@@ -1,0 +1,15 @@
+{
+  "bk": "sportbet",
+  "timestamp": "20260411_173214",
+  "total_endpoints": 8,
+  "endpoints": [
+    "https://sportbet.ru/sport/v1/settings?playerId=GUEST",
+    "https://sportbet.ru/sport/v1/rules",
+    "https://sportbet.ru/sport/v1/left-panel",
+    "https://sportbet.ru/pa/api/tpl/usedesk",
+    "https://sportbet.ru/sport/v1/header",
+    "https://sportbet.ru/sport/v1/page/home",
+    "https://sportbet.ru/pa/api/settings",
+    "https://sportbet.ru/legal/api/settings/index.php"
+  ]
+}

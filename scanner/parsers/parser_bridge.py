@@ -129,9 +129,9 @@ async def run_parser(parser_name, url):
                 events = await parser.get_events()
                 log(f"Got {len(events)} events")
         elif parser_name == 'baltbet':
-            from scanner.parsers.baltbet_playwright import BaltbetPlaywrightParser
-            log("Imported BaltbetPlaywrightParser")
-            async with BaltbetPlaywrightParser() as parser:
+            from scanner.parsers.baltbet_playwright import BaltbetRegexParser
+            log("Imported BaltbetRegexParser")
+            async with BaltbetRegexParser() as parser:
                 parser.urls = [url]
                 events = await parser.get_events()
                 log(f"Got {len(events)} events")

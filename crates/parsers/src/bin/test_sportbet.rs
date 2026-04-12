@@ -1,5 +1,5 @@
-use parsers::sportbet::SportbetParser;
 use parsers::base::BookmakerParser;
+use parsers::sportbet::SportbetParser;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -26,7 +26,8 @@ async fn main() {
             println!("Время: {}ms\n", elapsed);
 
             // Группировка по видам спорта
-            let mut by_sport: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+            let mut by_sport: std::collections::HashMap<String, usize> =
+                std::collections::HashMap::new();
             for e in &result.events {
                 let s = format!("{:?}", e.sport);
                 *by_sport.entry(s).or_insert(0) += 1;
@@ -38,8 +39,10 @@ async fn main() {
 
             println!("\nПервые 5 событий:");
             for event in result.events.iter().take(5) {
-                println!("  > {} vs {} (L: {}, Sport: {:?})",
-                    event.home_team, event.away_team, event.league, event.sport);
+                println!(
+                    "  > {} vs {} (L: {}, Sport: {:?})",
+                    event.home_team, event.away_team, event.league, event.sport
+                );
             }
 
             println!("\nПервые 5 коэффициентов:");

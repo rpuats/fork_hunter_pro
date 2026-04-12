@@ -50,6 +50,28 @@ Scope Market IDs:
 ### Winline
 Использует Playwright для рендеринга SPA.
 
+### Liga Stavok
+Защищён QRATOR и использует POST API на `lds-api-sites.ligastavok.ru`.
+
+Известные рабочие точки discovery:
+```
+https://lds-api-sites.ligastavok.ru/rest/events/v8/eventsList
+https://lds-api-sites.ligastavok.ru/rest/events/v8/actionLines
+https://lds-api-sites.ligastavok.ru/rest/events/v8/tournamentTree
+https://lds-api-sites.ligastavok.ru/rest/events/v2/filter
+```
+
+Специальный discovery helper:
+```bash
+python tools/ligastavok_discovery.py
+python tools/ligastavok_discovery.py --headless
+```
+
+Полезные артефакты:
+- `tools/ligastavok_discovery_config.json` — известные endpoint/payload hints
+- `ligastavok_cookies.json` — можно подать в helper для повторного запуска
+- `network_capture/ligastavok_network.json` — эталонный захват с живыми ответами
+
 ### Zenit / Betcity / Baltbet
 Требуют обнаружения актуальных API URL.
 

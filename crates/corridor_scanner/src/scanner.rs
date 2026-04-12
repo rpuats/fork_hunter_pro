@@ -24,7 +24,8 @@ impl CorridorScanner {
     pub fn scan(&self, _events: &[Event], all_odds: &[Odd]) -> Vec<CorridorOpportunity> {
         let mut corridors = CorridorCalculator::find_corridors(all_odds, self.min_corridor_size);
 
-        let ah_corridors = CorridorCalculator::find_asian_handicap_corridors(all_odds, self.min_corridor_size);
+        let ah_corridors =
+            CorridorCalculator::find_asian_handicap_corridors(all_odds, self.min_corridor_size);
         corridors.extend(ah_corridors);
 
         corridors.retain(|c| {

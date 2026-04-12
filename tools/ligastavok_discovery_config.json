@@ -1,0 +1,39 @@
+{
+  "bookmaker": "ligastavok",
+  "base_url": "https://www.ligastavok.ru",
+  "page_targets": [
+    "https://www.ligastavok.ru/live/football",
+    "https://www.ligastavok.ru/line/football"
+  ],
+  "api_hosts": [
+    "https://lds-api-sites.ligastavok.ru",
+    "https://api.ligastavok.ru",
+    "https://static-cdn.sportsapi.ru"
+  ],
+  "priority_endpoints": {
+    "events_list": "https://lds-api-sites.ligastavok.ru/rest/events/v8/eventsList",
+    "action_lines": "https://lds-api-sites.ligastavok.ru/rest/events/v8/actionLines",
+    "filter": "https://lds-api-sites.ligastavok.ru/rest/events/v2/filter",
+    "tournament_tree": "https://lds-api-sites.ligastavok.ru/rest/events/v8/tournamentTree"
+  },
+  "required_headers": {
+    "x-application-name": "mobile",
+    "content-type": "application/json"
+  },
+  "notes": [
+    "QRATOR gate is active on both site and API hosts.",
+    "Request body capture matters because key sportsbook endpoints are POST-based.",
+    "eventsList is the primary parser target; tournamentTree and filter should be used for sport/tournament discovery."
+  ],
+  "default_probe_payload": {
+    "gameId": [],
+    "limit": 200,
+    "skip": 0,
+    "topEvents": false,
+    "view": "priority",
+    "widgetVideo": false,
+    "proposedTypes": [
+      "MAINOFFER"
+    ]
+  }
+}

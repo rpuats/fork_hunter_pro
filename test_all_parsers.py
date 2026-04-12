@@ -14,7 +14,7 @@ PARSERS_TO_TEST = [
     ('Pari', 'scanner.parsers.pari_playwright.PariPlaywrightParser'),
     ('Betcity', 'scanner.parsers.betcity_playwright.BetcityPlaywrightParser'),
     ('Marathon', 'scanner.parsers.marathon_playwright.MarathonPlaywrightParser'),
-    ('Zenit', 'scanner.parsers.zenit_playwright.ZenitPlaywrightParser'),
+    ('Zenit', 'scanner.parsers.zenit_parser.ZenitParser'),
     ('Leon', 'scanner.parsers.leon_api.LeonParser'),
 ]
 

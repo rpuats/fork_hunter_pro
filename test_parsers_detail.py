@@ -4,7 +4,7 @@ import traceback
 sys.path.insert(0, '.')
 
 from scanner.parsers import (
-    BaltbetPlaywrightParser,
+    BaltbetRegexParser,
     BetteryPlaywrightParser,
     BetcityPlaywrightParser,
     MarathonPlaywrightParser,
@@ -27,7 +27,7 @@ async def test_parser(name, parser):
 
 async def main():
     parsers = [
-        ('Baltbet', BaltbetPlaywrightParser()),
+        ('Baltbet', BaltbetRegexParser()),
         ('Bettery', BetteryPlaywrightParser()),
         ('Betcity', BetcityPlaywrightParser()),
         ('Marathon', MarathonPlaywrightParser()),

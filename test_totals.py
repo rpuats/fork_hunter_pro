@@ -4,8 +4,8 @@ import logging
 logging.basicConfig(level=logging.WARNING)
 
 async def test():
-    from scanner.parsers import ZenitPlaywrightParser, BaltbetPlaywrightParser, BetcityPlaywrightParser
-    for name, cls in [('Zenit', ZenitPlaywrightParser), ('Baltbet', BaltbetPlaywrightParser), ('Betcity', BetcityPlaywrightParser)]:
+    from scanner.parsers import ZenitPlaywrightParser, BaltbetRegexParser, BetcityPlaywrightParser
+    for name, cls in [('Zenit', ZenitPlaywrightParser), ('Baltbet', BaltbetRegexParser), ('Betcity', BetcityPlaywrightParser)]:
         p = cls()
         try:
             events = await asyncio.wait_for(p.get_events(), timeout=60)

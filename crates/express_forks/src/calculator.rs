@@ -42,7 +42,11 @@ impl ExpressForkCalculator {
             }
         }
 
-        forks.sort_by(|a, b| b.profit_percent.partial_cmp(&a.profit_percent).unwrap_or(std::cmp::Ordering::Equal));
+        forks.sort_by(|a, b| {
+            b.profit_percent
+                .partial_cmp(&a.profit_percent)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         forks
     }
 
@@ -56,7 +60,8 @@ impl ExpressForkCalculator {
             .iter()
             .filter_map(|eid| {
                 odds_by_event.get(**eid).and_then(|odds| {
-                    odds.iter().max_by(|a, b| a.odds.partial_cmp(&b.odds).unwrap())
+                    odds.iter()
+                        .max_by(|a, b| a.odds.partial_cmp(&b.odds).unwrap())
                         .map(|o| o.odds)
                 })
             })
@@ -72,7 +77,8 @@ impl ExpressForkCalculator {
 
         for eid in &event_ids {
             if let Some(odds) = odds_by_event.get(**eid) {
-                let best_lay = odds.iter()
+                let best_lay = odds
+                    .iter()
                     .min_by(|a, b| a.odds.partial_cmp(&b.odds).unwrap());
 
                 if let Some(lay) = best_lay {
@@ -92,7 +98,11 @@ impl ExpressForkCalculator {
             return None;
         }
 
-        let min_lay = lay_legs.iter().map(|(_, o, _, _, _, _)| *o).min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap();
+        let min_lay = lay_legs
+            .iter()
+            .map(|(_, o, _, _, _, _)| *o)
+            .min_by(|a, b| a.partial_cmp(b).unwrap())
+            .unwrap();
         let lay_total = min_lay.powi(event_ids.len() as i32);
 
         let inverse_sum = (1.0 / express_total) + (1.0 / lay_total);
@@ -135,18 +145,22 @@ impl ExpressForkCalculator {
 
                 legs.push(ExpressForkLeg {
                     bookmaker: lay_legs[0].0.clone(),
-                    event: events.iter().find(|e| e.id == lay_legs[0].4).cloned().unwrap_or_else(|| Event {
-                        id: lay_legs[0].4.clone(),
-                        sport: shared::Sport::Football,
-                        league: String::new(),
-                        home_team: String::new(),
-                        away_team: String::new(),
-                        start_time: None,
-                        is_live: false,
-                        bookmaker_slug: lay_legs[0].0.clone(),
-                        raw_url: None,
-                        extra: Default::default(),
-                    }),
+                    event: events
+                        .iter()
+                        .find(|e| e.id == lay_legs[0].4)
+                        .cloned()
+                        .unwrap_or_else(|| Event {
+                            id: lay_legs[0].4.clone(),
+                            sport: shared::Sport::Football,
+                            league: String::new(),
+                            home_team: String::new(),
+                            away_team: String::new(),
+                            start_time: None,
+                            is_live: false,
+                            bookmaker_slug: lay_legs[0].0.clone(),
+                            raw_url: None,
+                            extra: Default::default(),
+                        }),
                     market: lay_legs[0].2.clone(),
                     selection: lay_legs[0].3.clone(),
                     odds: lay_total,

@@ -40,26 +40,36 @@ impl MarathonParser {
     }
 
     /// Fetch events and odds from HTTP API
-    async fn fetch_via_browser(&self, _url: &str, is_live: bool) -> Result<Vec<(Event, Vec<Odd>)>, Box<dyn std::error::Error + Send + Sync>> {
+    async fn fetch_via_browser(
+        &self,
+        _url: &str,
+        is_live: bool,
+    ) -> Result<Vec<(Event, Vec<Odd>)>, Box<dyn std::error::Error + Send + Sync>> {
         let scope = "3000";
-        let suffix = if is_live { "events/list" } else { "events/listBase" };
+        let suffix = if is_live {
+            "events/list"
+        } else {
+            "events/listBase"
+        };
         let url = format!("{}/{}?lang=ru&scopeMarket={}", self.api_base, suffix, scope);
 
         eprintln!("[MARATHON] Creating new client for {}", url);
-        
+
         // Create a fresh client for each request to avoid connection pool issues
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(30))
+            .gzip(true)
             .build()?;
-        
+
         eprintln!("[MARATHON] Sending request to {}", url);
         let resp = client.get(&url)
             .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
             .header("Accept", "application/json, text/plain, */*")
             .header("Accept-Language", "ru-RU,ru;q=0.9")
+            .header("Accept-Encoding", "gzip, deflate, br")
             .send()
             .await?;
-        
+
         eprintln!("[MARATHON] Response received: {}", resp.status());
 
         if !resp.status().is_success() {
@@ -78,9 +88,15 @@ impl MarathonParser {
 
 #[async_trait]
 impl BookmakerParser for MarathonParser {
-    fn name(&self) -> &str { "Marathon" }
-    fn slug(&self) -> &str { "marathon" }
-    fn is_enabled(&self) -> bool { true }
+    fn name(&self) -> &str {
+        "Marathon"
+    }
+    fn slug(&self) -> &str {
+        "marathon"
+    }
+    fn is_enabled(&self) -> bool {
+        true
+    }
 
     async fn fetch_events(&self) -> Result<Vec<Event>, Box<dyn std::error::Error + Send + Sync>> {
         let mut all_events = Vec::new();
@@ -102,7 +118,10 @@ impl BookmakerParser for MarathonParser {
         Ok(all_events)
     }
 
-    async fn fetch_odds(&self, _event_id: &str) -> Result<Vec<Odd>, Box<dyn std::error::Error + Send + Sync>> {
+    async fn fetch_odds(
+        &self,
+        _event_id: &str,
+    ) -> Result<Vec<Odd>, Box<dyn std::error::Error + Send + Sync>> {
         let mut all_odds = Vec::new();
 
         for (url, is_live) in [(&self.live_url, true), (&self.prematch_url, false)] {
@@ -147,12 +166,21 @@ impl BookmakerParser for MarathonParser {
         }
 
         let elapsed = start.elapsed().as_millis() as u64;
-        debug!(events = all_events.len(), odds = all_odds.len(), time_ms = elapsed, "Marathon fetch complete");
+        debug!(
+            events = all_events.len(),
+            odds = all_odds.len(),
+            time_ms = elapsed,
+            "Marathon fetch complete"
+        );
         Ok(ParserResult::new("marathon", all_events, all_odds, elapsed))
     }
 
-    fn base_url(&self) -> &str { "https://www.marathonbet.ru" }
-    fn user_agent(&self) -> &str { "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" }
+    fn base_url(&self) -> &str {
+        "https://www.marathonbet.ru"
+    }
+    fn user_agent(&self) -> &str {
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
 }
 
 /// HTTP fallback — если headless Chrome недоступен
@@ -163,7 +191,11 @@ pub async fn fetch_platform_http(
     slug: &str,
     factors: &FactorsCatalog,
 ) -> Result<Vec<(Event, Vec<Odd>)>, Box<dyn std::error::Error + Send + Sync>> {
-    let suffix = if is_live { "events/list" } else { "events/listBase" };
+    let suffix = if is_live {
+        "events/list"
+    } else {
+        "events/listBase"
+    };
     let scope = match slug {
         "pari" => "2300",
         "marathon" => "3000",
@@ -193,7 +225,7 @@ pub async fn fetch_platform_http(
     // Get raw bytes and handle decompression manually
     let bytes = resp.bytes().await?;
     debug!(slug, bytes = bytes.len(), "HTTP response size");
-    
+
     // Decompress if needed
     let json_bytes = if bytes.len() > 2 && bytes[0] == 0x1f && bytes[1] == 0x8b {
         // Gzip compressed
@@ -218,7 +250,7 @@ pub async fn fetch_platform_http(
             return Ok(Vec::new());
         }
     };
-    
+
     parse_api_response(&json, is_live, slug, factors)
 }
 
@@ -247,10 +279,18 @@ pub fn parse_api_response(
             factor_entry.get("factors").and_then(|f| f.as_array()),
         ) {
             for f in factors_arr {
-                if let (Some(fid), Some(fval)) = (f.get("f").and_then(|x| x.as_u64()), f.get("v").and_then(|x| x.as_f64())) {
-                    let line = f.get("p").and_then(|x| x.as_f64())
+                if let (Some(fid), Some(fval)) = (
+                    f.get("f").and_then(|x| x.as_u64()),
+                    f.get("v").and_then(|x| x.as_f64()),
+                ) {
+                    let line = f
+                        .get("p")
+                        .and_then(|x| x.as_f64())
                         .or_else(|| f.get("pt").and_then(|x| x.as_f64()));
-                    factor_map.entry(event_id).or_default().push((fid, fval, line));
+                    factor_map
+                        .entry(event_id)
+                        .or_default()
+                        .push((fid, fval, line));
                 }
             }
         }
@@ -263,11 +303,18 @@ pub fn parse_api_response(
             event_data.get("id").and_then(|i| i.as_u64()),
             event_data.get("team1").and_then(|t| t.as_str()),
             event_data.get("team2").and_then(|t| t.as_str()),
-        ) else { continue; };
+        ) else {
+            continue;
+        };
 
-        if team1.is_empty() || team2.is_empty() { continue; }
+        if team1.is_empty() || team2.is_empty() {
+            continue;
+        }
 
-        let event_name = event_data.get("name").and_then(|t| t.as_str()).unwrap_or("");
+        let event_name = event_data
+            .get("name")
+            .and_then(|t| t.as_str())
+            .unwrap_or("");
         let sport = detect_sport(event_name);
         let league = extract_league(event_name);
 
@@ -288,41 +335,134 @@ pub fn parse_api_response(
         if let Some(factors_list) = factor_map.get(&event_id) {
             let now = Utc::now();
             for &(fid, val, line) in factors_list {
-                if val <= 1.0 { continue; }
+                if val <= 1.0 {
+                    continue;
+                }
 
                 if let Some(factor_def) = factors.get_factor(fid) {
                     let mt = factor_def.market_type.to_lowercase();
                     let sel = factor_def.selection_name.to_lowercase();
-                    if classify_and_add_odd(&mut odds, slug, &event, fid, val, line, &mt, &sel, now) {
+                    if classify_and_add_odd(&mut odds, slug, &event, fid, val, line, &mt, &sel, now)
+                    {
                         continue;
                     }
                 }
 
                 // Hardcoded fallback
                 match fid {
-                    921 => odds.push(make_odd(slug, &event, "1X2", "1", val, None, OddsType::Home, now)),
-                    922 => odds.push(make_odd(slug, &event, "1X2", "X", val, None, OddsType::Draw, now)),
-                    923 => odds.push(make_odd(slug, &event, "1X2", "2", val, None, OddsType::Away, now)),
+                    921 => odds.push(make_odd(
+                        slug,
+                        &event,
+                        "1X2",
+                        "1",
+                        val,
+                        None,
+                        OddsType::Home,
+                        now,
+                    )),
+                    922 => odds.push(make_odd(
+                        slug,
+                        &event,
+                        "1X2",
+                        "X",
+                        val,
+                        None,
+                        OddsType::Draw,
+                        now,
+                    )),
+                    923 => odds.push(make_odd(
+                        slug,
+                        &event,
+                        "1X2",
+                        "2",
+                        val,
+                        None,
+                        OddsType::Away,
+                        now,
+                    )),
                     924 | 1002 | 1010 | 1054 => {
                         if let Some(l) = line {
-                            odds.push(make_odd(slug, &event, "Total", "Over", val, Some(l), OddsType::Over, now));
+                            odds.push(make_odd(
+                                slug,
+                                &event,
+                                "Total",
+                                "Over",
+                                val,
+                                Some(l),
+                                OddsType::Over,
+                                now,
+                            ));
                         }
                     }
                     925 | 1003 | 1011 | 1055 => {
                         if let Some(l) = line {
-                            odds.push(make_odd(slug, &event, "Total", "Under", val, Some(l), OddsType::Under, now));
+                            odds.push(make_odd(
+                                slug,
+                                &event,
+                                "Total",
+                                "Under",
+                                val,
+                                Some(l),
+                                OddsType::Under,
+                                now,
+                            ));
                         }
                     }
                     1006 | 1004 | 1005 | 1012 | 1013 => {
                         if let Some(l) = line {
                             let sel = if l > 0.0 { "1" } else { "2" };
-                            odds.push(make_odd(slug, &event, "Handicap", sel, val, Some(l), OddsType::Handicap, now));
+                            odds.push(make_odd(
+                                slug,
+                                &event,
+                                "Handicap",
+                                sel,
+                                val,
+                                Some(l),
+                                OddsType::Handicap,
+                                now,
+                            ));
                         }
                     }
-                    926 => odds.push(make_odd(slug, &event, "BothTeamsScore", "Yes", val, None, OddsType::BothTeamsScoreYes, now)),
-                    927 => odds.push(make_odd(slug, &event, "BothTeamsScore", "No", val, None, OddsType::BothTeamsScoreNo, now)),
-                    928 => odds.push(make_odd(slug, &event, "EvenOdd", "Even", val, None, OddsType::Even, now)),
-                    929 => odds.push(make_odd(slug, &event, "EvenOdd", "Odd", val, None, OddsType::Odd, now)),
+                    926 => odds.push(make_odd(
+                        slug,
+                        &event,
+                        "BothTeamsScore",
+                        "Yes",
+                        val,
+                        None,
+                        OddsType::BothTeamsScoreYes,
+                        now,
+                    )),
+                    927 => odds.push(make_odd(
+                        slug,
+                        &event,
+                        "BothTeamsScore",
+                        "No",
+                        val,
+                        None,
+                        OddsType::BothTeamsScoreNo,
+                        now,
+                    )),
+                    928 => odds.push(make_odd(
+                        slug,
+                        &event,
+                        "EvenOdd",
+                        "Even",
+                        val,
+                        None,
+                        OddsType::Even,
+                        now,
+                    )),
+                    929 => odds.push(make_odd(
+                        slug,
+                        &event,
+                        "EvenOdd",
+                        "Odd",
+                        val,
+                        None,
+                        OddsType::Odd,
+                        now,
+                    )),
                     _ => {}
                 }
             }
@@ -345,54 +485,182 @@ fn classify_and_add_odd(
     selection: &str,
     now: chrono::DateTime<Utc>,
 ) -> bool {
-    if market_type.contains("1x2") || market_type.contains("исход") || market_type.contains("winner") {
+    if market_type.contains("1x2")
+        || market_type.contains("исход")
+        || market_type.contains("winner")
+    {
         if selection.contains("п1") || selection == "1" || selection.contains("home") {
-            odds.push(make_odd(slug, event, "1X2", "1", val, None, OddsType::Home, now));
+            odds.push(make_odd(
+                slug,
+                event,
+                "1X2",
+                "1",
+                val,
+                None,
+                OddsType::Home,
+                now,
+            ));
             return true;
         } else if selection.contains("х") || selection == "x" || selection.contains("draw") {
-            odds.push(make_odd(slug, event, "1X2", "X", val, None, OddsType::Draw, now));
+            odds.push(make_odd(
+                slug,
+                event,
+                "1X2",
+                "X",
+                val,
+                None,
+                OddsType::Draw,
+                now,
+            ));
             return true;
         } else if selection.contains("п2") || selection == "2" || selection.contains("away") {
-            odds.push(make_odd(slug, event, "1X2", "2", val, None, OddsType::Away, now));
+            odds.push(make_odd(
+                slug,
+                event,
+                "1X2",
+                "2",
+                val,
+                None,
+                OddsType::Away,
+                now,
+            ));
             return true;
         }
     } else if market_type.contains("total") || market_type.contains("тотал") {
         if let Some(l) = line {
-            if selection.contains("больше") || selection.contains("over") || selection.contains("тб") {
-                odds.push(make_odd(slug, event, "Total", "Over", val, Some(l), OddsType::Over, now));
+            if selection.contains("больше")
+                || selection.contains("over")
+                || selection.contains("тб")
+            {
+                odds.push(make_odd(
+                    slug,
+                    event,
+                    "Total",
+                    "Over",
+                    val,
+                    Some(l),
+                    OddsType::Over,
+                    now,
+                ));
                 return true;
-            } else if selection.contains("меньше") || selection.contains("under") || selection.contains("тм") {
-                odds.push(make_odd(slug, event, "Total", "Under", val, Some(l), OddsType::Under, now));
+            } else if selection.contains("меньше")
+                || selection.contains("under")
+                || selection.contains("тм")
+            {
+                odds.push(make_odd(
+                    slug,
+                    event,
+                    "Total",
+                    "Under",
+                    val,
+                    Some(l),
+                    OddsType::Under,
+                    now,
+                ));
                 return true;
             }
         }
     } else if market_type.contains("handicap") || market_type.contains("фора") {
         if let Some(l) = line {
             let sel = if l > 0.0 { "1" } else { "2" };
-            odds.push(make_odd(slug, event, "Handicap", sel, val, Some(l), OddsType::Handicap, now));
+            odds.push(make_odd(
+                slug,
+                event,
+                "Handicap",
+                sel,
+                val,
+                Some(l),
+                OddsType::Handicap,
+                now,
+            ));
             return true;
         }
-    } else if market_type.contains("both") || market_type.contains("обе") || market_type.contains("oz") || market_type.contains("btts") {
+    } else if market_type.contains("both")
+        || market_type.contains("обе")
+        || market_type.contains("oz")
+        || market_type.contains("btts")
+    {
         if selection.contains("да") || selection.contains("yes") {
-            odds.push(make_odd(slug, event, "BothTeamsScore", "Yes", val, None, OddsType::BothTeamsScoreYes, now));
+            odds.push(make_odd(
+                slug,
+                event,
+                "BothTeamsScore",
+                "Yes",
+                val,
+                None,
+                OddsType::BothTeamsScoreYes,
+                now,
+            ));
             return true;
         } else if selection.contains("нет") || selection.contains("no") {
-            odds.push(make_odd(slug, event, "BothTeamsScore", "No", val, None, OddsType::BothTeamsScoreNo, now));
+            odds.push(make_odd(
+                slug,
+                event,
+                "BothTeamsScore",
+                "No",
+                val,
+                None,
+                OddsType::BothTeamsScoreNo,
+                now,
+            ));
             return true;
         }
-    } else if market_type.contains("even") || market_type.contains("odd") || market_type.contains("чёт") || market_type.contains("нечет") {
+    } else if market_type.contains("even")
+        || market_type.contains("odd")
+        || market_type.contains("чёт")
+        || market_type.contains("нечет")
+    {
         if selection.contains("чёт") || selection.contains("even") {
-            odds.push(make_odd(slug, event, "EvenOdd", "Even", val, None, OddsType::Even, now));
+            odds.push(make_odd(
+                slug,
+                event,
+                "EvenOdd",
+                "Even",
+                val,
+                None,
+                OddsType::Even,
+                now,
+            ));
             return true;
         } else if selection.contains("нечет") || selection.contains("odd") {
-            odds.push(make_odd(slug, event, "EvenOdd", "Odd", val, None, OddsType::Odd, now));
+            odds.push(make_odd(
+                slug,
+                event,
+                "EvenOdd",
+                "Odd",
+                val,
+                None,
+                OddsType::Odd,
+                now,
+            ));
             return true;
         }
     } else if market_type.contains("double") || market_type.contains("двойн") {
-        odds.push(make_odd(slug, event, "DoubleChance", selection, val, None, OddsType::Custom, now));
+        odds.push(make_odd(
+            slug,
+            event,
+            "DoubleChance",
+            selection,
+            val,
+            None,
+            OddsType::Custom,
+            now,
+        ));
         return true;
-    } else if market_type.contains("correct") || market_type.contains("точн") || market_type.contains("score") {
-        odds.push(make_odd(slug, event, "CorrectScore", selection, val, None, OddsType::Custom, now));
+    } else if market_type.contains("correct")
+        || market_type.contains("точн")
+        || market_type.contains("score")
+    {
+        odds.push(make_odd(
+            slug,
+            event,
+            "CorrectScore",
+            selection,
+            val,
+            None,
+            OddsType::Custom,
+            now,
+        ));
         return true;
     }
     false
@@ -400,16 +668,28 @@ fn classify_and_add_odd(
 
 fn detect_sport(event_name: &str) -> Sport {
     let name = event_name.to_lowercase();
-    if name.contains("футбол") || name.contains("football") { Sport::Football }
-    else if name.contains("баскет") || name.contains("basket") { Sport::Basketball }
-    else if name.contains("хоккей") || name.contains("hockey") { Sport::Hockey }
-    else if name.contains("теннис") || name.contains("tennis") { Sport::Tennis }
-    else if name.contains("волейбол") || name.contains("volley") { Sport::Volleyball }
-    else { Sport::Football }
+    if name.contains("футбол") || name.contains("football") {
+        Sport::Football
+    } else if name.contains("баскет") || name.contains("basket") {
+        Sport::Basketball
+    } else if name.contains("хоккей") || name.contains("hockey") {
+        Sport::Hockey
+    } else if name.contains("теннис") || name.contains("tennis") {
+        Sport::Tennis
+    } else if name.contains("волейбол") || name.contains("volley") {
+        Sport::Volleyball
+    } else {
+        Sport::Football
+    }
 }
 
 fn extract_league(event_name: &str) -> String {
-    event_name.splitn(2, ':').next().unwrap_or("").trim().to_string()
+    event_name
+        .splitn(2, ':')
+        .next()
+        .unwrap_or("")
+        .trim()
+        .to_string()
 }
 
 fn make_odd(
@@ -423,7 +703,12 @@ fn make_odd(
     timestamp: chrono::DateTime<Utc>,
 ) -> Odd {
     Odd {
-        id: format!("{}-{}-{}", slug, event.id, selection.replace(['.', ' ', '/'], "_")),
+        id: format!(
+            "{}-{}-{}",
+            slug,
+            event.id,
+            selection.replace(['.', ' ', '/'], "_")
+        ),
         event_id: event.id.clone(),
         bookmaker_slug: slug.to_string(),
         market: market.into(),

@@ -1,0 +1,931 @@
+[
+  {
+    "url": "https://origin.at58f5-resources.com/webStaticAT/website/2.3.147/config-8150c83967645d42500ecee48104557b.json",
+    "method": "GET",
+    "content_type": "application/json",
+    "size": 440023,
+    "data_sample": {
+      "common": "<dict>",
+      "couponSettings": "<dict>",
+      "profileSettings": "<dict>",
+      "objectModel": "<dict>",
+      "sportSetting": "<dict>",
+      "bonusesSettings": "<dict>",
+      "helpCenterSetting": "<dict>",
+      "clientSupportSetting": "<dict>",
+      "paymentsSettings": "<dict>",
+      "accountSettings": "<dict>"
+    },
+    "structure": {
+      "type": "object",
+      "keys": [
+        "common",
+        "couponSettings",
+        "profileSettings",
+        "objectModel",
+        "sportSetting",
+        "bonusesSettings",
+        "helpCenterSetting",
+        "clientSupportSetting",
+        "paymentsSettings",
+        "accountSettings",
+        "identSettings",
+        "pwa",
+        "betRadarSettings",
+        "prohibitionSetting",
+        "chatSettings",
+        "application",
+        "registrationSettings",
+        "smsCodeHelpSettings"
+      ],
+      "nested": {
+        "common": {
+          "type": "object",
+          "keys": [
+            "siteAlias",
+            "scopeMarket",
+            "languages",
+            "payments",
+            "authMode",
+            "restorePasswordMode",
+            "numberFormat",
+            "currencyFormat",
+            "dateDescription",
+            "emptyBalanceThreshold",
+            "highMargin",
+            "haveSport",
+            "showLastLoginInfo",
+            "factorValueType"
+          ],
+          "nested": {
+            "languages": {
+              "type": "array",
+              "item_keys": [
+                "isoCode",
+                "isoCode3",
+                "fileName",
+                "caption",
+                "iconResourceName",
+                "rendertron"
+              ]
+            },
+            "authMode": {
+              "type": "array",
+              "length": 3
+            }
+          }
+        },
+        "couponSettings": {
+          "type": "object",
+          "keys": [
+            "couponSumMaxValue",
+            "minSumForSingleCoupon",
+            "minSumForCoupon",
+            "defaultBetSum"
+          ],
+          "nested": {}
+        },
+        "profileSettings": {
+          "type": "object",
+          "keys": [
+            "profileSystemSettingsVersion",
+            "settingsConfigs"
+          ],
+          "nested": {
+            "settingsConfigs": {
+              "type": "array",
+              "item_keys": [
+                "kind",
+                "versionOfAppearanceInProfileSystemSettings",
+                "priority"
+              ]
+            }
+          }
+        },
+        "objectModel": {
+          "type": "object",
+          "keys": [
+            "sports",
+            "factors",
+            "eventKinds",
+            "translations",
+            "sportStats"
+          ],
+          "nested": {
+            "sports": {
+              "type": "array",
+              "item_keys": [
+                "id",
+                "color",
+                "colorDesktop",
+                "competitionColor",
+                "iconColor",
+                "alias",
+                "iconAlias"
+              ]
+            },
+            "factors": {
+              "type": "object",
+              "keys": [
+                "win1FactorsId",
+                "drawFactorsId",
+                "win2FactorsId",
+                "mainFactorsId",
+                "totalMoreFactorsId",
+                "totalLessFactorsId",
+                "handicapMoreFactorsId",
+                "handicapLessFactorsId"
+              ],
+              "nested": {
+                "win1FactorsId": {
+                  "type": "array",
+                  "length": 3
+                },
+                "drawFactorsId": {
+                  "type": "array",
+                  "length": 2
+                },
+                "win2FactorsId": {
+                  "type": "array",
+                  "length": 3
+                },
+                "mainFactorsId": {
+                  "type": "array",
+                  "length": 6
+                },
+                "totalMoreFactorsId": {
+                  "type": "array",
+                  "length": 3
+                }
+              }
+            },
+            "eventKinds": {
+              "type": "object",
+              "keys": [
+                "extraTime",
+                "penalty",
+                "overtime",
+                "shootout",
+                "corners",
+                "yellowCards",
+                "hockeyShots",
+                "threePoints",
+                "aces",
+                "doubleFaults",
+                "tours",
+                "overtimePeriods"
+              ],
+              "nested": {}
+            },
+            "translations": {
+              "type": "object",
+              "keys": [
+                "channelsId",
+                "fullScreenBannedChannels"
+              ],
+              "nested": {
+                "channelsId": {
+                  "type": "object",
+                  "keys": [
+                    "audioChannelId",
+                    "matchCenterId"
+                  ],
+                  "nested": {}
+                },
+                "fullScreenBannedChannels": {
+                  "type": "array",
+                  "length": 3
+                }
+              }
+            },
+            "sportStats": {
+              "type": "object",
+              "keys": [
+                "use",
+                "sports"
+              ],
+              "nested": {
+                "sports": {
+                  "type": "array",
+                  "length": 17
+                }
+              }
+            }
+          }
+        },
+        "sportSetting": {
+          "type": "object",
+          "keys": [
+            "mainViews"
+          ],
+          "nested": {
+            "mainViews": {
+              "type": "array",
+              "item_keys": [
+                "id",
+                "routePath",
+                "routeAliases",
+                "filter"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "page_type": "general",
+    "timestamp": "2026-04-11T17:47:53.375102"
+  },
+  {
+    "url": "https://origin.at58f5-resources.com/webStaticAT/website/2.3.147/locale/site/locale.at.ru.json",
+    "method": "GET",
+    "content_type": "application/json",
+    "size": 265460,
+    "data_sample": {
+      "code": "ru",
+      "name": "Русский",
+      "key": "rus",
+      "currencyShort": "<dict>",
+      "main": "<dict>",
+      "loginAuthorizing": "Авторизация...",
+      "loginButtonLogin": "Вход",
+      "loginButtonLogout": "Выйти",
+      "loginError": "<dict>",
+      "loginLabelForgotPassword": "Забыл пароль?"
+    },
+    "structure": {
+      "type": "object",
+      "keys": [
+        "code",
+        "name",
+        "key",
+        "currencyShort",
+        "main",
+        "loginAuthorizing",
+        "loginButtonLogin",
+        "loginButtonLogout",
+        "loginError",
+        "loginLabelForgotPassword",
+        "loginLabelHideBalance",
+        "loginLabelPhone",
+        "loginLabelLogin",
+        "loginLabelPassword",
+        "loginLabelRegistration",
+        "loginLabelShowBalance",
+        "loginUserNameBefore",
+        "loginUserStackBefore",
+        "loginMyAccount",
+        "comingSoon",
+        "serverTemporarilyUnavailable",
+        "appPage",
+        "line",
+        "tote",
+        "infoService",
+        "coupon",
+        "stats",
+        "results",
+        "settings",
+        "errors",
+        "footer",
+        "months",
+        "months2",
+        "week",
+        "home",
+        "notFound",
+        "confirm",
+        "registration",
+        "registrationCyprus",
+        "restorePassword",
+        "accountErrors",
+        "changePassword",
+        "controls",
+        "time",
+        "account",
+        "articles",
+        "serviceUnavailable",
+        "accessToSite",
+        "phoneNumber",
+        "accountNumber",
+        "email",
+        "paymentsTitle",
+        "statisticsPage",
+        "switchToMobileWebsite",
+        "sessionDialog",
+        "loginDeposit",
+        "how2play",
+        "registrationPhotoInstruction",
+        "registrationCupis",
+        "registrationRV",
+        "registrationBk",
+        "registrationQiwi",
+        "cupisRegistrationTypePage",
+        "how2register",
+        "registrationBK",
+        "rulesAgree",
+        "accessDenied",
+        "needVerification",
+        "faqPage",
+        "loginForm",
+        "registrationV4",
+        "eventView",
+        "confirmCookiePolicyDialog",
+        "championship",
+        "iso",
+        "daysOfWeek",
+        "identification",
+        "autoComplete",
+        "calculator",
+        "registrationKZ",
+        "registrationGreece",
+        "currency",
+        "loyalty",
+        "translations",
+        "how2play_2",
+        "forecasts",
+        "ti",
+        "loginByPhone",
+        "loginById",
+        "loginByEmail",
+        "loginLabelEmail",
+        "date",
+        "siteNotAvailableInContry",
+        "loginEnterAuthCode",
+        "login2faInfo",
+        "inAppMessages",
+        "eventViewSwitcher",
+        "loginAuthCode",
+        "fallbacks",
+        "inAppMessage",
+        "loginUserBonuses",
+        "losingLimits",
+        "sports",
+        "header",
+        "stakemat",
+        "uxControls",
+        "map",
+        "helpCenter",
+        "menu",
+        "breadCrumbs",
+        "NewMainPage",
+        "Casino",
+        "WelcomeBanner",
+        "registrationUzBet",
+        "deposit",
+        "hello",
+        "canadaState",
+        "registrationFonDotBet",
+        "navigator",
+        "limitsPeriod",
+        "clubs",
+        "install",
+        "mobile",
+        "alreadyHaveAnAccount",
+        "iHaveAPromoCode",
+        "language",
+        "routeNotFound",
+        "serverError",
+        "widgetError",
+        "apps",
+        "welcomeBanner",
+        "b2b",
+        "sportResults",
+        "siteNotAvailableInCountry",
+        "siteNotAvailableInCountryDescription",
+        "emptyList",
+        "monthsShort",
+        "inApp",
+        "aboutUs",
+        "videoIdent",
+        "bonusesAndActions",
+        "blockAvoidance",
+        "quickGames",
+        "paymentQI",
+        "meta",
+        "languageSettings",
+        "lottery",
+        "docs",
+        "comboBox",
+        "pushActions",
+        "notificationTurnAppeal",
+        "twa",
+        "abc",
+        "statistics",
+        "LocaleInterface",
+        "cookie",
+        "media",
+        "tournaments",
+        "enterValidPhone",
+        "smsConfirmation",
+        "noticeSessionData",
+        "bookmakerPromo",
+        "spellNumber",
+        "mc",
+        "recentHistoryPage",
+        "mobileStakemat",
+        "aiAssistant",
+        "promos"
+      ],
+      "nested": {
+        "currencyShort": {
+          "type": "object",
+          "keys": [
+            "RUB",
+            "USD"
+          ],
+          "nested": {}
+        },
+        "main": {
+          "type": "object",
+          "keys": [
+            "emptyList",
+            "yes",
+            "no",
+            "save",
+            "time",
+            "inputText",
+            "back",
+            "changed",
+            "until",
+            "rules3",
+            "helpCenter3",
+            "sorting",
+            "tryAgainSpread",
+            "fillThisField",
+            "description",
+            "inFormat",
+            "collapse",
+            "promoSingle",
+            "notChosen",
+            "hidePassword",
+            "showPassword",
+            "clear",
+            "more",
+            "close",
+            "expand",
+            "otherAmount",
+            "or",
+            "continue",
+            "and",
+            "update",
+            "updateAvailable",
+            "ok",
+            "min",
+            "coupon",
+            "cancel",
+            "ok2",
+            "updateOffer",
+            "updateOfferDescription",
+            "open",
+            "install",
+            "later",
+            "toAccessNewFeatures",
+            "gotIt",
+            "comeBack",
+            "forFreeMonthNumber",
+            "forSixMonthNumber",
+            "tryLater",
+            "didYouMeant",
+            "apply",
+            "setupLater"
+          ],
+          "nested": {
+            "time": {
+              "type": "object",
+              "keys": [
+                "today",
+                "forWeek",
+                "forMonth",
+                "forThreeMonth",
+                "forAllTime",
+                "forSixMonth"
+              ],
+              "nested": {}
+            }
+          }
+        }
+      }
+    },
+    "page_type": "general",
+    "timestamp": "2026-04-11T17:47:54.487705"
+  },
+  {
+    "url": "https://line01.at58f5-resources.com/getApiState",
+    "method": "POST",
+    "content_type": "application/json; charset=utf-8",
+    "size": 119,
+    "data_sample": {
+      "result": "apiState",
+      "stateTime": "2026-04-11 14:47:54",
+      "state": "<dict>"
+    },
+    "structure": {
+      "type": "object",
+      "keys": [
+        "result",
+        "stateTime",
+        "state"
+      ],
+      "nested": {
+        "state": {
+          "type": "object",
+          "keys": [
+            "line"
+          ],
+          "nested": {
+            "line": {
+              "type": "object",
+              "keys": [
+                "ready",
+                "delay",
+                "commandList"
+              ],
+              "nested": {
+                "commandList": {
+                  "type": "array",
+                  "length": 1
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "page_type": "general",
+    "timestamp": "2026-04-11T17:47:54.831593"
+  },
+  {
+    "url": "https://clientsapi51.at58f5-resources.com/getApiState",
+    "method": "POST",
+    "content_type": "application/json; charset=utf-8",
+    "size": 1628,
+    "data_sample": {
+      "result": "apiState",
+      "stateTime": "2026-04-11 14:47:55",
+      "state": "<dict>"
+    },
+    "structure": {
+      "type": "object",
+      "keys": [
+        "result",
+        "stateTime",
+        "state"
+      ],
+      "nested": {
+        "state": {
+          "type": "object",
+          "keys": [
+            "selfApi",
+            "client",
+            "clientOperations",
+            "content",
+            "couponBet",
+            "couponBetSlipInfo",
+            "couponGetMinMax",
+            "totoGetMinMax",
+            "couponInfo",
+            "couponList",
+            "couponSell",
+            "betsHistory",
+            "totoBet",
+            "createProcessWithCaptcha",
+            "fonTV",
+            "freebetList",
+            "getDictionaries",
+            "getVersions",
+            "jsAgent",
+            "litotaAccount",
+            "loyalty",
+            "bonusManager",
+            "clientSupport",
+            "analytics",
+            "segment",
+            "geoIp",
+            "totoGetDraw",
+            "seo",
+            "inAppMessage",
+            "extSysInt",
+            "helpCenter",
+            "bonus",
+            "widget",
+            "favorites",
+            "QuickGames",
+            "mailing",
+            "nl",
+            "shortLinks",
+            "media",
+            "captcha",
+            "results"
+          ],
+          "nested": {
+            "selfApi": {
+              "type": "object",
+              "keys": [
+                "ready",
+                "delay"
+              ],
+              "nested": {}
+            },
+            "client": {
+              "type": "object",
+              "keys": [
+                "ready",
+                "delay"
+              ],
+              "nested": {}
+            },
+            "clientOperations": {
+              "type": "object",
+              "keys": [
+                "ready",
+                "delay"
+              ],
+              "nested": {}
+            },
+            "content": {
+              "type": "object",
+              "keys": [
+                "ready",
+                "delay"
+              ],
+              "nested": {}
+            },
+            "couponBet": {
+              "type": "object",
+              "keys": [
+                "ready",
+                "delay"
+              ],
+              "nested": {}
+            }
+          }
+        }
+      }
+    },
+    "page_type": "general",
+    "timestamp": "2026-04-11T17:47:55.619049"
+  },
+  {
+    "url": "https://line51.at58f5-resources.com/getApiState",
+    "method": "POST",
+    "content_type": "application/json; charset=utf-8",
+    "size": 119,
+    "data_sample": {
+      "result": "apiState",
+      "stateTime": "2026-04-11 14:47:55",
+      "state": "<dict>"
+    },
+    "structure": {
+      "type": "object",
+      "keys": [
+        "result",
+        "stateTime",
+        "state"
+      ],
+      "nested": {
+        "state": {
+          "type": "object",
+          "keys": [
+            "line"
+          ],
+          "nested": {
+            "line": {
+              "type": "object",
+              "keys": [
+                "ready",
+                "delay",
+                "commandList"
+              ],
+              "nested": {
+                "commandList": {
+                  "type": "array",
+                  "length": 1
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "page_type": "general",
+    "timestamp": "2026-04-11T17:47:55.799488"
+  },
+  {
+    "url": "https://clientsapi01.at58f5-resources.com/getApiState",
+    "method": "POST",
+    "content_type": "application/json; charset=utf-8",
+    "size": 1628,
+    "data_sample": {
+      "result": "apiState",
+      "stateTime": "2026-04-11 14:47:55",
+      "state": "<dict>"
+    },
+    "structure": {
+      "type": "object",
+      "keys": [
+        "result",
+        "stateTime",
+        "state"
+      ],
+      "nested": {
+        "state": {
+          "type": "object",
+          "keys": [
+            "selfApi",
+            "client",
+            "clientOperations",
+            "content",
+            "couponBet",
+            "couponBetSlipInfo",
+            "couponGetMinMax",
+            "totoGetMinMax",
+            "couponInfo",
+            "couponList",
+            "couponSell",
+            "betsHistory",
+            "totoBet",
+            "createProcessWithCaptcha",
+            "fonTV",
+            "freebetList",
+            "getDictionaries",
+            "getVersions",
+            "jsAgent",
+            "litotaAccount",
+            "loyalty",
+            "bonusManager",
+            "clientSupport",
+            "analytics",
+            "segment",
+            "geoIp",
+            "totoGetDraw",
+            "seo",
+            "inAppMessage",
+            "extSysInt",
+            "helpCenter",
+            "bonus",
+            "widget",
+            "favorites",
+            "QuickGames",
+            "mailing",
+            "nl",
+            "shortLinks",
+            "media",
+            "captcha",
+            "results"
+          ],
+          "nested": {
+            "selfApi": {
+              "type": "object",
+              "keys": [
+                "ready",
+                "delay"
+              ],
+              "nested": {}
+            },
+            "client": {
+              "type": "object",
+              "keys": [
+                "ready",
+                "delay"
+              ],
+              "nested": {}
+            },
+            "clientOperations": {
+              "type": "object",
+              "keys": [
+                "ready",
+                "delay"
+              ],
+              "nested": {}
+            },
+            "content": {
+              "type": "object",
+              "keys": [
+                "ready",
+                "delay"
+              ],
+              "nested": {}
+            },
+            "couponBet": {
+              "type": "object",
+              "keys": [
+                "ready",
+                "delay"
+              ],
+              "nested": {}
+            }
+          }
+        }
+      }
+    },
+    "page_type": "general",
+    "timestamp": "2026-04-11T17:47:56.402761"
+  },
+  {
+    "url": "https://clientsapi51.at58f5-resources.com/client/defaultProfile",
+    "method": "POST",
+    "content_type": "application/json; charset=utf-8",
+    "size": 1772,
+    "data_sample": {
+      "result": "defaultProfile",
+      "defaultProfile": "<dict>"
+    },
+    "structure": {
+      "type": "object",
+      "keys": [
+        "result",
+        "defaultProfile"
+      ],
+      "nested": {
+        "defaultProfile": {
+          "type": "object",
+          "keys": [
+            "version",
+            "commonSettings",
+            "systemSettings"
+          ],
+          "nested": {
+            "commonSettings": {
+              "type": "object",
+              "keys": [
+                "oneClickBet",
+                "oneClickBetSum",
+                "newBetSumByPrev",
+                "flexOptions",
+                "favoriteBetsSumKind",
+                "favoriteBetsSumPercent",
+                "favoriteBetsSumAbsolute",
+                "autoConfirm",
+                "sessionLifetime",
+                "hideBalance",
+                "loyaltyHiddenNoticeIds",
+                "favoriteDepositSum",
+                "favoriteWithdrawSum",
+                "oneClickDeposit",
+                "oneClickDepositSum",
+                "oneClickDepositPsId",
+                "hideBetsProfit",
+                "lastDepositSum",
+                "lastDepositSums",
+                "lastWithdrawalSum",
+                "sportCustomOrders",
+                "lastDepositPS",
+                "lastWithdrawalPS",
+                "preferredAccent",
+                "factorValueType",
+                "favoriteSports",
+                "hideBetSell",
+                "casinoProMode",
+                "promoOnBoardingViewed",
+                "hidePromoValuesInSport",
+                "educationViewed",
+                "storiesViewed",
+                "sportRecentHistory"
+              ],
+              "nested": {}
+            },
+            "systemSettings": {
+              "type": "object",
+              "keys": [
+                "showEventNums",
+                "sellOnAnyTab",
+                "compactBetView",
+                "coloredBetResult",
+                "compactFooter",
+                "accountMenuCompactView",
+                "eventFilterViewKind",
+                "autoCollapseInEventList",
+                "autoCollapseCoupons",
+                "hideAcceptedCouponsOnTabRecent",
+                "hiddenBanners",
+                "loyaltySliderCollapsed",
+                "newEventView",
+                "autoExpandInEventList",
+                "sportTableCompact",
+                "sportAutoCollapseNodes",
+                "sportAllEventsCollapsedByDefault",
+                "sportSortCompetitionsByCaption",
+                "sportOnBoarding",
+                "couponOnBoarding",
+                "blockAvoidanceVisited",
+                "themeOptionOld",
+                "sportOnBoardingViewed",
+                "sportTipViewed",
+                "unfixFavBetSumPanel",
+                "viewedSettingsVersion",
+                "showCouponAtFirstBet",
+                "showCouponEventStartTime",
+                "showCouponEventLiveTimer",
+                "sortCouponBetsByEventStartTime",
+                "couponCompactMode",
+                "themeOption",
+                "showScrollUpButton"
+              ],
+              "nested": {}
+            }
+          }
+        }
+      }
+    },
+    "page_type": "general",
+    "timestamp": "2026-04-11T17:47:56.408670"
+  }
+]

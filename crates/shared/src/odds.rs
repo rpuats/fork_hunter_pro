@@ -76,7 +76,10 @@ pub fn calculate_margin(odds: &[f64]) -> f64 {
     if odds.is_empty() {
         return 0.0;
     }
-    let sum: f64 = odds.iter().map(|&o| decimal_to_implied_probability(o)).sum();
+    let sum: f64 = odds
+        .iter()
+        .map(|&o| decimal_to_implied_probability(o))
+        .sum();
     (sum - 1.0) * 100.0
 }
 
@@ -84,7 +87,10 @@ pub fn calculate_surebet_profit(odds: &[f64]) -> Option<f64> {
     if odds.len() < 2 {
         return None;
     }
-    let inverse_sum: f64 = odds.iter().map(|&o| decimal_to_implied_probability(o)).sum();
+    let inverse_sum: f64 = odds
+        .iter()
+        .map(|&o| decimal_to_implied_probability(o))
+        .sum();
     if inverse_sum < 1.0 {
         Some((1.0 - inverse_sum) * 100.0)
     } else {
@@ -93,7 +99,10 @@ pub fn calculate_surebet_profit(odds: &[f64]) -> Option<f64> {
 }
 
 pub fn calculate_stakes(odds: &[f64], total_stake: f64) -> Vec<f64> {
-    let inverse_sum: f64 = odds.iter().map(|&o| decimal_to_implied_probability(o)).sum();
+    let inverse_sum: f64 = odds
+        .iter()
+        .map(|&o| decimal_to_implied_probability(o))
+        .sum();
     if inverse_sum == 0.0 {
         return vec![total_stake / odds.len() as f64; odds.len()];
     }

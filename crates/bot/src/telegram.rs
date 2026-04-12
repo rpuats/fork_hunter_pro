@@ -29,7 +29,11 @@ impl TelegramBot {
 
         for &chat_id in &self.admin_chats {
             if let Err(e) = self.bot.send_message(ChatId(chat_id), &message).await {
-                error!(chat_id, error = e.to_string(), "Failed to send Telegram message");
+                error!(
+                    chat_id,
+                    error = e.to_string(),
+                    "Failed to send Telegram message"
+                );
             }
         }
     }
@@ -45,12 +49,19 @@ impl TelegramBot {
     }
 
     pub fn format_surebet_message(&self, surebet: &Surebet) -> String {
-        let time_str = surebet.start_time.map(|t| t.format("%H:%M").to_string()).unwrap_or_else(|| "N/A".to_string());
+        let time_str = surebet
+            .start_time
+            .map(|t| t.format("%H:%M").to_string())
+            .unwrap_or_else(|| "N/A".to_string());
         let mut msg = format!(
             "🔥 ВИЛКА {:.2}%\n\n📌 {{home}} vs {{away}}\n🏆 {{league}}\n⏰ {{time}}\n\n",
             surebet.profit_percent,
         );
-        msg = msg.replace("{home}", &surebet.home_team).replace("{away}", &surebet.away_team).replace("{league}", &surebet.league).replace("{time}", &time_str);
+        msg = msg
+            .replace("{home}", &surebet.home_team)
+            .replace("{away}", &surebet.away_team)
+            .replace("{league}", &surebet.league)
+            .replace("{time}", &time_str);
 
         for (i, leg) in surebet.legs.iter().enumerate() {
             msg.push_str(&format!(
@@ -86,7 +97,10 @@ impl TelegramBot {
                     info!("Telegram bot authorized as @{}", username);
                 }
                 Err(e) => {
-                    error!("Telegram bot failed to start — check TELEGRAM_BOT_TOKEN: {}", e);
+                    error!(
+                        "Telegram bot failed to start — check TELEGRAM_BOT_TOKEN: {}",
+                        e
+                    );
                     return;
                 }
             }
@@ -100,9 +114,7 @@ impl TelegramBot {
                                 .await;
                         }
                         "/status" => {
-                            let _ = bot
-                                .send_message(msg.chat.id, "✅ Сканер работает")
-                                .await;
+                            let _ = bot.send_message(msg.chat.id, "✅ Сканер работает").await;
                         }
                         "/help" => {
                             let _ = bot

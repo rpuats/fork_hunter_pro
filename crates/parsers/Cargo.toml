@@ -21,3 +21,4 @@ futures.workspace = true
 which = "6.0"
 flate2 = "1.0"
 headless_chrome = "1.0"
+scraper = "0.18"

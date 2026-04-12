@@ -15,6 +15,101 @@ pub struct Bookmaker {
     pub parser_type: ParserType,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum BookmakerStatus {
+    ScanOnly,
+    ExecutionReady,
+    Disabled,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BookmakerMetadata {
+    pub slug: String,
+    pub name: String,
+    pub enabled: bool,
+    pub scan_supported: bool,
+    pub execution_supported: bool,
+    pub status: BookmakerStatus,
+    pub notes: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ParserReadinessStage {
+    Production,
+    RolloutReady,
+    DiagnosticOnly,
+    Blocked,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum DiagnosticSeverity {
+    Pass,
+    Warn,
+    Fail,
+    Info,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ParserDiagnosticCheck {
+    pub code: String,
+    pub severity: DiagnosticSeverity,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ParserReadiness {
+    pub stage: ParserReadinessStage,
+    pub production_enabled: bool,
+    pub self_check_available: bool,
+    pub checks: Vec<ParserDiagnosticCheck>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ParserCoverage {
+    pub slug: String,
+    pub name: String,
+    pub enabled: bool,
+    pub scan_supported: bool,
+    pub execution_supported: bool,
+    pub status: BookmakerStatus,
+    pub parser_type: String,
+    pub source: String,
+    pub notes: Option<String>,
+    pub readiness: Option<ParserReadiness>,
+}
+
+impl BookmakerMetadata {
+    pub fn new(
+        slug: impl Into<String>,
+        name: impl Into<String>,
+        enabled: bool,
+        scan_supported: bool,
+        execution_supported: bool,
+        notes: Option<String>,
+    ) -> Self {
+        let status = if !enabled || !scan_supported {
+            BookmakerStatus::Disabled
+        } else if execution_supported {
+            BookmakerStatus::ExecutionReady
+        } else {
+            BookmakerStatus::ScanOnly
+        };
+
+        Self {
+            slug: slug.into(),
+            name: name.into(),
+            enabled,
+            scan_supported,
+            execution_supported,
+            status,
+            notes,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ParserType {
     Http,
@@ -89,7 +184,11 @@ pub struct SurebetLeg {
 pub struct FreebetOpportunity {
     pub id: Uuid,
     pub bookmaker: String,
+    pub hedge_bookmaker: String,
     pub event: Event,
+    pub market: String,
+    pub selection: String,
+    pub hedge_selection: String,
     pub back_odds: f64,
     pub lay_odds: f64,
     pub freebet_amount: f64,
@@ -201,6 +300,8 @@ pub struct ParserHealth {
     pub avg_response_time_ms: f64,
     pub events_parsed: u64,
     pub uptime_percent: f64,
+    pub readiness: Option<ParserReadiness>,
+    pub diagnostics: Vec<ParserDiagnosticCheck>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -274,7 +375,7 @@ pub struct BonusInfo {
     pub url: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub enum BonusType {
     Welcome,
     Reload,
@@ -375,6 +476,201 @@ pub struct AutoBetStatus {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExecutionPlacementSummary {
+    pub total: usize,
+    pub pending: usize,
+    pub placed: usize,
+    pub settled: usize,
+    pub cancelled: usize,
+    pub errors: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AccountSessionSummary {
+    pub total_bookmakers: usize,
+    pub accounts_configured: usize,
+    pub accounts_enabled: usize,
+    pub disabled_accounts: usize,
+    pub sessions_configured: usize,
+    pub sessions_authenticated: usize,
+    pub balances_cached: usize,
+    pub ready_for_execution: usize,
+    pub ready_for_dry_run: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExecutionOverview {
+    pub autobet_status: AutoBetStatus,
+    pub accounts: AccountSessionSummary,
+    pub recent_placements: ExecutionPlacementSummary,
+    pub generated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum BookmakerExecutionMode {
+    NoOp,
+    Disabled,
+    DryRun,
+    Armed,
+    SemiRealReady,
+    Real,
+}
+
+impl BookmakerExecutionMode {
+    pub fn allows_dry_run(&self) -> bool {
+        !matches!(self, Self::Disabled)
+    }
+
+    pub fn is_armed(&self) -> bool {
+        matches!(self, Self::Armed | Self::SemiRealReady | Self::Real)
+    }
+
+    pub fn allows_submission_path(&self) -> bool {
+        matches!(self, Self::SemiRealReady | Self::Real)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum BookmakerSessionState {
+    Configured,
+    Active,
+    Expired,
+    Locked,
+    Disconnected,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum BookmakerSessionSyncState {
+    NoSession,
+    Configured,
+    Authenticated,
+    Expired,
+    Locked,
+    Disconnected,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BookmakerAccountCapabilityMetadata {
+    pub api_base_url: Option<String>,
+    pub planned_endpoints: Vec<String>,
+    pub supports_read_only_session_sync: bool,
+    pub supports_read_only_balance_refresh: bool,
+    pub remote_balance_fetch_enabled: bool,
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BookmakerExecutionCapability {
+    pub bookmaker: String,
+    pub supports_dry_run: bool,
+    pub supports_balance_snapshot: bool,
+    pub supports_bet_placement: bool,
+    pub supports_real_money: bool,
+    pub requires_session: bool,
+    pub account_metadata: BookmakerAccountCapabilityMetadata,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BookmakerSessionStatus {
+    pub account_id: Option<Uuid>,
+    pub bookmaker: String,
+    pub sync_state: BookmakerSessionSyncState,
+    pub authenticated: bool,
+    pub can_refresh_balance: bool,
+    pub detail: Option<String>,
+    pub checked_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BookmakerAccount {
+    pub id: Uuid,
+    pub bookmaker: String,
+    pub label: String,
+    pub currency: String,
+    pub enabled: bool,
+    pub mode: BookmakerExecutionMode,
+    pub created_at: DateTime<Utc>,
+    pub last_used_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BookmakerSession {
+    pub account_id: Uuid,
+    pub bookmaker: String,
+    pub state: BookmakerSessionState,
+    pub token_hint: Option<String>,
+    pub last_synced_at: DateTime<Utc>,
+    pub expires_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BookmakerBalanceSnapshot {
+    pub account_id: Uuid,
+    pub bookmaker: String,
+    pub currency: String,
+    pub total_balance: f64,
+    pub available_balance: f64,
+    pub exposure: f64,
+    pub captured_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum BookmakerBalanceRefreshState {
+    NoSession,
+    SessionNotAuthenticated,
+    AuthenticatedBalanceUnavailable,
+    CachedBalanceAvailable,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BookmakerBalanceRefresh {
+    pub account_id: Option<Uuid>,
+    pub bookmaker: String,
+    pub state: BookmakerBalanceRefreshState,
+    pub session_status: BookmakerSessionStatus,
+    pub snapshot: Option<BookmakerBalanceSnapshot>,
+    pub detail: Option<String>,
+    pub checked_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BetExecutionRequest {
+    pub bookmaker: String,
+    pub event_id: String,
+    pub market: String,
+    pub selection: String,
+    pub odds: f64,
+    pub stake: f64,
+    pub allow_dry_run: bool,
+    pub reference: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum BetExecutionStatus {
+    Pending,
+    DryRun,
+    Armed,
+    Blocked,
+    Submitted,
+    Accepted,
+    Rejected,
+    Skipped,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BetExecutionReceipt {
+    pub ticket_id: Option<String>,
+    pub account_id: Option<Uuid>,
+    pub bookmaker: String,
+    pub status: BetExecutionStatus,
+    pub mode: BookmakerExecutionMode,
+    pub accepted_stake: f64,
+    pub accepted_odds: f64,
+    pub message: Option<String>,
+    pub placed_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BetPlacement {
     pub id: Uuid,
     pub bookmaker: String,
@@ -385,6 +681,8 @@ pub struct BetPlacement {
     pub stake: f64,
     pub status: BetStatus,
     pub placed_at: DateTime<Utc>,
+    #[serde(default)]
+    pub execution: Option<BetExecutionReceipt>,
     pub result: Option<BetResult>,
     pub error: Option<String>,
 }
@@ -429,6 +727,66 @@ pub struct StakeValidationResult {
     pub decision: StakeValidationDecision,
     pub adjusted_stake: f64,
     pub reasons: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StakeValidationPreflightRequest {
+    pub bookmaker: String,
+    pub desired_stake: f64,
+    pub min_stake: Option<f64>,
+    pub max_stake: Option<f64>,
+    pub bankroll_available_balance: Option<f64>,
+    pub allow_auto_adjust: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StakeValidationPreflightResponse {
+    pub bookmaker: String,
+    pub capability: BookmakerExecutionCapability,
+    pub account: Option<BookmakerAccount>,
+    pub balance_refresh: BookmakerBalanceRefresh,
+    pub validation: StakeValidationResult,
+    pub executable: bool,
+    pub dry_run_ready: bool,
+    pub arm_required: bool,
+    pub armed_for_execution: bool,
+    pub placement_ready: bool,
+    pub real_money_enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AutoBetDryRunLegRequest {
+    pub bookmaker: String,
+    pub event_id: String,
+    pub market: String,
+    pub selection: String,
+    pub odds: f64,
+    pub desired_stake: f64,
+    pub min_stake: Option<f64>,
+    pub max_stake: Option<f64>,
+    pub bankroll_available_balance: Option<f64>,
+    pub allow_auto_adjust: bool,
+    pub reference: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AutoBetDryRunRequest {
+    pub legs: Vec<AutoBetDryRunLegRequest>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AutoBetDryRunLegResponse {
+    pub preflight: StakeValidationPreflightResponse,
+    pub execution_request: BetExecutionRequest,
+    pub receipt: Option<BetExecutionReceipt>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AutoBetDryRunResponse {
+    pub legs: Vec<AutoBetDryRunLegResponse>,
+    pub all_legs_executable: bool,
+    pub ready_legs: usize,
+    pub rejected_legs: usize,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -514,4 +872,70 @@ pub struct FreebetConversionPlan {
     pub hedge: FreebetHedgeLeg,
     pub steps: Vec<FreebetPlanStep>,
     pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum FreebetLifecycleStage {
+    Discovered,
+    Available,
+    Qualified,
+    Planned,
+    RolloverInProgress,
+    RolloverCompleted,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum FreebetProgressStatus {
+    NotStarted,
+    InProgress,
+    Completed,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FreebetRolloverProgress {
+    pub required_turnover: f64,
+    pub completed_turnover: f64,
+    pub remaining_turnover: f64,
+    pub progress_percent: f64,
+    pub status: FreebetProgressStatus,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FreebetBookmakerAllocation {
+    pub bookmaker: String,
+    pub available_balance: Option<f64>,
+    pub recommended_deposit: Option<f64>,
+    pub deposit_gap: Option<f64>,
+    pub urgency: Option<DepositUrgency>,
+    pub note: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FreebetLifecycleState {
+    pub bookmaker: String,
+    pub lifecycle_stage: FreebetLifecycleStage,
+    pub opportunity: Option<FreebetOpportunity>,
+    pub bonus: Option<BonusInfo>,
+    pub plan: Option<FreebetConversionPlan>,
+    pub rollover: Option<FreebetRolloverProgress>,
+    pub allocation: Option<FreebetBookmakerAllocation>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FreebetLifecycleSummary {
+    pub total_bookmakers: usize,
+    pub opportunities: usize,
+    pub active_bonuses: usize,
+    pub tracked_plans: usize,
+    pub deposit_required_bookmakers: usize,
+    pub discovered: usize,
+    pub available: usize,
+    pub qualified: usize,
+    pub planned: usize,
+    pub rollover_in_progress: usize,
+    pub rollover_completed: usize,
+    pub total_freebet_amount: f64,
+    pub total_estimated_profit: f64,
+    pub generated_at: DateTime<Utc>,
 }

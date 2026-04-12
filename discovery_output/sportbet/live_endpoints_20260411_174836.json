@@ -1,0 +1,14 @@
+{
+  "bk": "sportbet",
+  "type": "live",
+  "timestamp": "20260411_174836",
+  "endpoints": [
+    "https://sportbet.ru/sport/v1/left-panel",
+    "https://sportbet.ru/pa/api/tpl/usedesk",
+    "https://sportbet.ru/sport/v1/settings?playerId=GUEST",
+    "https://sportbet.ru/pa/api/settings",
+    "https://sportbet.ru/sport/v1/rules",
+    "https://sportbet.ru/sport/v1/header",
+    "https://sportbet.ru/legal/api/settings/index.php"
+  ]
+}

@@ -13,6 +13,6 @@ pub use models::GenerosityIndex;
 pub use models::*;
 pub use odds::OddsType;
 pub use sports::AutoBetConfig;
-pub use sports::BonusConfig;
 pub use sports::BankrollConfig;
+pub use sports::BonusConfig;
 pub use sports::Sport;

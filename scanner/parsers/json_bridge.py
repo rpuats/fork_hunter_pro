@@ -41,8 +41,8 @@ async def parse_betcity(url):
     return events
 
 async def parse_baltbet(url):
-    from scanner.parsers.baltbet_playwright import BaltbetPlaywrightParser
-    async with BaltbetPlaywrightParser() as parser:
+    from scanner.parsers.baltbet_playwright import BaltbetRegexParser
+    async with BaltbetRegexParser() as parser:
         parser.urls = [url]
         events = await parser.get_events()
     return events

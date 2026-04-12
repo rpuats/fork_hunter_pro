@@ -34,7 +34,10 @@ impl BetExecutor {
         }
     }
 
-    pub async fn execute_batch(&self, surebets: &[Surebet]) -> Vec<Result<Vec<BetPlacement>, String>> {
+    pub async fn execute_batch(
+        &self,
+        surebets: &[Surebet],
+    ) -> Vec<Result<Vec<BetPlacement>, String>> {
         let mut results = Vec::new();
 
         for surebet in surebets {

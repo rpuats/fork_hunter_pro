@@ -57,7 +57,10 @@ impl DepositAllocator {
                 .unwrap_or(std::cmp::Ordering::Equal)
         });
 
-        let total_recommended: f64 = targets.iter().map(|target| target.recommended_deposit).sum();
+        let total_recommended: f64 = targets
+            .iter()
+            .map(|target| target.recommended_deposit)
+            .sum();
 
         DepositAllocationGuidance {
             total_budget_limit,

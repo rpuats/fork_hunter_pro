@@ -1,9 +1,9 @@
-pub mod manager;
-pub mod kelly;
-pub mod rebalance;
 pub mod allocation;
+pub mod kelly;
+pub mod manager;
+pub mod rebalance;
 
-pub use manager::BankrollManager;
-pub use kelly::KellyCalculator;
-pub use rebalance::RebalanceEngine;
 pub use allocation::DepositAllocator;
+pub use kelly::KellyCalculator;
+pub use manager::BankrollManager;
+pub use rebalance::RebalanceEngine;

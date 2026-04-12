@@ -3,8 +3,8 @@ sys.path.insert(0, r'C:\Users\Administrator\Desktop\ai\Grok вилки\fork_hunt
 
 async def calc():
     all_events = []
-    parsers = __import__('scanner.parsers', fromlist=['WinlinePlaywrightParser', 'PariPlaywrightParser', 'ZenitPlaywrightParser', 'BaltbetPlaywrightParser'])
-    for name in ['WinlinePlaywrightParser', 'PariPlaywrightParser', 'ZenitPlaywrightParser', 'BaltbetPlaywrightParser']:
+    parsers = __import__('scanner.parsers', fromlist=['WinlinePlaywrightParser', 'PariPlaywrightParser', 'ZenitPlaywrightParser', 'BaltbetRegexParser'])
+    for name in ['WinlinePlaywrightParser', 'PariPlaywrightParser', 'ZenitPlaywrightParser', 'BaltbetRegexParser']:
         try:
             p = getattr(parsers, name)()
             events = await asyncio.wait_for(p.get_events(), timeout=60)

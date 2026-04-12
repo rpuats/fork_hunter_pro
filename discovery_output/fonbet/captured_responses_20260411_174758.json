@@ -1,0 +1,881 @@
+[
+  {
+    "url": "https://origin.bk6bba-resources.com/webStaticRed/website/2.3.147/config-6b9adaa165b4e7c2f72769d98b4deb42.json",
+    "method": "GET",
+    "content_type": "application/json",
+    "size": 659798,
+    "data_sample": {
+      "common": "<dict>",
+      "alternateSettings": "<dict>",
+      "specialTagSettings": "<dict>",
+      "couponSettings": "<dict>",
+      "betHistorySettings": "<dict>",
+      "profileSettings": "<dict>",
+      "objectModel": "<dict>",
+      "sportSetting": "<dict>",
+      "bonusesSettings": "<dict>",
+      "helpCenterSetting": "<dict>"
+    },
+    "structure": {
+      "type": "object",
+      "keys": [
+        "common",
+        "alternateSettings",
+        "specialTagSettings",
+        "couponSettings",
+        "betHistorySettings",
+        "profileSettings",
+        "objectModel",
+        "sportSetting",
+        "bonusesSettings",
+        "helpCenterSetting",
+        "clientSupportSetting",
+        "paymentsSettings",
+        "accountSettings",
+        "identSettings",
+        "companySettings",
+        "pwa",
+        "betRadarSettings",
+        "clubSettings",
+        "prohibitionSetting",
+        "chatSettings",
+        "application",
+        "registrationSettings",
+        "smsCodeHelpSettings",
+        "mcSettings"
+      ],
+      "nested": {
+        "common": {
+          "type": "object",
+          "keys": [
+            "siteAlias",
+            "scopeMarket",
+            "languages",
+            "authMode",
+            "restorePasswordMode",
+            "numberFormat",
+            "currencyFormat",
+            "dateDescription",
+            "emptyBalanceThreshold",
+            "highMargin",
+            "haveSport",
+            "showLastLoginInfo",
+            "factorValueType"
+          ],
+          "nested": {
+            "languages": {
+              "type": "array",
+              "item_keys": [
+                "isoCode",
+                "isoCode3",
+                "fileName",
+                "caption",
+                "iconResourceName",
+                "rendertron"
+              ]
+            },
+            "authMode": {
+              "type": "array",
+              "length": 3
+            },
+            "restorePasswordMode": {
+              "type": "array",
+              "length": 2
+            }
+          }
+        },
+        "alternateSettings": {
+          "type": "object",
+          "keys": [
+            "links"
+          ],
+          "nested": {
+            "links": {
+              "type": "array",
+              "item_keys": [
+                "domain",
+                "lang"
+              ]
+            }
+          }
+        },
+        "specialTagSettings": {
+          "type": "object",
+          "keys": [
+            "meta"
+          ],
+          "nested": {
+            "meta": {
+              "type": "array",
+              "item_keys": [
+                "name",
+                "content"
+              ]
+            }
+          }
+        },
+        "couponSettings": {
+          "type": "object",
+          "keys": [
+            "couponSumMaxValue",
+            "minSumForSingleCoupon",
+            "minSumForCoupon",
+            "defaultBetSum"
+          ],
+          "nested": {}
+        },
+        "betHistorySettings": {
+          "type": "object",
+          "keys": [
+            "couponHistoryBetTypeNames"
+          ],
+          "nested": {
+            "couponHistoryBetTypeNames": {
+              "type": "array",
+              "length": 2
+            }
+          }
+        }
+      }
+    },
+    "page_type": "general",
+    "timestamp": "2026-04-11T17:47:54.014814"
+  },
+  {
+    "url": "https://origin.bk6bba-resources.com/webStaticRed/website/2.3.147/locale/site/locale.bk.ru.json",
+    "method": "GET",
+    "content_type": "application/json",
+    "size": 266266,
+    "data_sample": {
+      "code": "ru",
+      "name": "Русский",
+      "key": "rus",
+      "currencyShort": "<dict>",
+      "main": "<dict>",
+      "loginAuthorizing": "Авторизация...",
+      "loginButtonLogin": "Вход",
+      "loginButtonLogout": "Выйти",
+      "loginError": "<dict>",
+      "loginLabelForgotPassword": "Забыли пароль?"
+    },
+    "structure": {
+      "type": "object",
+      "keys": [
+        "code",
+        "name",
+        "key",
+        "currencyShort",
+        "main",
+        "loginAuthorizing",
+        "loginButtonLogin",
+        "loginButtonLogout",
+        "loginError",
+        "loginLabelForgotPassword",
+        "loginLabelHideBalance",
+        "loginLabelPhone",
+        "loginLabelLogin",
+        "loginLabelPassword",
+        "loginLabelRegistration",
+        "loginLabelShowBalance",
+        "loginUserNameBefore",
+        "loginUserStackBefore",
+        "loginMyAccount",
+        "comingSoon",
+        "serverTemporarilyUnavailable",
+        "appPage",
+        "line",
+        "tote",
+        "infoService",
+        "coupon",
+        "stats",
+        "results",
+        "settings",
+        "errors",
+        "footer",
+        "months",
+        "months2",
+        "week",
+        "home",
+        "notFound",
+        "confirm",
+        "registration",
+        "registrationCyprus",
+        "restorePassword",
+        "accountErrors",
+        "changePassword",
+        "controls",
+        "time",
+        "account",
+        "articles",
+        "serviceUnavailable",
+        "accessToSite",
+        "phoneNumber",
+        "accountNumber",
+        "email",
+        "paymentsTitle",
+        "statisticsPage",
+        "switchToMobileWebsite",
+        "sessionDialog",
+        "loginDeposit",
+        "how2play",
+        "registrationPhotoInstruction",
+        "registrationCupis",
+        "registrationRV",
+        "registrationBk",
+        "registrationQiwi",
+        "cupisRegistrationTypePage",
+        "how2register",
+        "registrationBK",
+        "rulesAgree",
+        "accessDenied",
+        "needVerification",
+        "faqPage",
+        "loginForm",
+        "registrationV4",
+        "eventView",
+        "confirmCookiePolicyDialog",
+        "championship",
+        "iso",
+        "daysOfWeek",
+        "identification",
+        "autoComplete",
+        "calculator",
+        "registrationKZ",
+        "registrationGreece",
+        "currency",
+        "loyalty",
+        "translations",
+        "how2play_2",
+        "forecasts",
+        "ti",
+        "loginByPhone",
+        "loginById",
+        "loginByEmail",
+        "loginLabelEmail",
+        "date",
+        "siteNotAvailableInContry",
+        "loginEnterAuthCode",
+        "login2faInfo",
+        "inAppMessages",
+        "eventViewSwitcher",
+        "loginAuthCode",
+        "fallbacks",
+        "inAppMessage",
+        "loginUserBonuses",
+        "losingLimits",
+        "sports",
+        "header",
+        "stakemat",
+        "uxControls",
+        "map",
+        "helpCenter",
+        "menu",
+        "breadCrumbs",
+        "NewMainPage",
+        "Casino",
+        "WelcomeBanner",
+        "registrationUzBet",
+        "deposit",
+        "hello",
+        "canadaState",
+        "registrationFonDotBet",
+        "navigator",
+        "limitsPeriod",
+        "clubs",
+        "install",
+        "mobile",
+        "alreadyHaveAnAccount",
+        "iHaveAPromoCode",
+        "language",
+        "routeNotFound",
+        "serverError",
+        "widgetError",
+        "apps",
+        "welcomeBanner",
+        "b2b",
+        "sportResults",
+        "siteNotAvailableInCountry",
+        "siteNotAvailableInCountryDescription",
+        "emptyList",
+        "monthsShort",
+        "inApp",
+        "aboutUs",
+        "videoIdent",
+        "bonusesAndActions",
+        "blockAvoidance",
+        "quickGames",
+        "paymentQI",
+        "meta",
+        "languageSettings",
+        "lottery",
+        "docs",
+        "comboBox",
+        "pushActions",
+        "notificationTurnAppeal",
+        "twa",
+        "abc",
+        "statistics",
+        "LocaleInterface",
+        "cookie",
+        "media",
+        "tournaments",
+        "enterValidPhone",
+        "smsConfirmation",
+        "noticeSessionData",
+        "bookmakerPromo",
+        "spellNumber",
+        "mc",
+        "recentHistoryPage",
+        "mobileStakemat",
+        "aiAssistant",
+        "promos"
+      ],
+      "nested": {
+        "currencyShort": {
+          "type": "object",
+          "keys": [
+            "RUB",
+            "USD"
+          ],
+          "nested": {}
+        },
+        "main": {
+          "type": "object",
+          "keys": [
+            "emptyList",
+            "yes",
+            "no",
+            "save",
+            "time",
+            "inputText",
+            "back",
+            "changed",
+            "until",
+            "rules3",
+            "helpCenter3",
+            "sorting",
+            "tryAgainSpread",
+            "fillThisField",
+            "description",
+            "inFormat",
+            "collapse",
+            "promoSingle",
+            "notChosen",
+            "hidePassword",
+            "showPassword",
+            "clear",
+            "more",
+            "close",
+            "expand",
+            "otherAmount",
+            "or",
+            "continue",
+            "and",
+            "update",
+            "updateAvailable",
+            "ok",
+            "min",
+            "coupon",
+            "cancel",
+            "ok2",
+            "updateOffer",
+            "updateOfferDescription",
+            "open",
+            "install",
+            "later",
+            "toAccessNewFeatures",
+            "gotIt",
+            "comeBack",
+            "forFreeMonthNumber",
+            "forSixMonthNumber",
+            "tryLater",
+            "didYouMeant",
+            "apply",
+            "setupLater"
+          ],
+          "nested": {
+            "time": {
+              "type": "object",
+              "keys": [
+                "today",
+                "forWeek",
+                "forMonth",
+                "forThreeMonth",
+                "forAllTime",
+                "forSixMonth"
+              ],
+              "nested": {}
+            }
+          }
+        }
+      }
+    },
+    "page_type": "general",
+    "timestamp": "2026-04-11T17:47:54.514843"
+  },
+  {
+    "url": "https://clientsapi-lb52-w.bk6bba-resources.ru/getApiState",
+    "method": "POST",
+    "content_type": "application/json; charset=utf-8",
+    "size": 1696,
+    "data_sample": {
+      "result": "apiState",
+      "stateTime": "2026-04-11 14:47:54",
+      "state": "<dict>"
+    },
+    "structure": {
+      "type": "object",
+      "keys": [
+        "result",
+        "stateTime",
+        "state"
+      ],
+      "nested": {
+        "state": {
+          "type": "object",
+          "keys": [
+            "selfApi",
+            "client",
+            "clientOperations",
+            "content",
+            "couponBet",
+            "couponBetSlipInfo",
+            "couponGetMinMax",
+            "totoGetMinMax",
+            "couponInfo",
+            "couponList",
+            "couponSell",
+            "betsHistory",
+            "totoBet",
+            "createProcessWithCaptcha",
+            "fonTV",
+            "freebetList",
+            "getDictionaries",
+            "getVersions",
+            "jsAgent",
+            "litotaAccount",
+            "loyalty",
+            "bonusManager",
+            "clientSupport",
+            "analytics",
+            "segment",
+            "geoIp",
+            "totoGetDraw",
+            "seo",
+            "inAppMessage",
+            "extSysInt",
+            "helpCenter",
+            "bonus",
+            "widget",
+            "favorites",
+            "shopAPI",
+            "clubs",
+            "QuickGames",
+            "mailing",
+            "nl",
+            "shortLinks",
+            "media",
+            "captcha",
+            "results"
+          ],
+          "nested": {
+            "selfApi": {
+              "type": "object",
+              "keys": [
+                "ready",
+                "delay"
+              ],
+              "nested": {}
+            },
+            "client": {
+              "type": "object",
+              "keys": [
+                "ready",
+                "delay"
+              ],
+              "nested": {}
+            },
+            "clientOperations": {
+              "type": "object",
+              "keys": [
+                "ready",
+                "delay"
+              ],
+              "nested": {}
+            },
+            "content": {
+              "type": "object",
+              "keys": [
+                "ready",
+                "delay"
+              ],
+              "nested": {}
+            },
+            "couponBet": {
+              "type": "object",
+              "keys": [
+                "ready",
+                "delay"
+              ],
+              "nested": {}
+            }
+          }
+        }
+      }
+    },
+    "page_type": "general",
+    "timestamp": "2026-04-11T17:47:55.080519"
+  },
+  {
+    "url": "https://line-lb54-w.bk6bba-resources.com/ma/getApiState",
+    "method": "POST",
+    "content_type": "application/json; charset=utf-8",
+    "size": 119,
+    "data_sample": {
+      "result": "apiState",
+      "stateTime": "2026-04-11 14:47:55",
+      "state": "<dict>"
+    },
+    "structure": {
+      "type": "object",
+      "keys": [
+        "result",
+        "stateTime",
+        "state"
+      ],
+      "nested": {
+        "state": {
+          "type": "object",
+          "keys": [
+            "line"
+          ],
+          "nested": {
+            "line": {
+              "type": "object",
+              "keys": [
+                "ready",
+                "delay",
+                "commandList"
+              ],
+              "nested": {
+                "commandList": {
+                  "type": "array",
+                  "length": 1
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "page_type": "general",
+    "timestamp": "2026-04-11T17:47:55.111460"
+  },
+  {
+    "url": "https://clientsapi-lb51-w.bk6bba-resources.com/getApiState",
+    "method": "POST",
+    "content_type": "application/json; charset=utf-8",
+    "size": 1696,
+    "data_sample": {
+      "result": "apiState",
+      "stateTime": "2026-04-11 14:47:54",
+      "state": "<dict>"
+    },
+    "structure": {
+      "type": "object",
+      "keys": [
+        "result",
+        "stateTime",
+        "state"
+      ],
+      "nested": {
+        "state": {
+          "type": "object",
+          "keys": [
+            "selfApi",
+            "client",
+            "clientOperations",
+            "content",
+            "couponBet",
+            "couponBetSlipInfo",
+            "couponGetMinMax",
+            "totoGetMinMax",
+            "couponInfo",
+            "couponList",
+            "couponSell",
+            "betsHistory",
+            "totoBet",
+            "createProcessWithCaptcha",
+            "fonTV",
+            "freebetList",
+            "getDictionaries",
+            "getVersions",
+            "jsAgent",
+            "litotaAccount",
+            "loyalty",
+            "bonusManager",
+            "clientSupport",
+            "analytics",
+            "segment",
+            "geoIp",
+            "totoGetDraw",
+            "seo",
+            "inAppMessage",
+            "extSysInt",
+            "helpCenter",
+            "bonus",
+            "widget",
+            "favorites",
+            "shopAPI",
+            "clubs",
+            "QuickGames",
+            "mailing",
+            "nl",
+            "shortLinks",
+            "media",
+            "captcha",
+            "results"
+          ],
+          "nested": {
+            "selfApi": {
+              "type": "object",
+              "keys": [
+                "ready",
+                "delay"
+              ],
+              "nested": {}
+            },
+            "client": {
+              "type": "object",
+              "keys": [
+                "ready",
+                "delay"
+              ],
+              "nested": {}
+            },
+            "clientOperations": {
+              "type": "object",
+              "keys": [
+                "ready",
+                "delay"
+              ],
+              "nested": {}
+            },
+            "content": {
+              "type": "object",
+              "keys": [
+                "ready",
+                "delay"
+              ],
+              "nested": {}
+            },
+            "couponBet": {
+              "type": "object",
+              "keys": [
+                "ready",
+                "delay"
+              ],
+              "nested": {}
+            }
+          }
+        }
+      }
+    },
+    "page_type": "general",
+    "timestamp": "2026-04-11T17:47:55.278253"
+  },
+  {
+    "url": "https://clientsapi-lb52-w.bk6bba-resources.ru/client/defaultProfile",
+    "method": "POST",
+    "content_type": "application/json; charset=utf-8",
+    "size": 1772,
+    "data_sample": {
+      "result": "defaultProfile",
+      "defaultProfile": "<dict>"
+    },
+    "structure": {
+      "type": "object",
+      "keys": [
+        "result",
+        "defaultProfile"
+      ],
+      "nested": {
+        "defaultProfile": {
+          "type": "object",
+          "keys": [
+            "version",
+            "commonSettings",
+            "systemSettings"
+          ],
+          "nested": {
+            "commonSettings": {
+              "type": "object",
+              "keys": [
+                "oneClickBet",
+                "oneClickBetSum",
+                "newBetSumByPrev",
+                "flexOptions",
+                "favoriteBetsSumKind",
+                "favoriteBetsSumPercent",
+                "favoriteBetsSumAbsolute",
+                "autoConfirm",
+                "sessionLifetime",
+                "hideBalance",
+                "loyaltyHiddenNoticeIds",
+                "favoriteDepositSum",
+                "favoriteWithdrawSum",
+                "oneClickDeposit",
+                "oneClickDepositSum",
+                "oneClickDepositPsId",
+                "hideBetsProfit",
+                "lastDepositSum",
+                "lastDepositSums",
+                "lastWithdrawalSum",
+                "sportCustomOrders",
+                "lastDepositPS",
+                "lastWithdrawalPS",
+                "preferredAccent",
+                "factorValueType",
+                "favoriteSports",
+                "hideBetSell",
+                "casinoProMode",
+                "promoOnBoardingViewed",
+                "hidePromoValuesInSport",
+                "educationViewed",
+                "storiesViewed",
+                "sportRecentHistory"
+              ],
+              "nested": {}
+            },
+            "systemSettings": {
+              "type": "object",
+              "keys": [
+                "showEventNums",
+                "sellOnAnyTab",
+                "compactBetView",
+                "coloredBetResult",
+                "compactFooter",
+                "accountMenuCompactView",
+                "eventFilterViewKind",
+                "autoCollapseInEventList",
+                "autoCollapseCoupons",
+                "hideAcceptedCouponsOnTabRecent",
+                "hiddenBanners",
+                "loyaltySliderCollapsed",
+                "newEventView",
+                "autoExpandInEventList",
+                "sportTableCompact",
+                "sportAutoCollapseNodes",
+                "sportAllEventsCollapsedByDefault",
+                "sportSortCompetitionsByCaption",
+                "sportOnBoarding",
+                "couponOnBoarding",
+                "blockAvoidanceVisited",
+                "themeOptionOld",
+                "sportOnBoardingViewed",
+                "sportTipViewed",
+                "unfixFavBetSumPanel",
+                "viewedSettingsVersion",
+                "showCouponAtFirstBet",
+                "showCouponEventStartTime",
+                "showCouponEventLiveTimer",
+                "sortCouponBetsByEventStartTime",
+                "couponCompactMode",
+                "themeOption",
+                "showScrollUpButton"
+              ],
+              "nested": {}
+            }
+          }
+        }
+      }
+    },
+    "page_type": "general",
+    "timestamp": "2026-04-11T17:47:55.290766"
+  },
+  {
+    "url": "https://line-lb61-w.bk6bba-resources.com/ma/getApiState",
+    "method": "POST",
+    "content_type": "application/json; charset=utf-8",
+    "size": 119,
+    "data_sample": {
+      "result": "apiState",
+      "stateTime": "2026-04-11 14:47:55",
+      "state": "<dict>"
+    },
+    "structure": {
+      "type": "object",
+      "keys": [
+        "result",
+        "stateTime",
+        "state"
+      ],
+      "nested": {
+        "state": {
+          "type": "object",
+          "keys": [
+            "line"
+          ],
+          "nested": {
+            "line": {
+              "type": "object",
+              "keys": [
+                "ready",
+                "delay",
+                "commandList"
+              ],
+              "nested": {
+                "commandList": {
+                  "type": "array",
+                  "length": 1
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "page_type": "general",
+    "timestamp": "2026-04-11T17:47:55.603873"
+  },
+  {
+    "url": "https://clientsapi-lb52-w.bk6bba-resources.ru/getScopeSettings",
+    "method": "POST",
+    "content_type": "application/json; charset=utf-8",
+    "size": 251,
+    "data_sample": {
+      "result": "scopeSettings",
+      "settings": "<dict>"
+    },
+    "structure": {
+      "type": "object",
+      "keys": [
+        "result",
+        "settings"
+      ],
+      "nested": {
+        "settings": {
+          "type": "object",
+          "keys": [
+            "fullAuthInterval",
+            "inactivityTimeout",
+            "showLastLoginPopup",
+            "oauthKinds",
+            "passKeyEnabled",
+            "videoIdentOffDemand",
+            "selfExclusionCancelByClient",
+            "selfExclusionCancelByClientCooldown"
+          ],
+          "nested": {
+            "oauthKinds": {
+              "type": "array",
+              "length": 0
+            }
+          }
+        }
+      }
+    },
+    "page_type": "general",
+    "timestamp": "2026-04-11T17:47:57.157904"
+  }
+]

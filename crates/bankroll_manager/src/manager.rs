@@ -43,7 +43,11 @@ impl BankrollManager {
 
     pub fn update_balance(&self, bookmaker: &str, balance: f64, exposure: f64) {
         let mut state = self.state.write();
-        if let Some(bk) = state.bookmakers.iter_mut().find(|b| b.bookmaker == bookmaker) {
+        if let Some(bk) = state
+            .bookmakers
+            .iter_mut()
+            .find(|b| b.bookmaker == bookmaker)
+        {
             bk.balance = balance;
             bk.exposure = exposure;
             bk.available = (balance - exposure).max(0.0);
@@ -68,16 +72,13 @@ impl BankrollManager {
     /// Рассчитывает оптимальный размер ставки.
     /// `edge` — преимущество (например, 0.05 для 5% edge), не вероятность!
     /// `odds` — десятичный коэффициент
-    pub fn calculate_optimal_stake(
-        &self,
-        bookmaker: &str,
-        edge: f64,
-        odds: f64,
-    ) -> f64 {
+    pub fn calculate_optimal_stake(&self, bookmaker: &str, edge: f64, odds: f64) -> f64 {
         let config = self.config.read();
         let state = self.state.read();
 
-        let bk_balance = state.bookmakers.iter()
+        let bk_balance = state
+            .bookmakers
+            .iter()
             .find(|b| b.bookmaker == bookmaker)
             .map(|b| b.available)
             .unwrap_or(0.0);

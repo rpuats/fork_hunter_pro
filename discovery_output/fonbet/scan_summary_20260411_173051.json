@@ -1,0 +1,33 @@
+{
+  "bk": "fonbet",
+  "timestamp": "20260411_173051",
+  "total_endpoints": 26,
+  "endpoints": [
+    "https://clientsapi-lb51-w.bk6bba-resources.com/getScopeSettings",
+    "https://line-lb61-w.bk6bba-resources.com/ma/events/listLight?lang=ru&place=topnew&scopeMarket=1600",
+    "https://line-lb54-w.bk6bba-resources.com/ma/oraExt/sportKinds?version=0&lang=en&sysId=21",
+    "https://line-lb54-w.bk6bba-resources.com/ma/getApiState",
+    "https://clientsapi-lb52-w.bk6bba-resources.ru/content/getContentFromVersion",
+    "https://origin.bk6bba-resources.com/webStaticRed/website/2.3.147/locale/site/locale.bk.ru.json",
+    "https://clientsapi-lb52-w.bk6bba-resources.ru/media/getSettings",
+    "https://line-lb54-w.bk6bba-resources.com/ma/sportEvent/sportCategories?version=0&lang=ru&scopeMarket=1600",
+    "https://line-lb54-w.bk6bba-resources.com/ma/line/showcase?lang=ru&sysId=21&scopeMarket=1600",
+    "https://clientsapi-lb51-w.bk6bba-resources.com/content/getContentFromVersion",
+    "https://line-lb61-w.bk6bba-resources.com/ma/line/factorsCatalog/sportBasicFactors?version=0&lang=ru&systemType=desktop",
+    "https://clientsapi-lb52-w.bk6bba-resources.ru/getApiState",
+    "https://clientsapi-lb52-w.bk6bba-resources.ru/content/getActualContent",
+    "https://line-lb54-w.bk6bba-resources.com/ma/line/factorsCatalog/independentFactors?version=0&lang=ru&sysId=21&scopeMarket=1600",
+    "https://clientsapi-lb51-w.bk6bba-resources.com/media/getMedia",
+    "https://clientsapi-lb51-w.bk6bba-resources.com/client/defaultProfile",
+    "https://line-lb61-w.bk6bba-resources.com/ma/getApiState",
+    "https://line-lb61-w.bk6bba-resources.com/ma/line/logos",
+    "https://line-lb54-w.bk6bba-resources.com/ma/line/factorsCatalog/tables?version=0&lang=ru&sysId=21",
+    "https://clientsapi-lb51-w.bk6bba-resources.com/getApiState",
+    "https://line-lb61-w.bk6bba-resources.com/ma/line/factorsCatalog/eventViewTables?version=0&lang=ru&sysId=21",
+    "https://origin.bk6bba-resources.com/webStaticRed/website/2.3.147/config-6b9adaa165b4e7c2f72769d98b4deb42.json",
+    "https://line-lb61-w.bk6bba-resources.com/ma/line/factorsCatalog/specialTables?version=0&lang=ru&sysId=21",
+    "https://line-lb61-w.bk6bba-resources.com/ma/sportEvent/geoCategories?version=0&lang=ru&scopeMarket=1600",
+    "https://clientsapi-lb51-w.bk6bba-resources.com/content/getActualContent",
+    "https://clientsapi-lb51-w.bk6bba-resources.com/loyalty/getNoAuthAvailableActions"
+  ]
+}

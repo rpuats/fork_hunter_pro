@@ -1,0 +1,23 @@
+{
+  "bk": "leon",
+  "timestamp": "20260411_174815",
+  "total_endpoints": 6,
+  "endpoints": [
+    "https://leon.ru/api-2/betline/sports?ctag=ru-RU&flags=urlv2",
+    "https://leon.ru/api-2/i18n/ru-ru/1775833910688.f07dd.js",
+    "https://leon.ru/api-1",
+    "https://leon.ru/api-2/betline/headline-matches/changes?ctag=ru-RU&allVtag=9c2cd386-31e1-4ce9-a140-28e9b63a9300&flags=reg,urlv2,orn2,mm2,rrc",
+    "https://leon.ru/api-2/matches-of-the-day?limit=1&betlineFlags=reg,urlv2,orn2,mm2,rrc,nodup",
+    "https://leon.ru/api-2/betline/headline-matches?ctag=ru-RU&flags=reg,urlv2,orn2,mm2,rrc&merged=true"
+  ],
+  "live_endpoints": [],
+  "prematch_endpoints": [],
+  "general_endpoints": [
+    "https://leon.ru/api-2/i18n/ru-ru/1775833910688.f07dd.js",
+    "https://leon.ru/api-2/matches-of-the-day?limit=1&betlineFlags=reg,urlv2,orn2,mm2,rrc,nodup",
+    "https://leon.ru/api-2/betline/headline-matches?ctag=ru-RU&flags=reg,urlv2,orn2,mm2,rrc&merged=true",
+    "https://leon.ru/api-1",
+    "https://leon.ru/api-2/betline/headline-matches/changes?ctag=ru-RU&allVtag=9c2cd386-31e1-4ce9-a140-28e9b63a9300&flags=reg,urlv2,orn2,mm2,rrc",
+    "https://leon.ru/api-2/betline/sports?ctag=ru-RU&flags=urlv2"
+  ]
+}

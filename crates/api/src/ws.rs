@@ -5,7 +5,7 @@ use futures::{SinkExt, StreamExt};
 use shared::EventBus;
 use std::sync::Arc;
 use std::time::Duration;
-use tracing::{info, warn, error};
+use tracing::{error, info, warn};
 use uuid::Uuid;
 
 static CONNECTION_COUNT: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
@@ -22,18 +22,18 @@ pub async fn ws_handler(
 async fn handle_socket(socket: WebSocket, event_bus: Arc<EventBus>) {
     let conn_id = CONNECTION_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     let subscriber_id = Uuid::new_v4().to_string();
-    
+
     info!(connection = conn_id, subscriber = %subscriber_id, "WebSocket client connected");
 
     let (mut sender, mut receiver) = socket.split();
-    
+
     // Subscribe to EventBus
     let mut event_rx = event_bus.subscribe(&subscriber_id);
-    
+
     // Task: Forward events from EventBus to WebSocket client
     let mut send_task = tokio::spawn(async move {
         let mut interval = tokio::time::interval(HEARTBEAT_INTERVAL);
-        
+
         loop {
             tokio::select! {
                 // Send heartbeat ping
@@ -43,7 +43,7 @@ async fn handle_socket(socket: WebSocket, event_bus: Arc<EventBus>) {
                         break;
                     }
                 }
-                
+
                 // Forward real events from bus
                 event_result = event_rx.recv() => {
                     match event_result {
@@ -115,6 +115,6 @@ async fn handle_socket(socket: WebSocket, event_bus: Arc<EventBus>) {
 
     // Cleanup
     event_bus.unsubscribe(&subscriber_id);
-    
+
     info!(connection = conn_id, subscriber = %subscriber_id, "WebSocket client disconnected");
 }

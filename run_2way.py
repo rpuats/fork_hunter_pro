@@ -4,7 +4,7 @@ import sys
 sys.path.insert(0, r'C:\Users\Administrator\Desktop\ai\Grok вилки\fork_hunter_pro')
 
 from core.finder import SurebetCalculator
-from scanner.parsers import WinlinePlaywrightParser, PariPlaywrightParser, ZenitPlaywrightParser, BaltbetPlaywrightParser
+from scanner.parsers import WinlinePlaywrightParser, PariPlaywrightParser, ZenitPlaywrightParser, BaltbetRegexParser
 
 
 async def find():
@@ -15,7 +15,7 @@ async def find():
         ('Winline', WinlinePlaywrightParser),
         ('Pari', PariPlaywrightParser),
         ('Zenit', ZenitPlaywrightParser),
-        ('Baltbet', BaltbetPlaywrightParser),
+        ('Baltbet', BaltbetRegexParser),
     ]:
         try:
             p = cls()

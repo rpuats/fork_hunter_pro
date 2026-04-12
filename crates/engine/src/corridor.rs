@@ -18,12 +18,20 @@ impl CorridorFinder {
         let odds_by_market = self.group_by_market_line(all_odds);
 
         for ((_sport, _league, market), market_odds) in &odds_by_market {
-            let over_odds: Vec<&&Odd> = market_odds.iter().filter(|o| o.selection.to_lowercase().contains("over")).collect();
-            let under_odds: Vec<&&Odd> = market_odds.iter().filter(|o| o.selection.to_lowercase().contains("under")).collect();
+            let over_odds: Vec<&&Odd> = market_odds
+                .iter()
+                .filter(|o| o.selection.to_lowercase().contains("over"))
+                .collect();
+            let under_odds: Vec<&&Odd> = market_odds
+                .iter()
+                .filter(|o| o.selection.to_lowercase().contains("under"))
+                .collect();
 
             for &over in &over_odds {
                 for &under in &under_odds {
-                    if over.bookmaker_slug == under.bookmaker_slug { continue; }
+                    if over.bookmaker_slug == under.bookmaker_slug {
+                        continue;
+                    }
                     if let (Some(line_over), Some(line_under)) = (over.line, under.line) {
                         if line_over > line_under {
                             let corridor_size = line_over - line_under;
@@ -61,7 +69,10 @@ impl CorridorFinder {
         corridors
     }
 
-    fn group_by_market_line<'a>(&self, all_odds: &'a [Odd]) -> HashMap<(Sport, String, String), Vec<&'a Odd>> {
+    fn group_by_market_line<'a>(
+        &self,
+        all_odds: &'a [Odd],
+    ) -> HashMap<(Sport, String, String), Vec<&'a Odd>> {
         let mut map: HashMap<(Sport, String, String), Vec<&'a Odd>> = HashMap::new();
         for odd in all_odds {
             if odd.line.is_some() {

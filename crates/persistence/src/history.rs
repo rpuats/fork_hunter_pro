@@ -1,7 +1,7 @@
+use anyhow::{Error, Result};
 use shared::{Surebet, SurebetLeg};
 use sqlx::SqlitePool;
 use std::sync::Arc;
-use anyhow::{Error, Result};
 use tracing::{info, warn};
 
 pub struct SurebetHistory {
@@ -60,7 +60,9 @@ impl SurebetHistory {
                     mirror INTEGER NOT NULL DEFAULT 0
                 )
                 "#,
-            ).execute(pool.as_ref()).await?;
+            )
+            .execute(pool.as_ref())
+            .await?;
 
             sqlx::query(
                 r#"
@@ -78,7 +80,9 @@ impl SurebetHistory {
                     FOREIGN KEY (surebet_id) REFERENCES surebets(id)
                 )
                 "#,
-            ).execute(pool.as_ref()).await?;
+            )
+            .execute(pool.as_ref())
+            .await?;
 
             info!("Database migration complete");
         }
@@ -141,18 +145,14 @@ impl SurebetHistory {
     pub async fn get_recent(&self, limit: i32) -> Result<Vec<Surebet>, Error> {
         // Return from in-memory (always available)
         let data = self.data.lock().await;
-        let result: Vec<Surebet> = data.iter()
-            .rev()
-            .take(limit as usize)
-            .cloned()
-            .collect();
+        let result: Vec<Surebet> = data.iter().rev().take(limit as usize).cloned().collect();
         Ok(result)
     }
 
     pub async fn get_stats(&self) -> Result<SurebetStats, Error> {
         let data = self.data.lock().await;
         let total = data.len();
-        
+
         if total == 0 {
             return Ok(SurebetStats {
                 total: 0,
@@ -185,7 +185,8 @@ impl SurebetHistory {
 
     pub async fn get_legs(&self, surebet_id: &str) -> Result<Vec<SurebetLeg>, Error> {
         let data = self.data.lock().await;
-        let legs = data.iter()
+        let legs = data
+            .iter()
             .find(|sb| sb.id.to_string() == surebet_id)
             .map(|sb| sb.legs.clone())
             .unwrap_or_default();
@@ -210,9 +211,9 @@ pub struct SurebetStats {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use chrono::Utc;
     use shared::Sport;
     use uuid::Uuid;
-    use chrono::Utc;
 
     fn make_test_surebet() -> Surebet {
         Surebet {
@@ -225,18 +226,16 @@ mod tests {
             is_live: false,
             profit_percent: 3.0,
             total_stake: 1000.0,
-            legs: vec![
-                SurebetLeg {
-                    bookmaker: "bk1".into(),
-                    market: "1X2".into(),
-                    selection: "1".into(),
-                    odds: 2.0,
-                    line: None,
-                    stake: 500.0,
-                    payout: 1000.0,
-                    url: None,
-                },
-            ],
+            legs: vec![SurebetLeg {
+                bookmaker: "bk1".into(),
+                market: "1X2".into(),
+                selection: "1".into(),
+                odds: 2.0,
+                line: None,
+                stake: 500.0,
+                payout: 1000.0,
+                url: None,
+            }],
             detected_at: Utc::now(),
             verified: true,
             mirror: false,
@@ -246,10 +245,10 @@ mod tests {
     #[tokio::test]
     async fn test_save_and_get_recent() {
         let hist = SurebetHistory::new("memory").await.unwrap();
-        
+
         let surebet = make_test_surebet();
         hist.save(&surebet).await.unwrap();
-        
+
         let recent = hist.get_recent(10).await.unwrap();
         assert_eq!(recent.len(), 1);
         assert_eq!(recent[0].profit_percent, 3.0);
@@ -258,14 +257,14 @@ mod tests {
     #[tokio::test]
     async fn test_get_stats() {
         let hist = SurebetHistory::new("memory").await.unwrap();
-        
+
         for i in 0..5 {
             let mut sb = make_test_surebet();
             sb.profit_percent = (i + 1) as f64;
             sb.total_stake = 1000.0;
             hist.save(&sb).await.unwrap();
         }
-        
+
         let stats = hist.get_stats().await.unwrap();
         assert_eq!(stats.total, 5);
         assert!(stats.avg_profit > 0.0);
@@ -275,11 +274,11 @@ mod tests {
     #[tokio::test]
     async fn test_get_legs() {
         let hist = SurebetHistory::new("memory").await.unwrap();
-        
+
         let surebet = make_test_surebet();
         let sb_id = surebet.id.to_string();
         hist.save(&surebet).await.unwrap();
-        
+
         let legs = hist.get_legs(&sb_id).await.unwrap();
         assert_eq!(legs.len(), 1);
         assert_eq!(legs[0].bookmaker, "bk1");
@@ -289,7 +288,7 @@ mod tests {
     async fn test_count() {
         let hist = SurebetHistory::new("memory").await.unwrap();
         assert_eq!(hist.count().await.unwrap(), 0);
-        
+
         hist.save(&make_test_surebet()).await.unwrap();
         assert_eq!(hist.count().await.unwrap(), 1);
     }

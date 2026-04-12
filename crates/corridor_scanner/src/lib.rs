@@ -1,5 +1,5 @@
-pub mod scanner;
 pub mod calculator;
+pub mod scanner;
 
-pub use scanner::CorridorScanner;
 pub use calculator::CorridorCalculator;
+pub use scanner::CorridorScanner;

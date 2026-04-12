@@ -1,7 +1,7 @@
 use chrono::Utc;
 use dashmap::DashMap;
 use parking_lot::RwLock;
-use shared::{BonusConfig, BonusInfo, BonusStatus, BonusType};
+use shared::{BonusConfig, BonusInfo, BonusPlan, BonusStatus, BonusType};
 use std::sync::Arc;
 
 use super::calculator::BonusCalculator;
@@ -41,8 +41,10 @@ impl BonusHunter {
         expiry_days: u32,
         bookmaker_margin: f64,
     ) -> BonusInfo {
-        let difficulty = BonusCalculator::assess_difficulty(wager, min_odds, expiry_days, max_bet, amount);
-        let real_value = BonusCalculator::calculate_real_value(amount, wager, min_odds, bookmaker_margin);
+        let difficulty =
+            BonusCalculator::assess_difficulty(wager, min_odds, expiry_days, max_bet, amount);
+        let real_value =
+            BonusCalculator::calculate_real_value(amount, wager, min_odds, bookmaker_margin);
         let ev = BonusCalculator::calculate_ev(amount, wager, min_odds, bookmaker_margin, max_bet);
 
         let bonus = BonusInfo {
@@ -70,8 +72,15 @@ impl BonusHunter {
     }
 
     pub fn get_best_bonuses(&self, limit: usize) -> Vec<BonusInfo> {
-        let mut bonuses: Vec<BonusInfo> = self.bonuses.iter()
-            .filter(|e| matches!(e.value().status, BonusStatus::Available | BonusStatus::Claimed | BonusStatus::Wagering))
+        let mut bonuses: Vec<BonusInfo> = self
+            .bonuses
+            .iter()
+            .filter(|e| {
+                matches!(
+                    e.value().status,
+                    BonusStatus::Available | BonusStatus::Claimed | BonusStatus::Wagering
+                )
+            })
             .map(|e| e.value().clone())
             .collect();
 
@@ -85,8 +94,15 @@ impl BonusHunter {
         planner.get_plan(bookmaker).cloned()
     }
 
+    pub fn get_all_bonus_plans(&self) -> Vec<BonusPlan> {
+        let planner = self.planner.lock();
+        planner.get_all_plans().into_iter().cloned().collect()
+    }
+
     pub fn create_bonus_plan(&self, bookmaker: &str) -> Option<shared::BonusPlan> {
-        let bonus = self.bonuses.iter()
+        let bonus = self
+            .bonuses
+            .iter()
             .find(|e| e.value().bookmaker == bookmaker)
             .map(|e| e.value().clone())?;
 
@@ -107,14 +123,35 @@ impl BonusHunter {
     }
 
     pub fn get_all_active(&self) -> Vec<BonusInfo> {
-        self.bonuses.iter()
-            .filter(|e| matches!(e.value().status, BonusStatus::Available | BonusStatus::Claimed | BonusStatus::Wagering))
+        self.bonuses
+            .iter()
+            .filter(|e| {
+                matches!(
+                    e.value().status,
+                    BonusStatus::Available | BonusStatus::Claimed | BonusStatus::Wagering
+                )
+            })
+            .map(|e| e.value().clone())
+            .collect()
+    }
+
+    pub fn get_active_freebet_bonuses(&self) -> Vec<BonusInfo> {
+        self.bonuses
+            .iter()
+            .filter(|e| {
+                e.value().bonus_type == BonusType::Freebet
+                    && matches!(
+                        e.value().status,
+                        BonusStatus::Available | BonusStatus::Claimed | BonusStatus::Wagering
+                    )
+            })
             .map(|e| e.value().clone())
             .collect()
     }
 
     pub fn get_completed(&self) -> Vec<BonusInfo> {
-        self.bonuses.iter()
+        self.bonuses
+            .iter()
             .filter(|e| matches!(e.value().status, BonusStatus::Completed))
             .map(|e| e.value().clone())
             .collect()
@@ -129,8 +166,15 @@ mod tests {
     fn test_register_bonus() {
         let hunter = BonusHunter::new(BonusConfig::default());
         let bonus = hunter.register_bonus(
-            "winline", "Welcome Bonus", BonusType::Welcome,
-            5000.0, 5.0, 1.8, 5000.0, 30, 5.0,
+            "winline",
+            "Welcome Bonus",
+            BonusType::Welcome,
+            5000.0,
+            5.0,
+            1.8,
+            5000.0,
+            30,
+            5.0,
         );
         assert!(bonus.ev > 0.0);
         assert!(bonus.real_value > 0.0);
@@ -139,8 +183,28 @@ mod tests {
     #[test]
     fn test_get_best_bonuses() {
         let hunter = BonusHunter::new(BonusConfig::default());
-        hunter.register_bonus("bk1", "Bonus 1", BonusType::Welcome, 5000.0, 5.0, 1.8, 5000.0, 30, 5.0);
-        hunter.register_bonus("bk2", "Bonus 2", BonusType::Welcome, 3000.0, 3.0, 1.5, 3000.0, 14, 4.0);
+        hunter.register_bonus(
+            "bk1",
+            "Bonus 1",
+            BonusType::Welcome,
+            5000.0,
+            5.0,
+            1.8,
+            5000.0,
+            30,
+            5.0,
+        );
+        hunter.register_bonus(
+            "bk2",
+            "Bonus 2",
+            BonusType::Welcome,
+            3000.0,
+            3.0,
+            1.5,
+            3000.0,
+            14,
+            4.0,
+        );
         let best = hunter.get_best_bonuses(1);
         assert_eq!(best.len(), 1);
     }

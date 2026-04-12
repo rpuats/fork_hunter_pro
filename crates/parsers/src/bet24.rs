@@ -22,8 +22,11 @@ impl _24betParser {
     pub fn new(client: Arc<Client>) -> Self {
         Self {
             client,
-            live_url: "https://line51.tf39be-resources.com/events/list?lang=ru&scopeMarket=3000".to_string(),
-            prematch_url: "https://line51.tf39be-resources.com/events/listBase?lang=ru&scopeMarket=3000".to_string(),
+            live_url: "https://line51.tf39be-resources.com/events/list?lang=ru&scopeMarket=3000"
+                .to_string(),
+            prematch_url:
+                "https://line51.tf39be-resources.com/events/listBase?lang=ru&scopeMarket=3000"
+                    .to_string(),
         }
     }
 
@@ -48,7 +51,8 @@ impl _24betParser {
             Sport::Baseball
         } else if lower.contains("гандбол") || lower.contains("handball") {
             Sport::Handball
-        } else if lower.contains("футбол") || lower.contains("football") || lower.contains("soccer") {
+        } else if lower.contains("футбол") || lower.contains("football") || lower.contains("soccer")
+        {
             Sport::Football
         } else if lower.contains("регби") || lower.contains("rugby") {
             Sport::Rugby
@@ -97,13 +101,25 @@ impl _24betParser {
             1034 => ("2H_Result".into(), "X".into(), OddsType::Draw),
             1035 => ("2H_Result".into(), "2".into(), OddsType::Away),
             // Correct Score (partial)
-            1040..=1050 => ("CorrectScore".into(), format!("score_{}", fid), OddsType::Custom),
+            1040..=1050 => (
+                "CorrectScore".into(),
+                format!("score_{}", fid),
+                OddsType::Custom,
+            ),
             // Fallback
-            _ => (format!("factor_{}", fid), format!("{}", fid), OddsType::Custom),
+            _ => (
+                format!("factor_{}", fid),
+                format!("{}", fid),
+                OddsType::Custom,
+            ),
         }
     }
 
-    async fn fetch_api(&self, url: &str, is_live: bool) -> Result<(Vec<Event>, Vec<Odd>), Box<dyn std::error::Error + Send + Sync>> {
+    async fn fetch_api(
+        &self,
+        url: &str,
+        is_live: bool,
+    ) -> Result<(Vec<Event>, Vec<Odd>), Box<dyn std::error::Error + Send + Sync>> {
         debug!(url = url, "24bet: fetching");
 
         let client = reqwest::Client::builder()
@@ -128,7 +144,10 @@ impl _24betParser {
         Self::parse_api_response(&json, is_live)
     }
 
-    fn parse_api_response(json: &serde_json::Value, is_live: bool) -> Result<(Vec<Event>, Vec<Odd>), Box<dyn std::error::Error + Send + Sync>> {
+    fn parse_api_response(
+        json: &serde_json::Value,
+        is_live: bool,
+    ) -> Result<(Vec<Event>, Vec<Odd>), Box<dyn std::error::Error + Send + Sync>> {
         let events_data = match json.get("events").and_then(|e| e.as_array()) {
             Some(e) => e,
             None => return Ok((Vec::new(), Vec::new())),
@@ -142,7 +161,11 @@ impl _24betParser {
                 event_data.get("team1").and_then(|v| v.as_str()),
                 event_data.get("team2").and_then(|v| v.as_str()),
             ) {
-                let name = event_data.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                let name = event_data
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
                 event_map.insert(id, (team1.to_string(), team2.to_string(), name));
             }
         }
@@ -161,31 +184,40 @@ impl _24betParser {
                         if seen_events.insert(event_id) {
                             let sport = Self::detect_sport(league_name);
 
-                            all_odds.push((Event {
-                                id: format!("_24bet-{}", event_id),
-                                sport,
-                                league: league_name.clone(),
-                                home_team: team1.clone(),
-                                away_team: team2.clone(),
-                                start_time: None,
-                                is_live,
-                                bookmaker_slug: "_24bet".to_string(),
-                                raw_url: None,
-                                extra: HashMap::new(),
-                            }, Vec::new()));
+                            all_odds.push((
+                                Event {
+                                    id: format!("_24bet-{}", event_id),
+                                    sport,
+                                    league: league_name.clone(),
+                                    home_team: team1.clone(),
+                                    away_team: team2.clone(),
+                                    start_time: None,
+                                    is_live,
+                                    bookmaker_slug: "_24bet".to_string(),
+                                    raw_url: None,
+                                    extra: HashMap::new(),
+                                },
+                                Vec::new(),
+                            ));
                         }
 
-                        let event_idx = all_odds.iter().position(|(e, _)| e.id == format!("_24bet-{}", event_id));
+                        let event_idx = all_odds
+                            .iter()
+                            .position(|(e, _)| e.id == format!("_24bet-{}", event_id));
                         if let Some(idx) = event_idx {
                             for factor in factors {
                                 if let (Some(fid), Some(val)) = (
                                     factor.get("f").and_then(|v| v.as_u64()),
                                     factor.get("v").and_then(|v| v.as_f64()),
                                 ) {
-                                    if val <= 1.0 { continue; }
+                                    if val <= 1.0 {
+                                        continue;
+                                    }
 
-                                    let line = factor.get("p").and_then(|v| v.as_f64()).map(|p| p / 100.0);
-                                    let (market, selection, odds_type) = Self::factor_to_market(fid);
+                                    let line =
+                                        factor.get("p").and_then(|v| v.as_f64()).map(|p| p / 100.0);
+                                    let (market, selection, odds_type) =
+                                        Self::factor_to_market(fid);
 
                                     let (_, odds_vec) = &mut all_odds[idx];
                                     odds_vec.push(Odd {
@@ -215,9 +247,15 @@ impl _24betParser {
 
 #[async_trait]
 impl BookmakerParser for _24betParser {
-    fn name(&self) -> &str { "24bet" }
-    fn slug(&self) -> &str { "_24bet" }
-    fn is_enabled(&self) -> bool { true }
+    fn name(&self) -> &str {
+        "24bet"
+    }
+    fn slug(&self) -> &str {
+        "_24bet"
+    }
+    fn is_enabled(&self) -> bool {
+        true
+    }
 
     async fn fetch_events(&self) -> Result<Vec<Event>, Box<dyn std::error::Error + Send + Sync>> {
         let mut all_events = Vec::new();
@@ -231,7 +269,10 @@ impl BookmakerParser for _24betParser {
         Ok(all_events)
     }
 
-    async fn fetch_odds(&self, _event_id: &str) -> Result<Vec<Odd>, Box<dyn std::error::Error + Send + Sync>> {
+    async fn fetch_odds(
+        &self,
+        _event_id: &str,
+    ) -> Result<Vec<Odd>, Box<dyn std::error::Error + Send + Sync>> {
         let mut all_odds = Vec::new();
         for (url, is_live) in [(&self.live_url, true), (&self.prematch_url, false)] {
             match self.fetch_api(url, is_live).await {
@@ -258,10 +299,19 @@ impl BookmakerParser for _24betParser {
         }
 
         let elapsed = start.elapsed().as_millis() as u64;
-        info!(events = all_events.len(), odds = all_odds.len(), time_ms = elapsed, "24bet fetch complete");
+        info!(
+            events = all_events.len(),
+            odds = all_odds.len(),
+            time_ms = elapsed,
+            "24bet fetch complete"
+        );
         Ok(ParserResult::new("_24bet", all_events, all_odds, elapsed))
     }
 
-    fn base_url(&self) -> &str { "https://24bet.ru" }
-    fn user_agent(&self) -> &str { "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" }
+    fn base_url(&self) -> &str {
+        "https://24bet.ru"
+    }
+    fn user_agent(&self) -> &str {
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
 }

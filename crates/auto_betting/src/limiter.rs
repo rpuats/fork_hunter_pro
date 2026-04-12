@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 use rand::Rng;
+use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 
 pub struct BetLimiter {
@@ -39,7 +40,8 @@ impl BetLimiter {
 
         if let Some(last) = self.last_bet_time {
             let min_delay = Duration::from_millis(self.delay_between_bets_ms);
-            let random_delay = min_delay + Duration::from_millis(rand::thread_rng().gen_range(0..2000));
+            let random_delay =
+                min_delay + Duration::from_millis(rand::thread_rng().gen_range(0..2000));
             if last.elapsed() < random_delay {
                 return Err(BetLimitError::TooSoon);
             }
@@ -61,7 +63,11 @@ impl BetLimiter {
     pub fn get_stats(&self) -> BetLimiterStats {
         let now = Utc::now();
         let one_hour_ago = now - chrono::Duration::hours(1);
-        let bets_this_hour = self.bets_this_hour.iter().filter(|t| **t > one_hour_ago).count();
+        let bets_this_hour = self
+            .bets_this_hour
+            .iter()
+            .filter(|t| **t > one_hour_ago)
+            .count();
 
         BetLimiterStats {
             bets_this_hour: bets_this_hour as u32,
@@ -90,7 +96,7 @@ impl std::fmt::Display for BetLimitError {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BetLimiterStats {
     pub bets_this_hour: u32,
     pub max_bets_per_hour: u32,
@@ -150,8 +156,17 @@ mod tests {
 
     #[test]
     fn test_error_display() {
-        assert_eq!(format!("{}", BetLimitError::HourlyLimitReached), "Hourly bet limit reached");
-        assert_eq!(format!("{}", BetLimitError::DailyLimitReached), "Daily stake limit reached");
-        assert_eq!(format!("{}", BetLimitError::TooSoon), "Too soon since last bet");
+        assert_eq!(
+            format!("{}", BetLimitError::HourlyLimitReached),
+            "Hourly bet limit reached"
+        );
+        assert_eq!(
+            format!("{}", BetLimitError::DailyLimitReached),
+            "Daily stake limit reached"
+        );
+        assert_eq!(
+            format!("{}", BetLimitError::TooSoon),
+            "Too soon since last bet"
+        );
     }
 }

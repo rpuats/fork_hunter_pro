@@ -1,0 +1,16 @@
+
+============================================================
+  WINLINE: https://winline.ru/football
+============================================================
+
+  [1/4] Loading main page...
+    Warning: Page.goto: Timeout 20000ms exceeded.
+Call log:
+  - navigating to "https://winlin
+  [2/4] Scrolling and clicking...
+  [3/4] Loading other sports...
+  [4/4] Analyzing 0 responses...
+
+============================================================
+  FOUND 0 POTENTIAL EVENT APIs
+============================================================

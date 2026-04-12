@@ -58,26 +58,47 @@ impl FactorCatalog {
         Ok(total)
     }
 
-    fn parse_catalog(&self, json: &serde_json::Value, cache: &mut HashMap<u64, FactorDef>) -> usize {
+    fn parse_catalog(
+        &self,
+        json: &serde_json::Value,
+        cache: &mut HashMap<u64, FactorDef>,
+    ) -> usize {
         let mut count = 0;
 
         // Структура: { factors: [{id, name, outcomes: [{id, name}]}] }
         if let Some(factors) = json.get("factors").and_then(|f| f.as_array()) {
             for factor in factors {
-                if let (Some(fid), Some(name)) = (factor.get("id").and_then(|v| v.as_u64()), factor.get("name").and_then(|v| v.as_str())) {
-                    let selections: Vec<String> = factor.get("outcomes")
+                if let (Some(fid), Some(name)) = (
+                    factor.get("id").and_then(|v| v.as_u64()),
+                    factor.get("name").and_then(|v| v.as_str()),
+                ) {
+                    let selections: Vec<String> = factor
+                        .get("outcomes")
                         .and_then(|o| o.as_array())
-                        .map(|arr| arr.iter().filter_map(|o| o.get("name").and_then(|n| n.as_str()).map(String::from)).collect())
+                        .map(|arr| {
+                            arr.iter()
+                                .filter_map(|o| {
+                                    o.get("name").and_then(|n| n.as_str()).map(String::from)
+                                })
+                                .collect()
+                        })
                         .unwrap_or_default();
 
-                    let market_type = factor.get("type").and_then(|t| t.as_str()).unwrap_or("").to_string();
+                    let market_type = factor
+                        .get("type")
+                        .and_then(|t| t.as_str())
+                        .unwrap_or("")
+                        .to_string();
 
-                    cache.insert(fid, FactorDef {
-                        id: fid,
-                        name: name.to_string(),
-                        market_type,
-                        selections,
-                    });
+                    cache.insert(
+                        fid,
+                        FactorDef {
+                            id: fid,
+                            name: name.to_string(),
+                            market_type,
+                            selections,
+                        },
+                    );
                     count += 1;
                 }
             }
@@ -86,20 +107,37 @@ impl FactorCatalog {
         // Альтернативная структура: { data: [{factorId, factorName, outcomes: [...]}] }
         if let Some(data) = json.get("data").and_then(|d| d.as_array()) {
             for item in data {
-                if let (Some(fid), Some(name)) = (item.get("factorId").and_then(|v| v.as_u64()), item.get("factorName").and_then(|v| v.as_str())) {
-                    let selections: Vec<String> = item.get("outcomes")
+                if let (Some(fid), Some(name)) = (
+                    item.get("factorId").and_then(|v| v.as_u64()),
+                    item.get("factorName").and_then(|v| v.as_str()),
+                ) {
+                    let selections: Vec<String> = item
+                        .get("outcomes")
                         .and_then(|o| o.as_array())
-                        .map(|arr| arr.iter().filter_map(|o| o.get("name").and_then(|n| n.as_str()).map(String::from)).collect())
+                        .map(|arr| {
+                            arr.iter()
+                                .filter_map(|o| {
+                                    o.get("name").and_then(|n| n.as_str()).map(String::from)
+                                })
+                                .collect()
+                        })
                         .unwrap_or_default();
 
-                    let market_type = item.get("marketType").and_then(|t| t.as_str()).unwrap_or("").to_string();
+                    let market_type = item
+                        .get("marketType")
+                        .and_then(|t| t.as_str())
+                        .unwrap_or("")
+                        .to_string();
 
-                    cache.insert(fid, FactorDef {
-                        id: fid,
-                        name: name.to_string(),
-                        market_type,
-                        selections,
-                    });
+                    cache.insert(
+                        fid,
+                        FactorDef {
+                            id: fid,
+                            name: name.to_string(),
+                            market_type,
+                            selections,
+                        },
+                    );
                     count += 1;
                 }
             }
@@ -117,9 +155,14 @@ impl FactorCatalog {
     /// Найти все факторы для рынка
     pub async fn find_factors_by_market(&self, market_type: &str) -> Vec<FactorDef> {
         let cache = self.cache.read().await;
-        cache.values()
-            .filter(|f| f.market_type.to_lowercase().contains(&market_type.to_lowercase())
-                || f.name.to_lowercase().contains(&market_type.to_lowercase()))
+        cache
+            .values()
+            .filter(|f| {
+                f.market_type
+                    .to_lowercase()
+                    .contains(&market_type.to_lowercase())
+                    || f.name.to_lowercase().contains(&market_type.to_lowercase())
+            })
             .cloned()
             .collect()
     }
@@ -133,7 +176,10 @@ impl FactorCatalog {
     /// Получить маппинг factor_id -> market_type
     pub async fn factor_to_market(&self) -> HashMap<u64, String> {
         let cache = self.cache.read().await;
-        cache.iter().map(|(k, v)| (*k, v.market_type.clone())).collect()
+        cache
+            .iter()
+            .map(|(k, v)| (*k, v.market_type.clone()))
+            .collect()
     }
 }
 
@@ -148,10 +194,10 @@ pub mod known_factors {
 
     //_candidate_ факторы для дополнительных рынков (нужна верификация)
     // Эти IDs основаны на паттернах в ответах API и могут различаться для разных БК
-    pub const BTTS_YES: u64 = 926;   // ОЗ Да / Обе забьют - Да
-    pub const BTTS_NO: u64 = 927;    // ОЗ Нет / Обе забьют - Нет
-    pub const EVEN: u64 = 928;       // Чёт
-    pub const ODD: u64 = 929;        // Нечёт
+    pub const BTTS_YES: u64 = 926; // ОЗ Да / Обе забьют - Да
+    pub const BTTS_NO: u64 = 927; // ОЗ Нет / Обе забьют - Нет
+    pub const EVEN: u64 = 928; // Чёт
+    pub const ODD: u64 = 929; // Нечёт
 }
 
 #[cfg(test)]
@@ -176,7 +222,9 @@ mod tests {
         let client = Arc::new(Client::new());
         let catalog = FactorCatalog::new(client, "https://example.com", 2300);
 
-        let all = tokio::runtime::Runtime::new().unwrap().block_on(catalog.all_factors());
+        let all = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(catalog.all_factors());
         assert!(all.is_empty());
     }
 

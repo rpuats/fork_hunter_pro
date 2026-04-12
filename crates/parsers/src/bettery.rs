@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use reqwest::Client;
 use shared::{Event, Odd};
 use std::sync::Arc;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 /// Bettery API — shared platform, scopeMarket=501
 /// live: https://line51.at58f5-resources.com/events/list?lang=ru&scopeMarket=501
@@ -24,11 +24,7 @@ impl BetteryParser {
             client: client.clone(),
             live_url: format!("{}/events/list?lang=ru&scopeMarket=501", base_url),
             prematch_url: format!("{}/events/listBase?lang=ru&scopeMarket=501", base_url),
-            factors: Arc::new(FactorsCatalog::new(
-                client,
-                base_url,
-                501,
-            )),
+            factors: Arc::new(FactorsCatalog::new(client, base_url, 501)),
         }
     }
 
@@ -39,9 +35,15 @@ impl BetteryParser {
 
 #[async_trait]
 impl BookmakerParser for BetteryParser {
-    fn name(&self) -> &str { "Bettery" }
-    fn slug(&self) -> &str { "bettery" }
-    fn is_enabled(&self) -> bool { true }
+    fn name(&self) -> &str {
+        "Bettery"
+    }
+    fn slug(&self) -> &str {
+        "bettery"
+    }
+    fn is_enabled(&self) -> bool {
+        true
+    }
 
     async fn fetch_events(&self) -> Result<Vec<Event>, Box<dyn std::error::Error + Send + Sync>> {
         let mut all_events = Vec::new();
@@ -63,7 +65,10 @@ impl BookmakerParser for BetteryParser {
         Ok(all_events)
     }
 
-    async fn fetch_odds(&self, _event_id: &str) -> Result<Vec<Odd>, Box<dyn std::error::Error + Send + Sync>> {
+    async fn fetch_odds(
+        &self,
+        _event_id: &str,
+    ) -> Result<Vec<Odd>, Box<dyn std::error::Error + Send + Sync>> {
         let mut all_odds = Vec::new();
         for (url, is_live) in [(&self.live_url, true), (&self.prematch_url, false)] {
             match self.do_fetch(url, is_live).await {
@@ -86,19 +91,40 @@ impl BookmakerParser for BetteryParser {
         let events = self.fetch_events().await?;
         let odds = self.fetch_odds("").await?;
         let elapsed = start.elapsed().as_millis() as u64;
-        eprintln!("[BETTERY] Fetch complete: {} events, {} odds", events.len(), odds.len());
-        debug!(events = events.len(), odds = odds.len(), time_ms = elapsed, "Bettery fetch complete");
+        eprintln!(
+            "[BETTERY] Fetch complete: {} events, {} odds",
+            events.len(),
+            odds.len()
+        );
+        debug!(
+            events = events.len(),
+            odds = odds.len(),
+            time_ms = elapsed,
+            "Bettery fetch complete"
+        );
         Ok(ParserResult::new("bettery", events, odds, elapsed))
     }
 
-    fn base_url(&self) -> &str { "https://bettery.ru" }
-    fn user_agent(&self) -> &str { "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" }
+    fn base_url(&self) -> &str {
+        "https://bettery.ru"
+    }
+    fn user_agent(&self) -> &str {
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
 }
 
 impl BetteryParser {
-    async fn do_fetch(&self, _url: &str, is_live: bool) -> Result<Vec<(Event, Vec<Odd>)>, Box<dyn std::error::Error + Send + Sync>> {
+    async fn do_fetch(
+        &self,
+        _url: &str,
+        is_live: bool,
+    ) -> Result<Vec<(Event, Vec<Odd>)>, Box<dyn std::error::Error + Send + Sync>> {
         let scope = "501";
-        let suffix = if is_live { "events/list" } else { "events/listBase" };
+        let suffix = if is_live {
+            "events/list"
+        } else {
+            "events/listBase"
+        };
         // Use the API base URL directly
         let api_base = "https://line51.at58f5-resources.com";
         let url = format!("{}/{}?lang=ru&scopeMarket={}", api_base, suffix, scope);
@@ -107,7 +133,7 @@ impl BetteryParser {
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(30))
             .build()?;
-        
+
         eprintln!("[BETTERY] Sending request...");
         let resp = client.get(&url)
             .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
@@ -115,7 +141,7 @@ impl BetteryParser {
             .header("Accept-Language", "ru-RU,ru;q=0.9")
             .send()
             .await?;
-        
+
         eprintln!("[BETTERY] Response: {}", resp.status());
 
         if !resp.status().is_success() {
@@ -130,6 +156,10 @@ impl BetteryParser {
         result
     }
 
-    fn base_url(&self) -> &str { "https://bettery.ru" }
-    fn user_agent(&self) -> &str { "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" }
+    fn base_url(&self) -> &str {
+        "https://bettery.ru"
+    }
+    fn user_agent(&self) -> &str {
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
 }

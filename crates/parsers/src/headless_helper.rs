@@ -22,28 +22,23 @@ impl HeadlessChromeHelper {
         wait_ms: u64,
     ) -> Result<Arc<headless_chrome::Tab>, Box<dyn std::error::Error + Send + Sync>> {
         let tab = self.browser.new_tab()?;
-        
+
         debug!(url = url, "HeadlessChrome: navigating");
         tab.navigate_to(url)?.wait_until_navigated()?;
-        
+
         // Wait additional time for lazy loading
         if wait_ms > 0 {
             std::thread::sleep(Duration::from_millis(wait_ms));
         }
-        
+
         debug!(url = url, "HeadlessChrome: page loaded");
         Ok(tab)
     }
 
     /// Execute JavaScript and return JSON value
-    pub fn evaluate_json(
-        tab: &headless_chrome::Tab,
-        js: &str,
-    ) -> Option<Value> {
+    pub fn evaluate_json(tab: &headless_chrome::Tab, js: &str) -> Option<Value> {
         match tab.evaluate(js, false) {
-            Ok(result) => {
-                result.value.clone()
-            }
+            Ok(result) => result.value.clone(),
             Err(e) => {
                 debug!(error = %e, "HeadlessChrome: JS evaluation failed");
                 None
@@ -52,7 +47,9 @@ impl HeadlessChromeHelper {
     }
 
     /// Scroll page to trigger lazy loading
-    pub fn scroll_page(tab: &headless_chrome::Tab) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pub fn scroll_page(
+        tab: &headless_chrome::Tab,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         tab.evaluate("window.scrollTo(0, document.body.scrollHeight / 2)", false)?;
         std::thread::sleep(Duration::from_secs(1));
         tab.evaluate("window.scrollTo(0, document.body.scrollHeight)", false)?;
@@ -75,23 +72,39 @@ pub fn is_valid_team_name(name: &str) -> bool {
     if name.len() < 2 || name.len() > 80 {
         return false;
     }
-    
+
     let blacklist = [
-        "футбол", "счёт", "live", "матч", "спорт", "total", "тотал",
-        "статистика", "time", "vs", "team", "команда", "player", "игрок",
-        "unknown", "неизвест", "match", "game", "event",
+        "футбол",
+        "счёт",
+        "live",
+        "матч",
+        "спорт",
+        "total",
+        "тотал",
+        "статистика",
+        "time",
+        "vs",
+        "team",
+        "команда",
+        "player",
+        "игрок",
+        "unknown",
+        "неизвест",
+        "match",
+        "game",
+        "event",
     ];
-    
+
     let lower = name.to_lowercase();
     if blacklist.iter().any(|&b| lower.contains(b)) {
         return false;
     }
-    
+
     // Reject purely numeric names
     if name.chars().all(|c| c.is_numeric() || c.is_whitespace()) {
         return false;
     }
-    
+
     true
 }
 

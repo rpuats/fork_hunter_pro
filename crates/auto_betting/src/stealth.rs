@@ -42,9 +42,15 @@ impl StealthBetting {
 
     pub fn get_stealth_headers(&self) -> HashMap<String, String> {
         let mut headers = HashMap::new();
-        headers.insert("User-Agent".into(), self.get_random_user_agent().to_string());
+        headers.insert(
+            "User-Agent".into(),
+            self.get_random_user_agent().to_string(),
+        );
         headers.insert("Accept".into(), "application/json, text/plain, */*".into());
-        headers.insert("Accept-Language".into(), "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7".into());
+        headers.insert(
+            "Accept-Language".into(),
+            "ru-RU,ru;q=0.9,en-US;q=0.8,en;q=0.7".into(),
+        );
         headers.insert("Accept-Encoding".into(), "gzip, deflate, br".into());
         headers.insert("Origin".into(), "https://example.com".into());
         headers.insert("Referer".into(), "https://example.com/sports".into());

@@ -57,13 +57,17 @@ impl EventBus {
     pub async fn publish(&self, event: BusEvent) -> anyhow::Result<()> {
         *self.event_count.write() += 1;
         debug!("Publishing event");
-        self.sender.send(event).map_err(|_| anyhow::anyhow!("Failed to publish event"))?;
+        self.sender
+            .send(event)
+            .map_err(|_| anyhow::anyhow!("Failed to publish event"))?;
         Ok(())
     }
 
     pub fn subscribe(&self, subscriber_id: &str) -> broadcast::Receiver<BusEvent> {
         let rx = self.sender.subscribe();
-        self.subscribers.write().insert(subscriber_id.to_string(), rx.resubscribe());
+        self.subscribers
+            .write()
+            .insert(subscriber_id.to_string(), rx.resubscribe());
         info!(subscriber = subscriber_id, "New subscriber");
         rx
     }

@@ -4,27 +4,37 @@ use std::time::Instant;
 async fn main() {
     println!("Starting HTTP test...");
     let start = Instant::now();
-    
+
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
         .build()
         .unwrap();
-    
+
     println!("Client built in {:?}", start.elapsed());
-    
+
     let url = "https://line51.tf39be-resources.com/events/list?lang=ru&scopeMarket=3000";
     println!("Fetching {}", url);
-    
-    match client.get(url)
+
+    match client
+        .get(url)
         .header("User-Agent", "Mozilla/5.0")
         .header("Accept", "application/json")
         .send()
-        .await {
+        .await
+    {
         Ok(resp) => {
-            println!("Response received in {:?}, status: {}", start.elapsed(), resp.status());
+            println!(
+                "Response received in {:?}, status: {}",
+                start.elapsed(),
+                resp.status()
+            );
             match resp.bytes().await {
                 Ok(bytes) => {
-                    println!("Bytes received in {:?}, size: {} bytes", start.elapsed(), bytes.len());
+                    println!(
+                        "Bytes received in {:?}, size: {} bytes",
+                        start.elapsed(),
+                        bytes.len()
+                    );
                 }
                 Err(e) => {
                     println!("Bytes error: {}", e);
@@ -35,6 +45,6 @@ async fn main() {
             println!("Request error: {}", e);
         }
     }
-    
+
     println!("Total time: {:?}", start.elapsed());
 }

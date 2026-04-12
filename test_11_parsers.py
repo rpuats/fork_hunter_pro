@@ -2,7 +2,7 @@ import asyncio, sys, time
 sys.path.insert(0, r'C:\Users\Administrator\Desktop\ai\Grok вилки\fork_hunter_pro')
 from scanner.parsers import (
     WinlinePlaywrightParser, PariPlaywrightParser, BetcityPlaywrightParser,
-    ZenitPlaywrightParser, BaltbetPlaywrightParser, MarathonPlaywrightParser,
+    ZenitPlaywrightParser, BaltbetRegexParser, MarathonPlaywrightParser,
     BetteryPlaywrightParser, BetBoomPlaywrightParser, FonbetPlaywrightParser,
     _24betPlaywrightParser, OlimpBetPlaywrightParser
 )
@@ -25,7 +25,7 @@ async def main():
         ('Winline', WinlinePlaywrightParser),
         ('Betcity', BetcityPlaywrightParser),
         ('Zenit', ZenitPlaywrightParser),
-        ('Baltbet', BaltbetPlaywrightParser),
+        ('Baltbet', BaltbetRegexParser),
         ('Marathon', MarathonPlaywrightParser),
         ('Bettery', BetteryPlaywrightParser),
         ('BetBoom', BetBoomPlaywrightParser),

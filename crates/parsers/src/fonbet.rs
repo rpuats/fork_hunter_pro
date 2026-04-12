@@ -37,9 +37,15 @@ impl FonbetParser {
 
 #[async_trait]
 impl BookmakerParser for FonbetParser {
-    fn name(&self) -> &str { "Fonbet" }
-    fn slug(&self) -> &str { "fonbet" }
-    fn is_enabled(&self) -> bool { true }
+    fn name(&self) -> &str {
+        "Fonbet"
+    }
+    fn slug(&self) -> &str {
+        "fonbet"
+    }
+    fn is_enabled(&self) -> bool {
+        true
+    }
 
     async fn fetch_events(&self) -> Result<Vec<Event>, Box<dyn std::error::Error + Send + Sync>> {
         let mut all_events = Vec::new();
@@ -53,7 +59,10 @@ impl BookmakerParser for FonbetParser {
         Ok(all_events)
     }
 
-    async fn fetch_odds(&self, _event_id: &str) -> Result<Vec<Odd>, Box<dyn std::error::Error + Send + Sync>> {
+    async fn fetch_odds(
+        &self,
+        _event_id: &str,
+    ) -> Result<Vec<Odd>, Box<dyn std::error::Error + Send + Sync>> {
         let mut all_odds = Vec::new();
         for (url, is_live) in [(&self.live_url, true), (&self.prematch_url, false)] {
             match self.fetch_api(url, is_live).await {
@@ -80,26 +89,41 @@ impl BookmakerParser for FonbetParser {
         }
 
         let elapsed = start.elapsed().as_millis() as u64;
-        info!(events = all_events.len(), odds = all_odds.len(), time_ms = elapsed, "Fonbet fetch complete");
+        info!(
+            events = all_events.len(),
+            odds = all_odds.len(),
+            time_ms = elapsed,
+            "Fonbet fetch complete"
+        );
         Ok(ParserResult::new("fonbet", all_events, all_odds, elapsed))
     }
 
-    fn base_url(&self) -> &str { "https://fonbet.ru" }
-    fn user_agent(&self) -> &str { "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" }
+    fn base_url(&self) -> &str {
+        "https://fonbet.ru"
+    }
+    fn user_agent(&self) -> &str {
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
 }
 
 impl FonbetParser {
-    async fn fetch_api(&self, url: &str, is_live: bool) -> Result<(Vec<Event>, Vec<Odd>), Box<dyn std::error::Error + Send + Sync>> {
+    async fn fetch_api(
+        &self,
+        url: &str,
+        is_live: bool,
+    ) -> Result<(Vec<Event>, Vec<Odd>), Box<dyn std::error::Error + Send + Sync>> {
         debug!(url = url, "Fonbet: fetching");
 
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(30))
+            .gzip(true)
             .build()?;
 
         let resp = client.get(url)
             .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
             .header("Accept", "application/json, text/plain, */*")
             .header("Accept-Language", "ru-RU,ru;q=0.9")
+            .header("Accept-Encoding", "gzip, deflate, br")
             .send()
             .await?;
 
@@ -112,24 +136,44 @@ impl FonbetParser {
         Self::parse_api_response(&json, is_live)
     }
 
-    fn parse_api_response(json: &serde_json::Value, is_live: bool) -> Result<(Vec<Event>, Vec<Odd>), Box<dyn std::error::Error + Send + Sync>> {
+    fn parse_api_response(
+        json: &serde_json::Value,
+        is_live: bool,
+    ) -> Result<(Vec<Event>, Vec<Odd>), Box<dyn std::error::Error + Send + Sync>> {
         let events_data = match json.get("events").and_then(|e| e.as_array()) {
             Some(e) => e,
             None => return Ok((Vec::new(), Vec::new())),
         };
 
         // Build event lookup: id -> (sport_id, team1, team2, start_time, league)
-        let mut event_map: HashMap<u64, (u64, String, String, Option<i64>, String)> = HashMap::new();
+        let mut event_map: HashMap<u64, (u64, String, String, Option<i64>, String)> =
+            HashMap::new();
         for event_data in events_data {
             if let (Some(id), Some(team1), Some(team2)) = (
                 event_data.get("id").and_then(|v| v.as_u64()),
                 event_data.get("team1").and_then(|v| v.as_str()),
                 event_data.get("team2").and_then(|v| v.as_str()),
             ) {
-                let sport_id = event_data.get("sportId").and_then(|v| v.as_u64()).unwrap_or(0);
+                let sport_id = event_data
+                    .get("sportId")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0);
                 let start_time = event_data.get("startTime").and_then(|v| v.as_i64());
-                let league = event_data.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                event_map.insert(id, (sport_id, team1.to_string(), team2.to_string(), start_time, league));
+                let league = event_data
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string();
+                event_map.insert(
+                    id,
+                    (
+                        sport_id,
+                        team1.to_string(),
+                        team2.to_string(),
+                        start_time,
+                        league,
+                    ),
+                );
             }
         }
 
@@ -143,36 +187,49 @@ impl FonbetParser {
                     cf.get("e").and_then(|v| v.as_u64()),
                     cf.get("factors").and_then(|f| f.as_array()),
                 ) {
-                    if let Some((sport_id, team1, team2, start_time, league)) = event_map.get(&event_id) {
+                    if let Some((sport_id, team1, team2, start_time, league)) =
+                        event_map.get(&event_id)
+                    {
                         if seen_events.insert(event_id) {
                             let sport = Self::sport_id_to_sport(*sport_id);
-                            let start_dt = start_time.map(|ts| chrono::DateTime::from_timestamp(ts, 0).unwrap_or_default());
+                            let start_dt = start_time.map(|ts| {
+                                chrono::DateTime::from_timestamp(ts, 0).unwrap_or_default()
+                            });
 
-                            all_odds.push((Event {
-                                id: format!("fonbet-{}", event_id),
-                                sport,
-                                league: league.clone(),
-                                home_team: team1.clone(),
-                                away_team: team2.clone(),
-                                start_time: start_dt,
-                                is_live,
-                                bookmaker_slug: "fonbet".to_string(),
-                                raw_url: None,
-                                extra: HashMap::new(),
-                            }, Vec::new()));
+                            all_odds.push((
+                                Event {
+                                    id: format!("fonbet-{}", event_id),
+                                    sport,
+                                    league: league.clone(),
+                                    home_team: team1.clone(),
+                                    away_team: team2.clone(),
+                                    start_time: start_dt,
+                                    is_live,
+                                    bookmaker_slug: "fonbet".to_string(),
+                                    raw_url: None,
+                                    extra: HashMap::new(),
+                                },
+                                Vec::new(),
+                            ));
                         }
 
-                        let event_idx = all_odds.iter().position(|(e, _)| e.id == format!("fonbet-{}", event_id));
+                        let event_idx = all_odds
+                            .iter()
+                            .position(|(e, _)| e.id == format!("fonbet-{}", event_id));
                         if let Some(idx) = event_idx {
                             for factor in factors {
                                 if let (Some(fid), Some(val)) = (
                                     factor.get("f").and_then(|v| v.as_u64()),
                                     factor.get("v").and_then(|v| v.as_f64()),
                                 ) {
-                                    if val <= 1.0 { continue; }
+                                    if val <= 1.0 {
+                                        continue;
+                                    }
 
-                                    let line = factor.get("p").and_then(|v| v.as_f64()).map(|p| p / 100.0);
-                                    let (market, selection, odds_type) = Self::factor_to_market(fid);
+                                    let line =
+                                        factor.get("p").and_then(|v| v.as_f64()).map(|p| p / 100.0);
+                                    let (market, selection, odds_type) =
+                                        Self::factor_to_market(fid);
 
                                     let (_, odds_vec) = &mut all_odds[idx];
                                     odds_vec.push(Odd {
@@ -234,9 +291,17 @@ impl FonbetParser {
             1034 => ("2H_Result".into(), "X".into(), OddsType::Draw),
             1035 => ("2H_Result".into(), "2".into(), OddsType::Away),
             // Correct Score (partial)
-            1040..=1050 => ("CorrectScore".into(), format!("score_{}", fid), OddsType::Custom),
+            1040..=1050 => (
+                "CorrectScore".into(),
+                format!("score_{}", fid),
+                OddsType::Custom,
+            ),
             // Fallback
-            _ => (format!("factor_{}", fid), format!("{}", fid), OddsType::Custom),
+            _ => (
+                format!("factor_{}", fid),
+                format!("{}", fid),
+                OddsType::Custom,
+            ),
         }
     }
 

@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use chrono::Utc;
-use shared::{Event, Odd};
+use shared::{BookmakerMetadata, Event, Odd, ParserReadiness};
 use std::fmt;
 
 #[async_trait]
@@ -9,8 +9,26 @@ pub trait BookmakerParser: Send + Sync + fmt::Debug {
     fn slug(&self) -> &str;
     fn is_enabled(&self) -> bool;
 
+    fn metadata(&self) -> BookmakerMetadata {
+        BookmakerMetadata::new(
+            self.slug(),
+            self.name(),
+            self.is_enabled(),
+            self.is_enabled(),
+            false,
+            None,
+        )
+    }
+
+    fn readiness(&self) -> Option<ParserReadiness> {
+        None
+    }
+
     async fn fetch_events(&self) -> Result<Vec<Event>, Box<dyn std::error::Error + Send + Sync>>;
-    async fn fetch_odds(&self, event_id: &str) -> Result<Vec<Odd>, Box<dyn std::error::Error + Send + Sync>>;
+    async fn fetch_odds(
+        &self,
+        event_id: &str,
+    ) -> Result<Vec<Odd>, Box<dyn std::error::Error + Send + Sync>>;
     async fn fetch_all(&self) -> Result<ParserResult, Box<dyn std::error::Error + Send + Sync>>;
 
     fn base_url(&self) -> &str;

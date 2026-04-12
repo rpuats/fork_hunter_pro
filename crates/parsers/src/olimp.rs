@@ -28,9 +28,15 @@ impl OlimpParser {
 
 #[async_trait]
 impl BookmakerParser for OlimpParser {
-    fn name(&self) -> &str { "Olimp" }
-    fn slug(&self) -> &str { "olimp" }
-    fn is_enabled(&self) -> bool { true }
+    fn name(&self) -> &str {
+        "Olimp"
+    }
+    fn slug(&self) -> &str {
+        "olimp"
+    }
+    fn is_enabled(&self) -> bool {
+        true
+    }
 
     async fn fetch_events(&self) -> Result<Vec<Event>, Box<dyn std::error::Error + Send + Sync>> {
         let mut all_events = Vec::new();
@@ -44,7 +50,10 @@ impl BookmakerParser for OlimpParser {
         Ok(all_events)
     }
 
-    async fn fetch_odds(&self, _event_id: &str) -> Result<Vec<Odd>, Box<dyn std::error::Error + Send + Sync>> {
+    async fn fetch_odds(
+        &self,
+        _event_id: &str,
+    ) -> Result<Vec<Odd>, Box<dyn std::error::Error + Send + Sync>> {
         let mut all_odds = Vec::new();
         for (section, is_live) in [("live", true), ("line/top", false)] {
             match self.fetch_section(section, is_live).await {
@@ -75,18 +84,34 @@ impl BookmakerParser for OlimpParser {
         }
 
         let elapsed = start.elapsed().as_millis() as u64;
-        info!(events = all_events.len(), odds = all_odds.len(), time_ms = elapsed, "Olimp fetch complete");
+        info!(
+            events = all_events.len(),
+            odds = all_odds.len(),
+            time_ms = elapsed,
+            "Olimp fetch complete"
+        );
         Ok(ParserResult::new("olimp", all_events, all_odds, elapsed))
     }
 
-    fn base_url(&self) -> &str { "https://www.olimp.bet" }
-    fn user_agent(&self) -> &str { "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" }
+    fn base_url(&self) -> &str {
+        "https://www.olimp.bet"
+    }
+    fn user_agent(&self) -> &str {
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
 }
 
 impl OlimpParser {
-    async fn fetch_section(&self, section: &str, is_live: bool) -> Result<(Vec<Event>, Vec<Odd>), Box<dyn std::error::Error + Send + Sync>> {
+    async fn fetch_section(
+        &self,
+        section: &str,
+        is_live: bool,
+    ) -> Result<(Vec<Event>, Vec<Odd>), Box<dyn std::error::Error + Send + Sync>> {
         // CRITICAL: Olimp uses /v4/0/ which returns ALL sports at once
-        let url = format!("{}/v4/0/{}/sports-with-competitions-with-events?vids%5B%5D=", self.base_api_url, section);
+        let url = format!(
+            "{}/v4/0/{}/sports-with-competitions-with-events?vids%5B%5D=",
+            self.base_api_url, section
+        );
 
         debug!(url = url, "Olimp: fetching section");
 
@@ -141,8 +166,11 @@ impl OlimpParser {
 
             let sport_info = payload.get("sport").unwrap_or(&serde_json::Value::Null);
             let sport_id = sport_info.get("id").and_then(|v| v.as_str()).unwrap_or("0");
-            let sport_name = sport_info.get("name").or_else(|| sport_info.get("names").and_then(|n| n.get("0")))
-                .and_then(|v| v.as_str()).unwrap_or("");
+            let sport_name = sport_info
+                .get("name")
+                .or_else(|| sport_info.get("names").and_then(|n| n.get("0")))
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
 
             let sport = match sport_id {
                 "1" | "3" => Sport::Football,
@@ -160,7 +188,10 @@ impl OlimpParser {
                 _ => Sport::Other,
             };
 
-            let competitions = match payload.get("competitionsWithEvents").and_then(|c| c.as_array()) {
+            let competitions = match payload
+                .get("competitionsWithEvents")
+                .and_then(|c| c.as_array())
+            {
                 Some(c) => c,
                 None => continue,
             };
@@ -180,7 +211,11 @@ impl OlimpParser {
                         let event = Event {
                             id: event_key.clone(),
                             sport,
-                            league: if !league_name.is_empty() { league_name.to_string() } else { sport_name.to_string() },
+                            league: if !league_name.is_empty() {
+                                league_name.to_string()
+                            } else {
+                                sport_name.to_string()
+                            },
                             home_team: home.clone(),
                             away_team: away.clone(),
                             start_time: None,
@@ -192,7 +227,9 @@ impl OlimpParser {
                         events.push(event);
 
                         // Parse outcomes into odds
-                        if let Some(outcomes) = event_data.get("outcomes").and_then(|o| o.as_array()) {
+                        if let Some(outcomes) =
+                            event_data.get("outcomes").and_then(|o| o.as_array())
+                        {
                             for outcome in outcomes {
                                 if let (Some(selection), Some(prob_str)) = (
                                     outcome.get("shortName").and_then(|v| v.as_str()),
@@ -200,14 +237,19 @@ impl OlimpParser {
                                 ) {
                                     if let Ok(prob) = prob_str.parse::<f64>() {
                                         if prob > 1.0 {
-                                            let market = outcome.get("groupName")
+                                            let market = outcome
+                                                .get("groupName")
                                                 .and_then(|v| v.as_str())
                                                 .unwrap_or("unknown");
                                             let odds_type = Self::selection_to_odds_type(selection);
-                                            let line = outcome.get("param").and_then(|v| v.as_f64());
+                                            let line =
+                                                outcome.get("param").and_then(|v| v.as_f64());
 
                                             all_odds.push(Odd {
-                                                id: format!("{}-{}-{}", event_key, market, selection),
+                                                id: format!(
+                                                    "{}-{}-{}",
+                                                    event_key, market, selection
+                                                ),
                                                 event_id: event_key.clone(),
                                                 bookmaker_slug: "olimp".to_string(),
                                                 market: market.to_string(),
@@ -227,18 +269,27 @@ impl OlimpParser {
             }
         }
 
-        debug!(sports = sports_array.len(), events = events.len(), odds = all_odds.len(), "Olimp: parsed");
+        debug!(
+            sports = sports_array.len(),
+            events = events.len(),
+            odds = all_odds.len(),
+            "Olimp: parsed"
+        );
         Ok((events, all_odds))
     }
 
     fn extract_event_info(data: &serde_json::Value) -> Option<(String, String, String)> {
         let event_id = data.get("id")?.to_string().trim_matches('"').to_string();
 
-        let home = data.get("team1Name").or_else(|| data.get("competitor1"))
+        let home = data
+            .get("team1Name")
+            .or_else(|| data.get("competitor1"))
             .and_then(|v| v.as_str())?
             .to_string();
 
-        let away = data.get("team2Name").or_else(|| data.get("competitor2"))
+        let away = data
+            .get("team2Name")
+            .or_else(|| data.get("competitor2"))
             .and_then(|v| v.as_str())?
             .to_string();
 

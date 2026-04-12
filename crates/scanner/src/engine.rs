@@ -14,13 +14,14 @@ use engine::odds_errors::OddsErrorDetector;
 use engine::value::ValueDetector;
 use engine::verifier::OddsVerifier;
 use express_forks::ExpressForkScanner;
-use futures::future::join_all;
+use parking_lot::RwLock;
 use parsers::base::{BookmakerParser, ParserResult};
 use parsers::circuit_breaker::CircuitBreaker;
-use parking_lot::RwLock;
 use shared::models::ScannerMetrics;
-use shared::{EventBus, Event, Odd, BusEvent};
-use shared::{ExpressFork, CorridorOpportunity, BonusInfo, ValueBet};
+use shared::odds::OddsType;
+use shared::Sport;
+use shared::{BonusInfo, CorridorOpportunity, ExpressFork};
+use shared::{BusEvent, Event, EventBus, Odd};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -131,10 +132,7 @@ impl GhostScanner {
     ) -> Self {
         let mut circuit_breakers = HashMap::new();
         for parser in &parsers {
-            circuit_breakers.insert(
-                parser.slug().to_string(),
-                CircuitBreaker::new(5, 300, 3),
-            );
+            circuit_breakers.insert(parser.slug().to_string(), CircuitBreaker::new(5, 300, 3));
         }
 
         let (state_tx, state_rx) = watch::channel(ScannerState {
@@ -169,7 +167,9 @@ impl GhostScanner {
             state_tx,
             state_rx,
             pipeline_cache,
-            surebets_cache: Arc::new(parking_lot::RwLock::new(std::collections::HashMap::with_capacity(10000))),
+            surebets_cache: Arc::new(parking_lot::RwLock::new(
+                std::collections::HashMap::with_capacity(10000),
+            )),
             value_bets_cache: Arc::new(parking_lot::RwLock::new(Vec::with_capacity(1000))),
         }
     }
@@ -178,7 +178,11 @@ impl GhostScanner {
     pub fn get_surebets(&self, limit: usize) -> Vec<shared::Surebet> {
         let cache = self.surebets_cache.read();
         let mut surebets: Vec<_> = cache.values().cloned().collect();
-        surebets.sort_by(|a, b| b.profit_percent.partial_cmp(&a.profit_percent).unwrap_or(std::cmp::Ordering::Equal));
+        surebets.sort_by(|a, b| {
+            b.profit_percent
+                .partial_cmp(&a.profit_percent)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         surebets.into_iter().take(limit).collect()
     }
 
@@ -187,17 +191,163 @@ impl GhostScanner {
         let cache = self.value_bets_cache.read();
         cache.iter().take(limit).cloned().collect()
     }
-    
+
     /// Генерация ключа дедупликации
     fn surebet_dedup_key(surebet: &shared::Surebet) -> String {
         format!(
             "{}|{}|{}|{}|{}",
             surebet.home_team,
             surebet.away_team,
-            surebet.legs.first().map(|l| l.market.clone()).unwrap_or_default(),
-            surebet.legs.first().map(|l| l.line.map(|x| format!("{:.1}", x)).unwrap_or_default()).unwrap_or_default(),
+            surebet
+                .legs
+                .first()
+                .map(|l| l.market.clone())
+                .unwrap_or_default(),
+            surebet
+                .legs
+                .first()
+                .map(|l| l.line.map(|x| format!("{:.1}", x)).unwrap_or_default())
+                .unwrap_or_default(),
             surebet.is_live
         )
+    }
+
+    /// Загружаем синхронизированные данные для заблокированных БК
+    fn load_synced_bk_data() -> (Vec<Event>, Vec<Odd>) {
+        use std::fs;
+
+        let mut all_events = Vec::new();
+        let mut all_odds = Vec::new();
+
+        let bks = ["winline", "zenit", "betcity", "baltbet"];
+
+        for bk in bks {
+            let file_path = format!("{}_events_synced.json", bk);
+            if let Ok(content) = fs::read_to_string(&file_path) {
+                if let Ok(data) = serde_json::from_str::<serde_json::Value>(&content) {
+                    if let Some(events_arr) = data.get("events").and_then(|v| v.as_array()) {
+                        let now = chrono::Utc::now();
+                        for (i, item) in events_arr.iter().enumerate() {
+                            let home = item.get("home_team").and_then(|v| v.as_str()).unwrap_or("");
+                            let away = item.get("away_team").and_then(|v| v.as_str()).unwrap_or("");
+                            let league = item.get("league").and_then(|v| v.as_str()).unwrap_or("");
+                            let is_live = item
+                                .get("is_live")
+                                .and_then(|v| v.as_bool())
+                                .unwrap_or(false);
+
+                            if home.is_empty() || away.is_empty() {
+                                continue;
+                            }
+
+                            let event_id = format!("{}-synced-{}", bk, i);
+                            let sport = if league.contains("NBA") || league.contains("KHL") {
+                                Sport::Basketball
+                            } else {
+                                Sport::Football
+                            };
+
+                            all_events.push(Event {
+                                id: event_id.clone(),
+                                sport,
+                                league: league.to_string(),
+                                home_team: home.to_string(),
+                                away_team: away.to_string(),
+                                start_time: None,
+                                is_live,
+                                bookmaker_slug: bk.to_string(),
+                                raw_url: None,
+                                extra: HashMap::new(),
+                            });
+
+                            // 1X2 odds
+                            if let Some(odds_1x2) = item.get("odds_1x2").and_then(|v| v.as_array())
+                            {
+                                if odds_1x2.len() >= 3 {
+                                    if let (Some(o1), Some(o_x), Some(o2)) = (
+                                        odds_1x2[0].as_f64(),
+                                        odds_1x2[1].as_f64(),
+                                        odds_1x2[2].as_f64(),
+                                    ) {
+                                        all_odds.push(Odd {
+                                            id: format!("{}-1", event_id),
+                                            event_id: event_id.clone(),
+                                            bookmaker_slug: bk.to_string(),
+                                            market: "1X2".into(),
+                                            selection: "1".into(),
+                                            odds: o1,
+                                            odds_type: OddsType::Home,
+                                            line: None,
+                                            timestamp: now,
+                                        });
+                                        all_odds.push(Odd {
+                                            id: format!("{}-X", event_id),
+                                            event_id: event_id.clone(),
+                                            bookmaker_slug: bk.to_string(),
+                                            market: "1X2".into(),
+                                            selection: "X".into(),
+                                            odds: o_x,
+                                            odds_type: OddsType::Draw,
+                                            line: None,
+                                            timestamp: now,
+                                        });
+                                        all_odds.push(Odd {
+                                            id: format!("{}-2", event_id),
+                                            event_id: event_id.clone(),
+                                            bookmaker_slug: bk.to_string(),
+                                            market: "1X2".into(),
+                                            selection: "2".into(),
+                                            odds: o2,
+                                            odds_type: OddsType::Away,
+                                            line: None,
+                                            timestamp: now,
+                                        });
+                                    }
+                                }
+                            }
+
+                            // Total odds
+                            if let Some(odds_over) =
+                                item.get("odds_total_over").and_then(|v| v.as_array())
+                            {
+                                if let Some(o) = odds_over.get(0).and_then(|v| v.as_f64()) {
+                                    all_odds.push(Odd {
+                                        id: format!("{}-total-over", event_id),
+                                        event_id: event_id.clone(),
+                                        bookmaker_slug: bk.to_string(),
+                                        market: "Total".into(),
+                                        selection: "Over".into(),
+                                        odds: o,
+                                        odds_type: OddsType::Over,
+                                        line: Some(2.5),
+                                        timestamp: now,
+                                    });
+                                }
+                            }
+                            if let Some(odds_under) =
+                                item.get("odds_total_under").and_then(|v| v.as_array())
+                            {
+                                if let Some(o) = odds_under.get(0).and_then(|v| v.as_f64()) {
+                                    all_odds.push(Odd {
+                                        id: format!("{}-total-under", event_id),
+                                        event_id: event_id.clone(),
+                                        bookmaker_slug: bk.to_string(),
+                                        market: "Total".into(),
+                                        selection: "Under".into(),
+                                        odds: o,
+                                        odds_type: OddsType::Under,
+                                        line: Some(2.5),
+                                        timestamp: now,
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        (all_events, all_odds)
     }
 
     pub async fn run_cycle(&self) -> ScannerMetrics {
@@ -211,56 +361,90 @@ impl GhostScanner {
         // ВСЕГДА фетчим данные — pipeline cache отключён
         info!("🔄 Fetching parsers...");
         let results = Self::fetch_parsers_parallel(&self.parsers, &self.circuit_breakers).await;
-        let fetched_odds: Vec<Odd> = results.iter().flat_map(|e| e.odds.clone()).collect();
-        let fetched_events: Vec<Event> = results.iter().flat_map(|e| e.events.clone()).collect();
-        
-        info!("📊 Fetched: {} events, {} odds from {} parsers", 
-              fetched_events.len(), fetched_odds.len(), results.len());
+        let mut fetched_odds: Vec<Odd> = results.iter().flat_map(|e| e.odds.clone()).collect();
+        let mut fetched_events: Vec<Event> =
+            results.iter().flat_map(|e| e.events.clone()).collect();
+
+        // Загружаем синхронизированные данные для заблокированных БК
+        let synced = Self::load_synced_bk_data();
+        let synced_events_len = synced.0.len();
+        let _synced_odds_len = synced.1.len();
+        fetched_events.extend(synced.0);
+        fetched_odds.extend(synced.1);
+
+        info!(
+            "📊 Fetched: {} events, {} odds from {} parsers (+ {} synced)",
+            fetched_events.len(),
+            fetched_odds.len(),
+            results.len(),
+            synced_events_len
+        );
         for result in &results {
-            info!("  - {} events, {} odds", result.events.len(), result.odds.len());
+            info!(
+                "  - {} events, {} odds",
+                result.events.len(),
+                result.odds.len()
+            );
         }
-        
+
         self.process_events(fetched_events, fetched_odds, cycle_start)
     }
 
     /// Быстрая обработка событий из кэша — КЛЮЧЕВОЕ ИЗМЕНЕНИЕ
     /// Группируем события по матчу (home+away+sport), потом ищем вилки МЕЖДУ БК
-    fn process_events(&self, events: Vec<Event>, all_odds: Vec<Odd>, cycle_start: Instant) -> ScannerMetrics {
+    fn process_events(
+        &self,
+        events: Vec<Event>,
+        all_odds: Vec<Odd>,
+        cycle_start: Instant,
+    ) -> ScannerMetrics {
         // ДЕДУПЛИКАЦИЯ + БАЛАНСИРОВКА по БК
         // Проблема: .take(5000) берёт все events от одной БК
         // Решение: равномерно распределяем по всем БК
         const MAX_EVENTS: usize = 5000;
         const MAX_ODDS: usize = 100_000;
-        
+
         let mut events_by_bk: HashMap<String, Vec<Event>> = HashMap::new();
         for event in &events {
-            events_by_bk.entry(event.bookmaker_slug.clone()).or_default().push(event.clone());
+            events_by_bk
+                .entry(event.bookmaker_slug.clone())
+                .or_default()
+                .push(event.clone());
         }
-        
+
         let max_per_bk = MAX_EVENTS / events_by_bk.len().max(1);
         let mut calc_events = Vec::with_capacity(MAX_EVENTS);
         for (_, bk_events) in &events_by_bk {
             let take = bk_events.len().min(max_per_bk);
             calc_events.extend(bk_events.iter().take(take).cloned());
         }
-        
+
         // Аналогично для odds
         let mut odds_by_bk: HashMap<String, Vec<Odd>> = HashMap::new();
         for odd in &all_odds {
-            odds_by_bk.entry(odd.bookmaker_slug.clone()).or_default().push(odd.clone());
+            odds_by_bk
+                .entry(odd.bookmaker_slug.clone())
+                .or_default()
+                .push(odd.clone());
         }
-        
+
         let max_odds_per_bk = MAX_ODDS / odds_by_bk.len().max(1);
         let mut calc_odds = Vec::with_capacity(MAX_ODDS);
         for (_, bk_odds) in &odds_by_bk {
             let take = bk_odds.len().min(max_odds_per_bk);
             calc_odds.extend(bk_odds.iter().take(take).cloned());
         }
-        
-        info!("📦 Balanced: {} events from {} BKs, {} odds from {} BKs",
-              calc_events.len(), events_by_bk.len(), calc_odds.len(), odds_by_bk.len());
 
-        let normalized: Vec<Event> = calc_events.iter()
+        info!(
+            "📦 Balanced: {} events from {} BKs, {} odds from {} BKs",
+            calc_events.len(),
+            events_by_bk.len(),
+            calc_odds.len(),
+            odds_by_bk.len()
+        );
+
+        let normalized: Vec<Event> = calc_events
+            .iter()
             .map(|e| self.normalizer.normalize_event(e.clone()))
             .collect();
 
@@ -281,17 +465,22 @@ impl GhostScanner {
         for event in &calc_events {
             event_by_id.insert(event.id.clone(), event);
         }
-        
+
         // Фильтруем odds — только от событий в calc_events
-        let calc_odds: Vec<Odd> = calc_odds.into_iter()
+        let calc_odds: Vec<Odd> = calc_odds
+            .into_iter()
             .filter(|o| event_by_id.contains_key(&o.event_id))
             .collect();
-        
-        info!("🧹 Odds filter: {} → {} odds (only from calc_events)", {
-            // count would be before filter - we can't know, but log result
+
+        info!(
+            "🧹 Odds filter: {} → {} odds (only from calc_events)",
+            {
+                // count would be before filter - we can't know, but log result
+                calc_odds.len()
+            },
             calc_odds.len()
-        }, calc_odds.len());
-        
+        );
+
         let mut odds_by_match: HashMap<String, Vec<&Odd>> = HashMap::new();
 
         for odd in &calc_odds {
@@ -302,22 +491,32 @@ impl GhostScanner {
         }
 
         // Статистика
-        let matches_with_multi_bk = odds_by_match.iter()
+        let matches_with_multi_bk = odds_by_match
+            .iter()
             .filter(|(_, odds)| {
-                let bks: std::collections::HashSet<&str> = odds.iter().map(|o| o.bookmaker_slug.as_str()).collect();
+                let bks: std::collections::HashSet<&str> =
+                    odds.iter().map(|o| o.bookmaker_slug.as_str()).collect();
                 bks.len() >= 2
             })
             .count();
 
-        info!("📊 {} events → {} matches ({} with 2+ BK), {} total odds",
-              calc_events.len(), matches.len(), matches_with_multi_bk, calc_odds.len());
+        info!(
+            "📊 {} events → {} matches ({} with 2+ BK), {} total odds",
+            calc_events.len(),
+            matches.len(),
+            matches_with_multi_bk,
+            calc_odds.len()
+        );
 
         // Show first 5 matches with multi-BK odds
         let mut shown = 0;
-        for (fp, match_events) in &matches {
-            if shown >= 5 { break; }
+        for (fp, _match_events) in &matches {
+            if shown >= 5 {
+                break;
+            }
             if let Some(odds) = odds_by_match.get(fp) {
-                let bks: std::collections::HashSet<&str> = odds.iter().map(|o| o.bookmaker_slug.as_str()).collect();
+                let bks: std::collections::HashSet<&str> =
+                    odds.iter().map(|o| o.bookmaker_slug.as_str()).collect();
                 if bks.len() >= 2 {
                     // Show market distribution
                     let markets: std::collections::HashMap<String, usize> = {
@@ -327,13 +526,21 @@ impl GhostScanner {
                         }
                         m
                     };
-                    let top_markets: Vec<_> = markets.iter()
-                        .map(|(k,v)| format!("{}:{}", k, v))
+                    let top_markets: Vec<_> = markets
+                        .iter()
+                        .map(|(k, v)| format!("{}:{}", k, v))
                         .take(5)
                         .collect();
-                    
-                    info!("🎯 Match #{} '{}' — {} odds from {} BKs {:?} | Markets: {:?}",
-                          shown + 1, fp, odds.len(), bks.len(), bks, top_markets);
+
+                    info!(
+                        "🎯 Match #{} '{}' — {} odds from {} BKs {:?} | Markets: {:?}",
+                        shown + 1,
+                        fp,
+                        odds.len(),
+                        bks.len(),
+                        bks,
+                        top_markets
+                    );
                     shown += 1;
                 }
             }
@@ -342,23 +549,34 @@ impl GhostScanner {
         // Ищем вилки ДЛЯ КАЖДОГО матча — между ВСЕМИ БК
         let mut total_surebets = 0;
         let mut checked_matches = 0;
-        
+
         for (fp, match_events) in &matches {
             // Собираем все odds для этого матча от ВСЕХ БК
             let match_odds = odds_by_match.get(fp).cloned().unwrap_or_default();
-            if match_odds.len() < 2 { continue; } // Нужны odds от 2+ БК
+            if match_odds.len() < 2 {
+                continue;
+            } // Нужны odds от 2+ БК
 
             checked_matches += 1;
             if checked_matches <= 3 {
                 // Debug first 3 matches
-                let bks: std::collections::HashSet<&str> = match_odds.iter().map(|o| o.bookmaker_slug.as_str()).collect();
-                info!("Match #{} '{}' — {} odds from {} bookmakers: {:?}", 
-                      checked_matches, fp, match_odds.len(), bks.len(), bks);
+                let bks: std::collections::HashSet<&str> = match_odds
+                    .iter()
+                    .map(|o| o.bookmaker_slug.as_str())
+                    .collect();
+                info!(
+                    "Match #{} '{}' — {} odds from {} bookmakers: {:?}",
+                    checked_matches,
+                    fp,
+                    match_odds.len(),
+                    bks.len(),
+                    bks
+                );
             }
 
             // Ищем вилки между разными БК для этого матча
             let raw_surebets = self.find_cross_bk_surebets(match_events, &match_odds);
-            
+
             // Фильтруем дубликаты через bloom filter
             let mut new_surebets = 0;
             let mut verified_surebets = 0;
@@ -371,9 +589,12 @@ impl GhostScanner {
                 new_surebets += 1;
 
                 // Верификация: проверяем что все legs от разных БК
-                let leg_bks: std::collections::HashSet<&str> = surebet.legs.iter().map(|l| l.bookmaker.as_str()).collect();
+                let leg_bks: std::collections::HashSet<&str> =
+                    surebet.legs.iter().map(|l| l.bookmaker.as_str()).collect();
                 let is_verified = leg_bks.len() == surebet.legs.len();
-                if is_verified { verified_surebets += 1; }
+                if is_verified {
+                    verified_surebets += 1;
+                }
 
                 // Создаём верифицированную вилку
                 let mut verified_surebet = surebet.clone();
@@ -402,7 +623,7 @@ impl GhostScanner {
                     timestamp: Utc::now(),
                 });
             }
-            
+
             if new_surebets > 0 {
                 info!("🎯 Found {} NEW surebets for match '{}' ({} verified, {} total, {} duplicates)",
                       new_surebets, fp, verified_surebets, raw_surebets.len(), raw_surebets.len() - new_surebets);
@@ -421,8 +642,31 @@ impl GhostScanner {
             *cache = value_bets.into_iter().take(1000).collect();
         }
 
+        // Freebet Hunter — поиск возможностей для отыгрыша фрибетов
+        self.freebet_hunter
+            .update_cache(normalized.clone(), calc_odds.clone());
+        let freebets = self
+            .freebet_hunter
+            .find_opportunities(&normalized, &calc_odds);
+        if !freebets.is_empty() {
+            info!(count = freebets.len(), "Freebet opportunities found");
+            for fb in &freebets {
+                info!(
+                    bookmaker = fb.bookmaker,
+                    profit = fb.guaranteed_profit,
+                    roi = fb.roi,
+                    "Freebet: {} → {} vs {}, back:{}, lay:{}",
+                    fb.bookmaker,
+                    fb.event.home_team,
+                    fb.event.away_team,
+                    fb.back_odds,
+                    fb.lay_odds
+                );
+            }
+        }
+
         let cycle_time = cycle_start.elapsed().as_millis() as u64;
-        
+
         let active = {
             let breakers = self.circuit_breakers.lock().unwrap();
             breakers.values().filter(|cb| cb.allow_request()).count()
@@ -439,9 +683,15 @@ impl GhostScanner {
             memory_mb: 0.0,
             timestamp: Utc::now(),
         };
-        
-        info!(cycle_ms = cycle_time, events = normalized.len(), odds = calc_odds.len(), 
-              matches = matches.len(), surebets = total_surebets, "Cycle complete");
+
+        info!(
+            cycle_ms = cycle_time,
+            events = normalized.len(),
+            odds = calc_odds.len(),
+            matches = matches.len(),
+            surebets = total_surebets,
+            "Cycle complete"
+        );
 
         let next_cycle_count = self.state_rx.borrow().cycle_count + 1;
         self.state_tx.send_replace(ScannerState {
@@ -457,40 +707,64 @@ impl GhostScanner {
     fn event_fingerprint(event: &Event) -> String {
         let norm = engine::normalizer::Normalizer::new();
         let norm_event = norm.normalize_event(event.clone());
-        
+
         // Нормализуем команды: уже нормализованы Normalizer, дочищаем
         let home = Self::normalize_team_name(&norm_event.home_team);
         let away = Self::normalize_team_name(&norm_event.away_team);
         // Лига уже нормализована (напр "Premier League"), приводим к lowercase для fingerprint
         let league = norm_event.league.to_lowercase().replace(" ", "");
-        
+
         // Sort to ensure consistent ordering regardless of home/away order
-        let (first, second) = if home < away { (home, away) } else { (away, home) };
+        let (first, second) = if home < away {
+            (home, away)
+        } else {
+            (away, home)
+        };
         // Включаем лигу для лучшей точности (меньше ложных матчей)
         format!("{:?}|{}|{}|{}", event.sport, league, first, second)
     }
 
     /// Робастная нормализация названия команды
     fn normalize_team_name(name: &str) -> String {
-        let mut s = name.to_lowercase()
+        let mut s = name
+            .to_lowercase()
             // Remove common prefixes
-            .replace("фк ", "").replace("ск ", "").replace("пк ", "")
-            .replace("фк", "").replace("ск", "").replace("пк", "")
-            .replace("хк ", "").replace("хк", "")
-            .replace("фс ", "").replace("фс", "")
-            .replace("гк ", "").replace("гк", "")
-            .replace("фк ", "").replace("фк", "")
+            .replace("фк ", "")
+            .replace("ск ", "")
+            .replace("пк ", "")
+            .replace("фк", "")
+            .replace("ск", "")
+            .replace("пк", "")
+            .replace("хк ", "")
+            .replace("хк", "")
+            .replace("фс ", "")
+            .replace("фс", "")
+            .replace("гк ", "")
+            .replace("гк", "")
+            .replace("фк ", "")
+            .replace("фк", "")
             .replace("футбольный клуб ", "")
             // Remove common suffixes
-            .replace(" москва", "").replace(" спб", "").replace(" спб.", "")
-            .replace(" санкт-петербург", "").replace(" с.-петербург", "")
-            .replace(" петербург", "").replace(" питер", "")
-            .replace(" нижний новгород", "").replace(" новгород", "")
+            .replace(" москва", "")
+            .replace(" спб", "")
+            .replace(" спб.", "")
+            .replace(" санкт-петербург", "")
+            .replace(" с.-петербург", "")
+            .replace(" петербург", "")
+            .replace(" питер", "")
+            .replace(" нижний новгород", "")
+            .replace(" новгород", "")
             // Remove punctuation and extra chars
-            .replace("(", "").replace(")", "").replace("-", " ")
-            .replace(".", "").replace(",", "").replace("'", "")
-            .replace("\"", "").replace("_", " ")
-            .trim().to_string();
+            .replace("(", "")
+            .replace(")", "")
+            .replace("-", " ")
+            .replace(".", "")
+            .replace(",", "")
+            .replace("'", "")
+            .replace("\"", "")
+            .replace("_", " ")
+            .trim()
+            .to_string();
 
         // Collapse multiple spaces
         while s.contains("  ") {
@@ -500,6 +774,7 @@ impl GhostScanner {
     }
 
     /// Ищем вилки МЕЖДУ разными БК для одного матча
+    #[inline]
     fn find_cross_bk_surebets(&self, events: &[&Event], odds: &[&Odd]) -> Vec<shared::Surebet> {
         use shared::Surebet;
         use shared::SurebetLeg;
@@ -507,10 +782,13 @@ impl GhostScanner {
 
         let mut surebets = Vec::new();
 
-        if odds.is_empty() { return surebets; }
+        if odds.is_empty() {
+            return surebets;
+        }
 
         // Считаем уникальные БК
-        let unique_bks: std::collections::HashSet<&str> = odds.iter().map(|o| o.bookmaker_slug.as_str()).collect();
+        let unique_bks: std::collections::HashSet<&str> =
+            odds.iter().map(|o| o.bookmaker_slug.as_str()).collect();
         if unique_bks.len() < 2 {
             return surebets;
         }
@@ -527,11 +805,24 @@ impl GhostScanner {
         for (market, market_odds) in &by_market {
             let lower = market.to_lowercase();
 
-            if lower.starts_with("1x2") || lower.starts_with("исход") || lower.starts_with("match") {
+            if lower.starts_with("1x2") || lower.starts_with("исход") || lower.starts_with("match")
+            {
                 // 3-way: ищем 1, X, 2 от разных БК
-                let ones: Vec<&&Odd> = market_odds.iter().filter(|o| o.selection == "1" || o.selection.to_lowercase() == "п1").cloned().collect();
-                let xs: Vec<&&Odd> = market_odds.iter().filter(|o| o.selection == "X" || o.selection.to_lowercase() == "х").cloned().collect();
-                let twos: Vec<&&Odd> = market_odds.iter().filter(|o| o.selection == "2" || o.selection.to_lowercase() == "п2").cloned().collect();
+                let ones: Vec<&&Odd> = market_odds
+                    .iter()
+                    .filter(|o| o.selection == "1" || o.selection.to_lowercase() == "п1")
+                    .cloned()
+                    .collect();
+                let xs: Vec<&&Odd> = market_odds
+                    .iter()
+                    .filter(|o| o.selection == "X" || o.selection.to_lowercase() == "х")
+                    .cloned()
+                    .collect();
+                let twos: Vec<&&Odd> = market_odds
+                    .iter()
+                    .filter(|o| o.selection == "2" || o.selection.to_lowercase() == "п2")
+                    .cloned()
+                    .collect();
 
                 if ones.is_empty() || xs.is_empty() || twos.is_empty() {
                     continue;
@@ -545,15 +836,22 @@ impl GhostScanner {
                             let bk1 = o1.bookmaker_slug.as_str();
                             let bkx = ox.bookmaker_slug.as_str();
                             let bk2 = o2.bookmaker_slug.as_str();
-                            
+
                             if bk1 == bkx || bk1 == bk2 || bkx == bk2 {
                                 continue; // Минимум 2 одинаковые БК — не арбитраж
                             }
 
-                            if let Some(profit) = shared::odds::calculate_surebet_profit(&[o1.odds, ox.odds, o2.odds]) {
-                                if profit < self.calculator.min_profit { continue; }
+                            if let Some(profit) =
+                                shared::odds::calculate_surebet_profit(&[o1.odds, ox.odds, o2.odds])
+                            {
+                                if profit < self.calculator.min_profit {
+                                    continue;
+                                }
 
-                                let stakes = shared::odds::calculate_stakes(&[o1.odds, ox.odds, o2.odds], 1000.0);
+                                let stakes = shared::odds::calculate_stakes(
+                                    &[o1.odds, ox.odds, o2.odds],
+                                    1000.0,
+                                );
                                 let payout = stakes[0] * o1.odds;
 
                                 let first_event = events.first().copied().unwrap();
@@ -568,9 +866,36 @@ impl GhostScanner {
                                     profit_percent: profit,
                                     total_stake: 1000.0,
                                     legs: vec![
-                                        SurebetLeg { bookmaker: o1.bookmaker_slug.clone(), market: o1.market.clone(), selection: o1.selection.clone(), odds: o1.odds, line: o1.line, stake: stakes[0], payout, url: None },
-                                        SurebetLeg { bookmaker: ox.bookmaker_slug.clone(), market: ox.market.clone(), selection: ox.selection.clone(), odds: ox.odds, line: ox.line, stake: stakes[1], payout, url: None },
-                                        SurebetLeg { bookmaker: o2.bookmaker_slug.clone(), market: o2.market.clone(), selection: o2.selection.clone(), odds: o2.odds, line: o2.line, stake: stakes[2], payout, url: None },
+                                        SurebetLeg {
+                                            bookmaker: o1.bookmaker_slug.clone(),
+                                            market: o1.market.clone(),
+                                            selection: o1.selection.clone(),
+                                            odds: o1.odds,
+                                            line: o1.line,
+                                            stake: stakes[0],
+                                            payout,
+                                            url: None,
+                                        },
+                                        SurebetLeg {
+                                            bookmaker: ox.bookmaker_slug.clone(),
+                                            market: ox.market.clone(),
+                                            selection: ox.selection.clone(),
+                                            odds: ox.odds,
+                                            line: ox.line,
+                                            stake: stakes[1],
+                                            payout,
+                                            url: None,
+                                        },
+                                        SurebetLeg {
+                                            bookmaker: o2.bookmaker_slug.clone(),
+                                            market: o2.market.clone(),
+                                            selection: o2.selection.clone(),
+                                            odds: o2.odds,
+                                            line: o2.line,
+                                            stake: stakes[2],
+                                            payout,
+                                            url: None,
+                                        },
                                     ],
                                     detected_at: Utc::now(),
                                     verified: false,
@@ -582,26 +907,49 @@ impl GhostScanner {
                 }
             } else if lower.starts_with("total") || lower.starts_with("тотал") {
                 // 2-way: Over/Under с той же линией от разных БК
-                let overs: Vec<&&Odd> = market_odds.iter()
-                    .filter(|o| o.selection.to_lowercase().contains("over") || o.selection.to_lowercase().contains("больше") || o.selection.to_lowercase() == "тб")
-                    .cloned().collect();
-                let unders: Vec<&&Odd> = market_odds.iter()
-                    .filter(|o| o.selection.to_lowercase().contains("under") || o.selection.to_lowercase().contains("меньше") || o.selection.to_lowercase() == "тм")
-                    .cloned().collect();
+                let overs: Vec<&&Odd> = market_odds
+                    .iter()
+                    .filter(|o| {
+                        o.selection.to_lowercase().contains("over")
+                            || o.selection.to_lowercase().contains("больше")
+                            || o.selection.to_lowercase() == "тб"
+                    })
+                    .cloned()
+                    .collect();
+                let unders: Vec<&&Odd> = market_odds
+                    .iter()
+                    .filter(|o| {
+                        o.selection.to_lowercase().contains("under")
+                            || o.selection.to_lowercase().contains("меньше")
+                            || o.selection.to_lowercase() == "тм"
+                    })
+                    .cloned()
+                    .collect();
 
                 for &o_over in &overs {
                     for &o_under in &unders {
-                        if o_over.bookmaker_slug == o_under.bookmaker_slug { continue; }
-                        
-                        // Проверяем что линии совпадают
-                        if let (Some(l1), Some(l2)) = (o_over.line, o_under.line) {
-                            if (l1 - l2).abs() > 0.1 { continue; }
+                        if o_over.bookmaker_slug == o_under.bookmaker_slug {
+                            continue;
                         }
 
-                        if let Some(profit) = shared::odds::calculate_surebet_profit(&[o_over.odds, o_under.odds]) {
-                            if profit < self.calculator.min_profit { continue; } // Используем конфиг
+                        // Проверяем что линии совпадают
+                        if let (Some(l1), Some(l2)) = (o_over.line, o_under.line) {
+                            if (l1 - l2).abs() > 0.1 {
+                                continue;
+                            }
+                        }
 
-                            let stakes = shared::odds::calculate_stakes(&[o_over.odds, o_under.odds], 1000.0);
+                        if let Some(profit) =
+                            shared::odds::calculate_surebet_profit(&[o_over.odds, o_under.odds])
+                        {
+                            if profit < self.calculator.min_profit {
+                                continue;
+                            } // Используем конфиг
+
+                            let stakes = shared::odds::calculate_stakes(
+                                &[o_over.odds, o_under.odds],
+                                1000.0,
+                            );
                             let payout = stakes[0] * o_over.odds;
 
                             let first_event = events.first().copied().unwrap();
@@ -616,8 +964,26 @@ impl GhostScanner {
                                 profit_percent: profit,
                                 total_stake: 1000.0,
                                 legs: vec![
-                                    SurebetLeg { bookmaker: o_over.bookmaker_slug.clone(), market: o_over.market.clone(), selection: o_over.selection.clone(), odds: o_over.odds, line: o_over.line, stake: stakes[0], payout, url: None },
-                                    SurebetLeg { bookmaker: o_under.bookmaker_slug.clone(), market: o_under.market.clone(), selection: o_under.selection.clone(), odds: o_under.odds, line: o_under.line, stake: stakes[1], payout, url: None },
+                                    SurebetLeg {
+                                        bookmaker: o_over.bookmaker_slug.clone(),
+                                        market: o_over.market.clone(),
+                                        selection: o_over.selection.clone(),
+                                        odds: o_over.odds,
+                                        line: o_over.line,
+                                        stake: stakes[0],
+                                        payout,
+                                        url: None,
+                                    },
+                                    SurebetLeg {
+                                        bookmaker: o_under.bookmaker_slug.clone(),
+                                        market: o_under.market.clone(),
+                                        selection: o_under.selection.clone(),
+                                        odds: o_under.odds,
+                                        line: o_under.line,
+                                        stake: stakes[1],
+                                        payout,
+                                        url: None,
+                                    },
                                 ],
                                 detected_at: Utc::now(),
                                 verified: false,
@@ -638,9 +1004,9 @@ impl GhostScanner {
         breakers: &Arc<Mutex<HashMap<String, CircuitBreaker>>>,
     ) -> Vec<ParserResult> {
         use futures::future::join_all;
-        
+
         let mut futures = Vec::new();
-        
+
         for parser in parsers.iter() {
             let slug = parser.slug().to_string();
             let parser = parser.clone();
@@ -648,16 +1014,27 @@ impl GhostScanner {
 
             let skip = {
                 let brk = breakers.lock().unwrap();
-                brk.get(&slug).map(|cb| !cb.allow_request()).unwrap_or(false)
+                brk.get(&slug)
+                    .map(|cb| !cb.allow_request())
+                    .unwrap_or(false)
             };
 
-            if skip { continue; }
+            if skip {
+                continue;
+            }
 
             let fut = async move {
+                // Разные таймауты для разных типов парсеров
+                let timeout_secs = match slug.as_str() {
+                    "winline" | "zenit" | "betcity" | "baltbet" => 20, // headless Chrome — быстрый фейлаут
+                    _ => 60,                                           // HTTP API — стандартный
+                };
+
                 let result = tokio::time::timeout(
-                    std::time::Duration::from_secs(60),
-                    parser.fetch_all()
-                ).await;
+                    std::time::Duration::from_secs(timeout_secs),
+                    parser.fetch_all(),
+                )
+                .await;
 
                 match result {
                     Ok(Ok(r)) => Some(r),
@@ -694,10 +1071,9 @@ impl GhostScanner {
             }
 
             debug!("Starting scan cycle");
-            let cycle_result = tokio::time::timeout(
-                std::time::Duration::from_secs(180),
-                self.run_cycle_inner()
-            ).await;
+            let cycle_result =
+                tokio::time::timeout(std::time::Duration::from_secs(90), self.run_cycle_inner())
+                    .await;
 
             let metrics = match cycle_result {
                 Ok(m) => m,
@@ -737,12 +1113,17 @@ impl GhostScanner {
                 "Scan cycle completed"
             );
 
-            let _ = self.event_bus.publish(shared::BusEvent::SystemAlert {
-                level: "info".into(),
-                message: format!("Cycle: {}ms, {} events, {} opportunities",
-                    metrics.cycle_time_ms, metrics.events_parsed, metrics.surebets_found),
-                timestamp: Utc::now(),
-            }).await;
+            let _ = self
+                .event_bus
+                .publish(shared::BusEvent::SystemAlert {
+                    level: "info".into(),
+                    message: format!(
+                        "Cycle: {}ms, {} events, {} opportunities",
+                        metrics.cycle_time_ms, metrics.events_parsed, metrics.surebets_found
+                    ),
+                    timestamp: Utc::now(),
+                })
+                .await;
 
             tokio::time::sleep(std::time::Duration::from_secs(self.scan_interval_secs)).await;
         }

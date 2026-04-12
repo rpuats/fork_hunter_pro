@@ -5,6 +5,7 @@ edition.workspace = true
 
 [dependencies]
 shared = { path = "../shared" }
+bankroll_manager = { path = "../bankroll_manager" }
 serde.workspace = true
 serde_json.workspace = true
 tokio.workspace = true

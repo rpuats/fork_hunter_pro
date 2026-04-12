@@ -1,12 +1,10 @@
-# scrapers/winline_api_scraper.py
+# scrapers/winline_api_scraper.py - HTTP-based scraper for prematch
 import asyncio
-import json
 import re
 import logging
 from typing import List, Dict
-
-import aiohttp
-from playwright.async_api import async_playwright
+import requests
+from bs4 import BeautifulSoup
 
 from scrapers.base_scraper import BaseScraper
 from core.event_normalizer import normalize_event_name
@@ -17,71 +15,137 @@ class WinlineAPIScraper(BaseScraper):
     def __init__(self):
         super().__init__()
         self.name = "Winline"
-        self.session = None
-        self.cookies = None
 
-    async def init_session(self):
-        """Получаем cookies через Playwright один раз"""
-        if self.cookies:
-            return
-
-        async with async_playwright() as p:
-            browser = await p.chromium.launch(headless=True)
-            page = await browser.new_page()
-            await page.goto("https://winline.ru/live", wait_until="domcontentloaded", timeout=60000)
-            await asyncio.sleep(8)
-            
-            self.cookies = await page.context.cookies()
-            await browser.close()
-
-        self.session = aiohttp.ClientSession(cookies={c['name']: c['value'] for c in self.cookies})
+        # Filter for Winline
+        self.exclude_patterns = [
+            r'избранное', r'ближайшие', r'корзина', r'история', r'бонус',
+            r'акция', r'кешбэк', r'генератор экспресса', r'размер коэффициента',
+            r'сумма возм.выигрыша', r'только топ-события', r'добавить исход',
+            r'обновить список', r'популярные события', r'добавить в корзину',
+            r'подробнее', r'ежемесячно', r'деньгами', r'личный кабинет',
+            r'пополнение', r'вывод', r'правила', r'помощь', r'поддержка'
+        ]
 
     async def get_events(self) -> List[Dict]:
-        await self.init_session()
         events = []
+        try:
+            url = "https://winline.ru/line"
+            events = await self._scrape_url(url)
+        except Exception as e:
+            logger.error(f"[Winline] Error: {e}")
+
+        logger.info(f"[Winline] Collected {len(events)} events")
+        return events
+
+    async def _scrape_url(self, url: str) -> List[Dict]:
+        """Scrape events from URL"""
+        events = []
+
+        loop = asyncio.get_event_loop()
+        html_content = await loop.run_in_executor(None, self._fetch_page, url)
+
+        if not html_content:
+            return events
+
+        soup = BeautifulSoup(html_content, 'html.parser')
+        text_blocks = self._extract_text_blocks(soup)
+
+        for block in text_blocks:
+            try:
+                event = self._parse_event_block(block)
+                if event:
+                    events.append(event)
+            except Exception as e:
+                logger.debug(f"[Winline] Failed to parse block: {e}")
+                continue
+
+        return events
+
+    def _fetch_page(self, url: str) -> str:
+        """Fetch page content"""
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'ru-RU,ru;q=0.9,en;q=0.8',
+            'Referer': 'https://winline.ru'
+        }
 
         try:
-            # Основной эндпоинт live (нужно найти актуальный)
-            async with self.session.get("https://winline.ru/api/live/events", timeout=10) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    events.extend(self.parse_api_response(data))
-
-            # Альтернативный эндпоинт
-            async with self.session.get("https://winline.ru/api/v2/live", timeout=10) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    events.extend(self.parse_api_response(data))
-
+            response = requests.get(url, headers=headers, timeout=30)
+            response.raise_for_status()
+            return response.text
         except Exception as e:
-            logger.error(f"[Winline API] Error: {e}")
+            logger.error(f"[Winline] Failed to fetch {url}: {e}")
+            return ""
 
-        logger.info(f"[Winline] Получено {len(events)} событий через API")
-        return events
+    def _extract_text_blocks(self, soup: BeautifulSoup) -> List[str]:
+        """Extract text blocks that might contain events"""
+        results = []
 
-    def parse_api_response(self, data):
-        events = []
-        # Рекурсивный поиск событий в JSON
-        def extract(item):
-            if isinstance(item, dict):
-                if "name" in item and "odds" in item:
-                    name = item.get("name")
-                    odds = item.get("odds", {})
-                    if isinstance(name, str) and len(name) > 15:
-                        normalized = normalize_event_name(name)
-                        events.append({
-                            'name': name,
-                            'normalized_name': normalized,
-                            'market_type': '1x2',
-                            'p1': odds.get("1", 0) or odds.get("p1", 0),
-                            'p2': odds.get("2", 0) or odds.get("p2", 0),
-                            'bookmaker': 'Winline'
-                        })
-                for v in item.values():
-                    extract(v)
-            elif isinstance(item, list):
-                for i in item:
-                    extract(i)
+        selectors = [
+            'div', 'span', 'p', 'section', 'article',
+            '[class*="event"]', '[class*="match"]', '[class*="row"]',
+            '[class*="card"]', '[class*="item"]'
+        ]
 
-        extract(data)
-        return events
+        for selector in selectors:
+            try:
+                elements = soup.select(selector)
+                for el in elements:
+                    text = el.get_text().strip()
+                    if (text and len(text) > 10 and
+                        any(sep in text for sep in ['—', '-', 'vs', ':']) and
+                        not any(re.search(pattern, text.lower()) for pattern in self.exclude_patterns)):
+                        results.append(text)
+            except:
+                continue
+
+        unique_results = list(set(results))
+        return unique_results[:1000]
+
+    def _parse_event_block(self, block: str) -> Dict:
+        """Parse an event from a text block"""
+        clean = re.sub(r'\s+\d+:\d+|\s+\d+\s*—\s*\d+', '', block)
+        clean = re.sub(r'\s+', ' ', clean).strip()
+
+        parts = None
+        for sep in ['—', ':', '-', 'vs']:
+            if sep in clean:
+                parts = [p.strip() for p in clean.split(sep, 1)]
+                break
+
+        if not parts or len(parts) != 2:
+            return None
+
+        if len(parts[0]) < 4 or len(parts[1]) < 4:
+            return None
+
+        name = f"{parts[0]} — {parts[1]}"
+        odds = [float(o.replace(',', '.')) for o in re.findall(r'(\d+[.,]\d+)', block)
+                if 1.01 <= float(o.replace(',', '.')) <= 100.0]
+
+        if len(odds) < 2:
+            return None
+
+        event = {
+            'name': name,
+            'normalized_name': normalize_event_name(name),
+            'market_type': '1x2',
+            'p1': odds[0],
+            'p2': odds[-1],
+            'bookmaker': 'Winline'
+        }
+
+        if any(x in block for x in ['2.5', '2,5']) and len(odds) >= 4:
+            event_total = {
+                'name': name,
+                'normalized_name': normalize_event_name(name),
+                'market_type': 'total',
+                'total_value': 2.5,
+                'over': odds[2],
+                'under': odds[3],
+                'bookmaker': 'Winline'
+            }
+            # Could return both, but for now just 1x2
+
+        return event

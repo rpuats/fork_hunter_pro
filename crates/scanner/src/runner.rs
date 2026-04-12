@@ -13,7 +13,7 @@ pub struct ScannerRunner {
 
 impl ScannerRunner {
     pub fn new(scanner: Arc<GhostScanner>) -> Self {
-        Self { 
+        Self {
             scanner,
             cached_state: Arc::new(Mutex::new(None)),
         }

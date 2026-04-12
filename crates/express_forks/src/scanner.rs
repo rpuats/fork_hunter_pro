@@ -15,7 +15,11 @@ pub struct ExpressForkScanner {
 impl ExpressForkScanner {
     pub fn new(max_legs: usize, min_profit: f64, default_stake: f64) -> Self {
         Self {
-            calculator: Arc::new(ExpressForkCalculator::new(max_legs, min_profit, default_stake)),
+            calculator: Arc::new(ExpressForkCalculator::new(
+                max_legs,
+                min_profit,
+                default_stake,
+            )),
             recent_forks: Arc::new(DashMap::new()),
             seen_keys: Arc::new(RwLock::new(Vec::new())),
         }
@@ -55,7 +59,9 @@ impl ExpressForkScanner {
     }
 
     fn fork_key(&self, f: &ExpressFork) -> String {
-        let legs: Vec<String> = f.legs.iter()
+        let legs: Vec<String> = f
+            .legs
+            .iter()
             .map(|l| format!("{}|{}|{}", l.bookmaker, l.odds, l.selection))
             .collect();
         legs.join(";")

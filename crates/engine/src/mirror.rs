@@ -1,6 +1,6 @@
 use chrono::Utc;
-use shared::Odd;
 use shared::MirrorLine;
+use shared::Odd;
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -19,11 +19,15 @@ impl MirrorDetector {
         let by_market_line = self.group_by_market_line(all_odds);
 
         for (_key, odds) in &by_market_line {
-            if odds.len() < 2 { continue; }
+            if odds.len() < 2 {
+                continue;
+            }
 
             for (i, odd_a) in odds.iter().enumerate() {
                 for odd_b in odds.iter().skip(i + 1) {
-                    if odd_a.bookmaker_slug == odd_b.bookmaker_slug { continue; }
+                    if odd_a.bookmaker_slug == odd_b.bookmaker_slug {
+                        continue;
+                    }
 
                     if let (Some(line_a), Some(line_b)) = (odd_a.line, odd_b.line) {
                         if (line_a - line_b).abs() < self.tolerance {
@@ -47,8 +51,12 @@ impl MirrorDetector {
     }
 
     pub fn is_mirror(&self, odds_a: &Odd, odds_b: &Odd) -> bool {
-        if odds_a.market != odds_b.market { return false; }
-        if odds_a.selection != odds_b.selection { return false; }
+        if odds_a.market != odds_b.market {
+            return false;
+        }
+        if odds_a.selection != odds_b.selection {
+            return false;
+        }
         match (odds_a.line, odds_b.line) {
             (Some(a), Some(b)) => (a - b).abs() < self.tolerance,
             (None, None) => true,
@@ -59,7 +67,14 @@ impl MirrorDetector {
     fn group_by_market_line<'a>(&self, all_odds: &'a [Odd]) -> HashMap<String, Vec<&'a Odd>> {
         let mut map: HashMap<String, Vec<&'a Odd>> = HashMap::new();
         for odd in all_odds {
-            let key = format!("{}|{}|{}", odd.market, odd.selection, odd.line.map(|l| l.to_string()).unwrap_or_else(|| "none".into()));
+            let key = format!(
+                "{}|{}|{}",
+                odd.market,
+                odd.selection,
+                odd.line
+                    .map(|l| l.to_string())
+                    .unwrap_or_else(|| "none".into())
+            );
             map.entry(key).or_insert_with(Vec::new).push(odd);
         }
         map

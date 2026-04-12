@@ -68,12 +68,16 @@ impl Sport {
             "football" | "soccer" | "футбол" => Sport::Football,
             "tennis" | "теннис" => Sport::Tennis,
             "basketball" | "баскетбол" | "баскет" => Sport::Basketball,
-            "hockey" | "ice hockey" | "хоккей" | "хоккей с шайбой" => Sport::Hockey,
+            "hockey" | "ice hockey" | "хоккей" | "хоккей с шайбой" => {
+                Sport::Hockey
+            }
             "volleyball" | "волейбол" => Sport::Volleyball,
             "table tennis" | "настольный теннис" => Sport::TableTennis,
             "baseball" | "бейсбол" => Sport::Baseball,
             "handball" | "гандбол" => Sport::Handball,
-            "mma" | "ufc" | "mixed martial arts" | "смешанные единоборства" => Sport::Mma,
+            "mma" | "ufc" | "mixed martial arts" | "смешанные единоборства" => {
+                Sport::Mma
+            }
             "boxing" | "бокс" => Sport::Boxing,
             "esports" | "киберспорт" | "e-sports" | "esport" => Sport::Esports,
             "cricket" | "крикет" => Sport::Cricket,
@@ -87,9 +91,13 @@ impl Sport {
             "beach volleyball" | "пляжный волейбол" => Sport::BeachVolleyball,
             "floorball" | "флорбол" => Sport::Floorball,
             "golf" | "гольф" => Sport::Golf,
-            "motorsport" | "автоспорт" | "formula 1" | "f1" | "nascar" => Sport::Motorsport,
+            "motorsport" | "автоспорт" | "formula 1" | "f1" | "nascar" => {
+                Sport::Motorsport
+            }
             "cycling" | "велоспорт" => Sport::Cycling,
-            "winter sports" | "зимние виды" | "биатлон" | "лыжи" => Sport::WinterSports,
+            "winter sports" | "зимние виды" | "биатлон" | "лыжи" => {
+                Sport::WinterSports
+            }
             "politics" | "политика" => Sport::Politics,
             "entertainment" | "развлечения" | "тв шоу" => Sport::Entertainment,
             _ => Sport::Other,
@@ -185,25 +193,47 @@ impl MarketType {
     pub fn from_str(s: &str) -> Self {
         let s = s.to_lowercase().trim().to_string();
         match s.as_str() {
-            "1x2" | "match result" | "основной исход" | "п1п2" | "w1w2" => MarketType::MatchResult,
-            "total" | "тотал" | "over/under" | "больше/меньше" => MarketType::Total,
+            "1x2" | "match result" | "основной исход" | "п1п2" | "w1w2" => {
+                MarketType::MatchResult
+            }
+            "total" | "тотал" | "over/under" | "больше/меньше" => {
+                MarketType::Total
+            }
             "asian total" | "азиатский тотал" => MarketType::AsianTotal,
             "handicap" | "фора" | "ф" => MarketType::Handicap,
             "asian handicap" | "азиатская фора" | "аф" => MarketType::AsianHandicap,
-            "both teams score" | "обе забьют" | "oz" | "oz да/нет" => MarketType::BothTeamsScore,
-            "correct score" | "точный счёт" | "точный счет" => MarketType::CorrectScore,
-            "even/odd" | "чёт/нечет" | "чет/нечет" | "even odd" => MarketType::EvenOdd,
+            "both teams score" | "обе забьют" | "oz" | "oz да/нет" => {
+                MarketType::BothTeamsScore
+            }
+            "correct score" | "точный счёт" | "точный счет" => {
+                MarketType::CorrectScore
+            }
+            "even/odd" | "чёт/нечет" | "чет/нечет" | "even odd" => {
+                MarketType::EvenOdd
+            }
             "double chance" | "двойной шанс" | "1x x2 12" => MarketType::DoubleChance,
             "draw no bet" | "фора 0" | "dnb" => MarketType::DrawNoBet,
             "half time/full time" | "тайм/матч" => MarketType::HalfTimeFullTime,
-            "1st half result" | "1-й тайм исход" | "1h result" => MarketType::FirstHalfResult,
-            "2nd half result" | "2-й тайм исход" | "2h result" => MarketType::SecondHalfResult,
-            "1st half total" | "1-й тайм тотал" | "1h total" => MarketType::FirstHalfTotal,
-            "2nd half total" | "2-й тайм тотал" | "2h total" => MarketType::SecondHalfTotal,
+            "1st half result" | "1-й тайм исход" | "1h result" => {
+                MarketType::FirstHalfResult
+            }
+            "2nd half result" | "2-й тайм исход" | "2h result" => {
+                MarketType::SecondHalfResult
+            }
+            "1st half total" | "1-й тайм тотал" | "1h total" => {
+                MarketType::FirstHalfTotal
+            }
+            "2nd half total" | "2-й тайм тотал" | "2h total" => {
+                MarketType::SecondHalfTotal
+            }
             "1st half handicap" | "1-й тайм фора" => MarketType::FirstHalfHandicap,
-            "individual total" | "индивидуальный тотал" | "ит" => MarketType::IndividualTotal,
+            "individual total" | "индивидуальный тотал" | "ит" => {
+                MarketType::IndividualTotal
+            }
             "team total" | "командный тотал" => MarketType::TeamTotal,
-            "winning margin" | "разница" | "победа с разницей" => MarketType::WinningMargin,
+            "winning margin" | "разница" | "победа с разницей" => {
+                MarketType::WinningMargin
+            }
             "odd/even 1h" | "чёт/нечет 1т" => MarketType::OddEvenFirstHalf,
             "odd/even 2h" | "чёт/нечет 2т" => MarketType::OddEvenSecondHalf,
             "race to" | "кто первый" | "race to X goals" => MarketType::RaceTo,

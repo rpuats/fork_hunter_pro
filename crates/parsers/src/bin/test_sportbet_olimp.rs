@@ -20,16 +20,17 @@ async fn main() {
         println!("--- Sportbet ---");
         let parser = SportbetParser::new(client.clone());
         let start = Instant::now();
-        
+
         match parser.fetch_all().await {
             Ok(result) => {
                 let elapsed = start.elapsed().as_millis();
                 println!("  Событий: {}", result.events.len());
                 println!("  Коэффициентов: {}", result.odds.len());
                 println!("  Время: {}ms", elapsed);
-                
+
                 // Группировка по видам спорта
-                let mut by_sport: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+                let mut by_sport: std::collections::HashMap<String, usize> =
+                    std::collections::HashMap::new();
                 for e in &result.events {
                     let s = format!("{:?}", e.sport);
                     *by_sport.entry(s).or_insert(0) += 1;
@@ -50,7 +51,7 @@ async fn main() {
         use parsers::olimp::OlimpParser;
         let parser = OlimpParser::new(client.clone());
         let start = Instant::now();
-        
+
         match parser.fetch_all().await {
             Ok(result) => {
                 let elapsed = start.elapsed().as_millis();

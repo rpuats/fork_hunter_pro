@@ -1,12 +1,12 @@
 import asyncio, sys
 sys.path.insert(0, r'C:\Users\Administrator\Desktop\ai\Grok вилки\fork_hunter_pro')
 from core.finder import SurebetCalculator
-from scanner.parsers import WinlinePlaywrightParser, PariPlaywrightParser, ZenitPlaywrightParser, BaltbetPlaywrightParser, BetcityPlaywrightParser
+from scanner.parsers import WinlinePlaywrightParser, PariPlaywrightParser, ZenitPlaywrightParser, BaltbetRegexParser, BetcityPlaywrightParser
 
 async def find():
     calc = SurebetCalculator(min_profit=0.1)
     all_events = []
-    for name, cls in [('Winline', WinlinePlaywrightParser), ('Pari', PariPlaywrightParser), ('Zenit', ZenitPlaywrightParser), ('Baltbet', BaltbetPlaywrightParser), ('Betcity', BetcityPlaywrightParser)]:
+    for name, cls in [('Winline', WinlinePlaywrightParser), ('Pari', PariPlaywrightParser), ('Zenit', ZenitPlaywrightParser), ('Baltbet', BaltbetRegexParser), ('Betcity', BetcityPlaywrightParser)]:
         try:
             p = cls()
             events = await asyncio.wait_for(p.get_events(), timeout=60)

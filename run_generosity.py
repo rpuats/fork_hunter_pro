@@ -6,7 +6,7 @@ from core.generosity_index import BookmakerGenerosityIndex
 from scanner.parsers.winline_playwright import WinlinePlaywrightParser
 from scanner.parsers.pari_playwright import PariPlaywrightParser
 from scanner.parsers.zenit_playwright import ZenitPlaywrightParser
-from scanner.parsers.baltbet_playwright import BaltbetPlaywrightParser
+from scanner.parsers.baltbet_playwright import BaltbetRegexParser
 
 async def calc():
     gi = BookmakerGenerosityIndex()
@@ -16,7 +16,7 @@ async def calc():
         WinlinePlaywrightParser(),
         PariPlaywrightParser(),
         ZenitPlaywrightParser(),
-        BaltbetPlaywrightParser(),
+        BaltbetRegexParser(),
     ]
     
     for p in parsers:

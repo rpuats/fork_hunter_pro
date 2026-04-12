@@ -1,12 +1,13 @@
 use chrono::Utc;
 use shared::{
-    AutoBetConfig, AutoBetStatus, BetPlacement, BetResult, BetStatus, Event,
-    StakeValidationRequest, Surebet,
+    AutoBetConfig, AutoBetStatus, BetExecutionRequest, BetExecutionStatus, BetPlacement, BetResult,
+    BetStatus, Event, StakeValidationDecision, StakeValidationRequest, Surebet,
 };
 use std::sync::Arc;
 use tracing::{error, info, warn};
 
 use super::limiter::{BetLimiter, BetLimiterStats};
+use super::registry::ExecutionRegistry;
 use super::stealth::StealthBetting;
 use super::validator::StakeValidator;
 
@@ -15,6 +16,7 @@ pub struct AutoBetEngine {
     config: Arc<parking_lot::RwLock<AutoBetConfig>>,
     limiter: Arc<parking_lot::Mutex<BetLimiter>>,
     stealth: Arc<StealthBetting>,
+    registry: Arc<ExecutionRegistry>,
     history: Arc<parking_lot::Mutex<Vec<BetPlacement>>>,
     running: Arc<parking_lot::RwLock<bool>>,
     emergency_stopped: Arc<parking_lot::RwLock<bool>>,
@@ -27,6 +29,10 @@ pub struct AutoBetEngine {
 
 impl AutoBetEngine {
     pub fn new(config: AutoBetConfig) -> Self {
+        Self::with_registry(config, Arc::new(ExecutionRegistry::new()))
+    }
+
+    pub fn with_registry(config: AutoBetConfig, registry: Arc<ExecutionRegistry>) -> Self {
         let limiter = BetLimiter::new(
             config.max_bets_per_hour,
             config.max_daily_stake,
@@ -37,6 +43,7 @@ impl AutoBetEngine {
             config: Arc::new(parking_lot::RwLock::new(config)),
             limiter: Arc::new(parking_lot::Mutex::new(limiter)),
             stealth: Arc::new(StealthBetting::new()),
+            registry,
             history: Arc::new(parking_lot::Mutex::new(Vec::new())),
             running: Arc::new(parking_lot::RwLock::new(false)),
             emergency_stopped: Arc::new(parking_lot::RwLock::new(false)),
@@ -66,16 +73,28 @@ impl AutoBetEngine {
         for leg in &surebet.legs {
             self.stealth.wait_stealth().await;
 
+            let bookmaker_balance = self
+                .registry
+                .refresh_balance_snapshot(&leg.bookmaker)
+                .await
+                .map(|refresh| refresh.snapshot)
+                .unwrap_or_else(|error| {
+                    warn!(bookmaker = leg.bookmaker.as_str(), error = %error, "Balance refresh failed");
+                    self.registry.get_balance_snapshot(&leg.bookmaker)
+                });
+
             let validation = StakeValidator::validate(&StakeValidationRequest {
                 bookmaker: leg.bookmaker.clone(),
                 desired_stake: leg.stake,
                 min_stake: None,
                 max_stake: Some(self.config.read().max_stake_per_bet),
-                bookmaker_available_balance: None,
+                bookmaker_available_balance: bookmaker_balance
+                    .as_ref()
+                    .map(|snapshot| snapshot.available_balance),
                 bankroll_available_balance: None,
                 allow_auto_adjust: true,
             });
-            if matches!(validation.decision, shared::StakeValidationDecision::Reject) {
+            if matches!(validation.decision, StakeValidationDecision::Reject) {
                 return Err(validation.reasons.join("; "));
             }
 
@@ -100,6 +119,26 @@ impl AutoBetEngine {
                 extra: Default::default(),
             };
 
+            let execution_request = BetExecutionRequest {
+                bookmaker: leg.bookmaker.clone(),
+                event_id: event.id.clone(),
+                market: leg.market.clone(),
+                selection: leg.selection.clone(),
+                odds: leg.odds,
+                stake,
+                allow_dry_run: true,
+                reference: Some(surebet.id.to_string()),
+            };
+
+            let execution = self.registry.execute_bet(&execution_request).await?;
+            let placement_status = placement_status_from_execution(&execution.status);
+            let placement_error = match execution.status {
+                BetExecutionStatus::Blocked | BetExecutionStatus::Rejected => {
+                    execution.message.clone()
+                }
+                _ => None,
+            };
+
             let placement = BetPlacement {
                 id: uuid::Uuid::new_v4(),
                 bookmaker: leg.bookmaker.clone(),
@@ -108,10 +147,11 @@ impl AutoBetEngine {
                 selection: leg.selection.clone(),
                 odds: leg.odds,
                 stake,
-                status: BetStatus::Placed,
+                status: placement_status,
                 placed_at: Utc::now(),
+                execution: Some(execution),
                 result: None,
-                error: None,
+                error: placement_error,
             };
 
             limiter.record_bet(stake);
@@ -125,7 +165,11 @@ impl AutoBetEngine {
         *self.bets_today.write() += placements.len() as u32;
         *self.bets_total.write() += placements.len() as u64;
 
-        info!(surebet_id = surebet.id.to_string(), legs = placements.len(), "Surebet placed");
+        info!(
+            surebet_id = surebet.id.to_string(),
+            legs = placements.len(),
+            "Surebet placed"
+        );
         Ok(placements)
     }
 
@@ -199,9 +243,123 @@ impl AutoBetEngine {
         self.limiter.lock().get_stats()
     }
 
+    /// Разместить одну ставку (обёртка для прямого вызова)
+    pub async fn place_bet(
+        &self,
+        bookmaker: &str,
+        event_id: &str,
+        market: &str,
+        selection: &str,
+        odds: f64,
+        stake: f64,
+    ) -> Result<BetPlacement, String> {
+        if !*self.running.read() {
+            return Err("Auto-betting is not running".into());
+        }
+        if *self.emergency_stopped.read() {
+            return Err("Emergency stop activated".into());
+        }
+
+        let mut limiter = self.limiter.lock();
+        if let Err(e) = limiter.can_bet(stake) {
+            warn!(error = e.to_string(), "Bet limit reached");
+            return Err(e.to_string());
+        }
+
+        let validation = StakeValidator::validate(&StakeValidationRequest {
+            bookmaker: bookmaker.to_string(),
+            desired_stake: stake,
+            min_stake: None,
+            max_stake: Some(self.config.read().max_stake_per_bet),
+            bookmaker_available_balance: None,
+            bankroll_available_balance: None,
+            allow_auto_adjust: true,
+        });
+        if matches!(validation.decision, StakeValidationDecision::Reject) {
+            return Err(validation.reasons.join("; "));
+        }
+
+        let adjusted_stake = validation.adjusted_stake;
+
+        let event = Event {
+            id: event_id.to_string(),
+            sport: shared::Sport::Football,
+            league: String::new(),
+            home_team: String::new(),
+            away_team: String::new(),
+            start_time: None,
+            is_live: false,
+            bookmaker_slug: bookmaker.to_string(),
+            raw_url: None,
+            extra: Default::default(),
+        };
+
+        let execution_request = BetExecutionRequest {
+            bookmaker: bookmaker.to_string(),
+            event_id: event_id.to_string(),
+            market: market.to_string(),
+            selection: selection.to_string(),
+            odds,
+            stake: adjusted_stake,
+            allow_dry_run: true,
+            reference: None,
+        };
+
+        let execution = self.registry.execute_bet(&execution_request).await?;
+        let placement_status = placement_status_from_execution(&execution.status);
+        let placement_error = match execution.status {
+            BetExecutionStatus::Blocked | BetExecutionStatus::Rejected => {
+                execution.message.clone()
+            }
+            _ => None,
+        };
+
+        let placement = BetPlacement {
+            id: uuid::Uuid::new_v4(),
+            bookmaker: bookmaker.to_string(),
+            event,
+            market: market.to_string(),
+            selection: selection.to_string(),
+            odds,
+            stake: adjusted_stake,
+            status: placement_status,
+            placed_at: Utc::now(),
+            execution: Some(execution),
+            result: None,
+            error: placement_error,
+        };
+
+        limiter.record_bet(adjusted_stake);
+        self.history.lock().push(placement.clone());
+        *self.bets_today.write() += 1;
+        *self.bets_total.write() += 1;
+
+        Ok(placement)
+    }
+
+    /// Отменить ставку (пометить как cancelled)
+    pub fn cancel_bet(&self, bet_id: uuid::Uuid) -> Result<(), String> {
+        let mut history = self.history.lock();
+        for bet in history.iter_mut() {
+            if bet.id == bet_id {
+                if matches!(bet.status, BetStatus::Placed | BetStatus::Pending) {
+                    bet.status = BetStatus::Cancelled;
+                    info!(bet_id = bet_id.to_string(), "Bet cancelled");
+                    return Ok(());
+                }
+                return Err(format!("Cannot cancel bet in state: {:?}", bet.status));
+            }
+        }
+        Err("Bet not found".to_string())
+    }
+
     pub fn get_history(&self, limit: usize) -> Vec<BetPlacement> {
         let history = self.history.lock();
         history.iter().rev().take(limit).cloned().collect()
+    }
+
+    pub fn execution_registry(&self) -> Arc<ExecutionRegistry> {
+        Arc::clone(&self.registry)
     }
 
     pub fn reset_daily(&self) {
@@ -209,6 +367,17 @@ impl AutoBetEngine {
         *self.bets_today.write() = 0;
         *self.errors_today.write() = 0;
         self.limiter.lock().reset_daily();
+    }
+}
+
+fn placement_status_from_execution(status: &BetExecutionStatus) -> BetStatus {
+    match status {
+        BetExecutionStatus::Pending | BetExecutionStatus::DryRun | BetExecutionStatus::Armed => {
+            BetStatus::Pending
+        }
+        BetExecutionStatus::Submitted | BetExecutionStatus::Accepted => BetStatus::Placed,
+        BetExecutionStatus::Rejected | BetExecutionStatus::Blocked => BetStatus::Error,
+        BetExecutionStatus::Skipped => BetStatus::Cancelled,
     }
 }
 
@@ -259,12 +428,12 @@ mod tests {
     #[test]
     fn test_engine_start_stop() {
         let engine = AutoBetEngine::new(AutoBetConfig::default());
-        
+
         engine.start();
         let status = engine.get_status();
         assert!(status.running);
         assert!(!status.emergency_stopped);
-        
+
         engine.stop();
         let status = engine.get_status();
         assert!(!status.running);
@@ -274,7 +443,7 @@ mod tests {
     fn test_engine_emergency_stop() {
         let engine = AutoBetEngine::new(AutoBetConfig::default());
         engine.start();
-        
+
         engine.emergency_stop();
         let status = engine.get_status();
         assert!(!status.running);
@@ -296,5 +465,15 @@ mod tests {
         assert!(!status.running);
         assert_eq!(status.bets_placed_today, 0);
         assert_eq!(status.profit_today, 0.0);
+    }
+
+    #[test]
+    fn test_engine_exposes_safe_default_execution_registry() {
+        let engine = AutoBetEngine::new(AutoBetConfig::default());
+        let capability = engine.execution_registry().get_capability("pari");
+
+        assert!(capability.supports_dry_run);
+        assert!(capability.supports_bet_placement);
+        assert!(!capability.supports_real_money);
     }
 }

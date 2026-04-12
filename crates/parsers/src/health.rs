@@ -21,6 +21,11 @@ impl HealthChecker {
 
     pub async fn check_parser(&self, parser: Arc<dyn BookmakerParser>) -> ParserHealth {
         let start = std::time::Instant::now();
+        let readiness = parser.readiness();
+        let diagnostics = readiness
+            .as_ref()
+            .map(|item| item.checks.clone())
+            .unwrap_or_default();
         match parser.fetch_all().await {
             Ok(result) => {
                 let elapsed = start.elapsed().as_millis() as f64;
@@ -37,11 +42,17 @@ impl HealthChecker {
                     avg_response_time_ms: elapsed,
                     events_parsed: result.events.len() as u64,
                     uptime_percent: 100.0,
+                    readiness,
+                    diagnostics,
                 }
             }
             Err(e) => {
                 let elapsed = start.elapsed().as_millis() as f64;
-                warn!(parser = parser.slug(), error = e.to_string(), "Parser health check failed");
+                warn!(
+                    parser = parser.slug(),
+                    error = e.to_string(),
+                    "Parser health check failed"
+                );
                 ParserHealth {
                     bookmaker: parser.slug().to_string(),
                     status: shared::HealthStatus::Unhealthy,
@@ -51,6 +62,8 @@ impl HealthChecker {
                     avg_response_time_ms: elapsed,
                     events_parsed: 0,
                     uptime_percent: 0.0,
+                    readiness,
+                    diagnostics,
                 }
             }
         }

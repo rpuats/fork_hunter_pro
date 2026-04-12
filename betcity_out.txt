@@ -1,0 +1,6 @@
+runtime-only parser diagnostics
+thresholds: live >= 100, prematch >= 2000
+slugs: betcity
+
+slug,total,live,prematch,live_ok,prematch_ok,pass,runtime_only,duration_ms,error
+betcity,0,0,0,false,false,false,true,33209,

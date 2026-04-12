@@ -17,7 +17,7 @@ PARSER_CONFIG = {
     'marathon': ('scanner.parsers.marathon_playwright', 'MarathonPlaywrightParser'),
     'zenit': ('scanner.parsers.zenit_playwright', 'ZenitPlaywrightParser'),
     'bettery': ('scanner.parsers.bettery_playwright', 'BetteryPlaywrightParser'),
-    'baltbet': ('scanner.parsers.baltbet_playwright', 'BaltbetPlaywrightParser'),
+    'baltbet': ('scanner.parsers.baltbet_playwright', 'BaltbetRegexParser'),
 }
 
 

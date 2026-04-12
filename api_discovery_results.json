@@ -1,0 +1,3261 @@
+{
+  "winline": [
+    {
+      "url": "https://winline.ru/api/static-data/alter/1/80632",
+      "status": 200,
+      "content_type": "application/json",
+      "content_length": 76695,
+      "is_json": true,
+      "is_html": false,
+      "data": {
+        "t": [
+          {
+            "is_crm0": true,
+            "deeplink": "br_main",
+            "img_app": "https://a.winline.ru/resources/images/app_topbar/BR.png",
+            "img_web": "https://a.winline.ru/resources/images/app_topbar/BR.png",
+            "name": "BetRace",
+            "is_test": false,
+            "is_widget": false,
+            "product": 14,
+            "id": 1,
+            "order": 24
+          },
+          {
+            "is_crm0": false,
+            "deeplink": "Custom/8",
+            "img_app": "https://winline.ru/resources/images/app_topbar/KHL_2026.png",
+            "img_web": "https://winline.ru/resources/images/app_topbar/KHL_2026.png",
+            "id": 7,
+            "order": 28
+          },
+          {
+            "is_crm0": true,
+            "deeplink": "default",
+            "img_app": "https://winline.ru/resources/images/app_topbar/Stories.png",
+            "img_web": "https://winline.ru/resources/images/app_topbar/Stories.png",
+            "platform": 4,
+            "is_test": false,
+            "is_story": true,
+            "hide_bord": false,
+            "product": 12,
+            "not_move": false,
+            "id": 12,
+            "order": 2
+          },
+          {
+            "deeplink": "Custom/10",
+            "img_app": "https://winline.ru/resources/images/app_topbar/ucl_new_text.png",
+            "img_web": "https://winline.ru/resources/images/app_topbar/ucl_new_text.png",
+            "name": "Лига Чемпионов",
+            "id": 20,
+            "order": 30
+          },
+          {
+            "deeplink": "Custom/11",
+            "img_app": "https://a.winline.ru/resources/images/app_topbar/RPL2023.png",
+            "img_web": "https://a.winline.ru/resources/images/app_topbar/RPL2023.png",
+            "name": "РПЛ",
+            "is_winpass": false,
+            "id": 22,
+            "order": 17
+          },
+          {
+            "deeplink": "Custom/12",
+            "img_app": "https://winline.ru/resources/images/app_topbar/Cyber_3.png",
+            "img_web": "https://winline.ru/resources/images/app_topbar/Cyber_3.png",
+            "name": "Кибер",
+            "is_test": false,
+            "id": 23,
+            "order": 15
+          },
+          {
+            "is_crm0": null,
+            "deeplink": "FavoriteTeam",
+            "img_app": "https://winline.ru/resources/images/app_topbar/nolk.png",
+            "img_web": "https://winline.ru/resources/images/app_topbar/nolk.png",
+            "is_ft": true,
+            "ft_id": null,
+            "and_ver": "",
+            "ios_ver": "",
+            "name": "",
+            "platform": null,
+            "is_test": null,
+            "text": "",
+            "text_color": "",
+            "type": null,
+            "is_winpass": null,
+            "is_story": null,
+            "is_wp": null,
+            "id": 54,
+            "order": 1
+          },
+          {
+            "deeplink": "Custom/118",
+            "img_app": "https://winline.ru/resources/images/app_topbar/ATP_1000_2026_1.png",
+            "img_web": "https://winline.ru/resources/images/app_topbar/ATP_1000_2026_1.png",
+            "id": 57,
+            "order": 7
+          },
+          {
+            "is_crm0": null,
+            "deeplink": "Custom/49",
+            "img_app": "https://winline.ru/resources/images/app_topbar/table_tennis_new.png",
+            "img_web": "https://winline.ru/resources/images/app_topbar/table_tennis_new.png",
+            "is_ft": null,
+            "ft_id": null,
+            "and_ver": "",
+            "ios_ver": "",
+            "name": "",
+            "platform": null,
+            "is_test": null,
+            "text": "",
+            "text_color": "",
+            "type": null,
+            "is_winpass": null,
+            "is_story": null,
+            "is_wp": null,
+            "id": 63,
+            "order": 14
+          },
+          {
+            "is_crm0": null,
+            "deeplink": "Custom/42",
+            "img_app": "https://a.winline.ru/resources/images/app_topbar/LigaVTB.png",
+            "img_web": "https://a.winline.ru/resources/images/app_topbar/LigaVTB.png",
+            "is_ft": null,
+            "ft_id": null,
+            "and_ver": "",
+            "ios_ver": "",
+            "name": "",
+            "platform": null,
+            "is_test": false,
+            "text": "",
+            "text_color": "",
+            "type": null,
+            "is_winpass": null,
+            "is_story": null,
+            "is_wp": null,
+            "id": 65,
+            "order": 9
+          },
+          {
+            "is_crm0": null,
+            "deeplink": "Custom/19",
+            "img_app": "https://winline.ru/resources/images/app_topbar/apl_2.png",
+            "img_web": "https://winline.ru/resources/images/app_topbar/apl_2.png",
+            "is_ft": null,
+            "ft_id": null,
+            "and_ver": "",
+            "ios_ver": "",
+            "name": "АПЛ",
+            "platform": null,
+            "is_test": false,
+            "text": "",
+            "text_color": "",
+            "type": null,
+            "is_winpass": null,
+            "is_story": null,
+            "is_wp": null,
+            "id": 66,
+            "order": 31
+          },
+          {
+            "is_crm0": null,
+            "deeplink": "Custom/33",
+            "img_app": "https://a.winline.ru/resources/images/app_topbar/LaLiga23.png",
+            "img_web": "https://a.winline.ru/resources/images/app_topbar/LaLiga23.png",
+            "is_ft": null,
+            "ft_id": null,
+            "and_ver": "",
+            "ios_ver": "",
+            "name": "Ла Лига",
+            "platform": null,
+            "is_test": false,
+            "text": "",
+            "text_color": "",
+            "type": null,
+            "is_winpass": null,
+            "is_story": null,
+            "is_wp": null,
+            "id": 67,
+            "order": 18
+          },
+          {
+            "is_crm0": null,
+            "deeplink": "Custom/39",
+            "img_app": "https://winline.ru/resources/images/app_topbar/Seria_A_text.png",
+            "img_web": "https://winline.ru/resources/images/app_topbar/Seria_A_text.png",
+            "is_ft": null,
+            "ft_id": null,
+            "and_ver": "",
+            "ios_ver": "",
+            "name": "",
+            "platform": null,
+            "is_test": null,
+            "text": "",
+            "text_color": "",
+            "type": null,
+            "is_winpass": null,
+            "is_story": null,
+            "is_wp": null,
+            "id": 76,
+            "order": 19
+          },
+          {
+            "is_crm0": null,
+            "deeplink": "Custom/28",
+            "img_app": "https://winline.ru/resources/images/app_topbar/Bundesliga_text.png",
+            "img_web": "https://winline.ru/resources/images/app_topbar/Bundesliga_text.png",
+            "is_ft": null,
+            "ft_id": null,
+            "and_ver": "",
+            "ios_ver": "",
+            "name": "",
+            "platform": null,
+            "is_test": null,
+            "text": "",
+            "text_color": "",
+            "type": null,
+            "is_winpass": null,
+            "is_story": null,
+            "is_wp": null,
+            "id": 77,
+            "order": 20
+          },
+          {
+            "deeplink": "Custom/35",
+            "img_app": "https://a.winline.ru/resources/images/app_topbar/ligue1.png",
+            "img_web": "https://a.winline.ru/resources/images/app_topbar/ligue1.png",
+            "id": 78,
+            "order": 21
+          },
+          {
+            "deeplink": "Custom/44",
+            "img_app": "https://winline.ru/resources/images/app_topbar/WTA500_2026.png",
+            "img_web": "https://winline.ru/resources/images/app_topbar/WTA500_2026.png",
+            "is_test": false,
+            "id": 83,
+            "order": 8
+          },
+          {
+            "is_crm0": null,
+            "deeplink": "Custom/30",
+            "img_app": "https://winline.ru/resources/images/app_topbar/fa_cup.png",
+            "img_web": "https://winline.ru/resources/images/app_topbar/fa_cup.png",
+            "is_ft": null,
+            "ft_id": null,
+            "and_ver": "",
+            "ios_ver": "",
+            "name": "",
+            "platform": null,
+            "is_test": null,
+            "text": "",
+            "text_color": "",
+            "type": null,
+            "is_winpass": null,
+            "is_story": null,
+            "is_wp": null,
+            "id": 97,
+            "order": 5
+          },
+          {
+            "deeplink": "vault",
+            "img_app": "https://winline.ru/resources/images/app_topbar/hranilishe_icon.png",
+            "img_web": "https://winline.ru/resources/images/app_topbar/hranilishe_icon.png",
+            "product": 14,
+            "id": 107,
+            "order": 25
+          },
+          {
+            "deeplink": "Custom/63",
+            "img_app": "https://winline.ru/resources/images/app_topbar/icon_fnl.png",
+            "img_web": "https://winline.ru/resources/images/app_topbar/icon_fnl.png",
+            "id": 114,
+            "order": 10
+          },
+          {
+            "deeplink": "Custom/25",
+            "img_app": "https://winline.ru/resources/images/app_topbar/brazil_icon.png",
+            "img_web": "https://winline.ru/resources/images/app_topbar/brazil_icon.png",
+            "id": 118,
+            "order": 13
+          },
+          {
+            "deeplink": "Custom/72",
+            "img_app": "https://winline.ru/resources/images/app_topbar/fast_games_2.png",
+            "img_web": "https://winline.ru/resources/images/app_topbar/fast_games_2.png",
+            "id": 128,
+            "order": 16
+          },
+          {
+            "deeplink": "Custom/76",
+            "img_app": "https://winline.ru/resources/images/app_topbar/icon_cyberfifa.png",
+            "img_web": "https://winline.ru/resources/images/app_topbar/icon_cyberfifa.png",
+            "id": 138,
+            "order": 22
+          },
+          {
+            "deeplink": "cyber_main",
+            "img_app": "https://winline.ru/resources/images/app_topbar/icon_cyyber_shtorka.png",
+            "img_web": "https://winline.ru/resources/images/app_topbar/icon_cyyber_shtorka.png",
+            "id": 139,
+            "order": 26
+          },
+          {
+            "deeplink": "Custom/96",
+            "img_app": "https://winline.ru/resources/images/app_topbar/NHL_2026.png",
+            "img_web": "https://winline.ru/resources/images/app_topbar/NHL_2026.png",
+            "id": 182,
+            "order": 11
+          },
+          {
+            "deeplink": "Custom/101",
+            "img_app": "https://winline.ru/resources/images/app_topbar/PGL_Bucharest_2026.png",
+            "img_web": "https://winline.ru/resources/images/app_topbar/PGL_Bucharest_2026.png",
+            "id": 195,
+            "order": 6
+          },
+          {
+            "deeplink": "games247",
+            "img_app": "https://winline.ru/resources/images/app_topbar/new_BI.png",
+            "img_web": "https://winline.ru/resources/images/app_topbar/new_BI.png",
+            "and_ver": "min_1.1.1796",
+            "ios_ver": "min_2.10.32",
+            "is_test": false,
+            "id": 225,
+            "order": 23
+          },
+          {
+            "deeplink": "Custom/148",
+            "img_app": "https://winline.ru/resources/images/app_topbar/TOP_Fut_2.png",
+            "img_web": "https://winline.ru/resources/images/app_topbar/TOP_Fut_2.png",
+            "id": 232,
+            "order": 4
+          },
+          {
+            "is_crm0": true,
+            "deeplink": "raffleattempts",
+            "img_app": "https://a.winline.ru/resources/images/app_topbar/FaceIT_Raffle.png",
+            "img_web": "https://a.winline.ru/resources/images/app_topbar/FaceIT_Raffle.png",
+            "is_test": false,
+            "is_story": true,
+            "hide_bord": true,
+            "avail": 2,
+            "product": 14,
+            "not_move": true,
+            "id": 259,
+            "order": 3
+          },
+          {
+            "deeplink": "Custom/15",
+            "img_app": "https://winline.ru/resources/images/app_topbar/NBA_2026.png",
+            "img_web": "https://winline.ru/resources/images/app_topbar/NBA_2026.png",
+            "id": 301,
+            "order": 12
+          },
+          {
+            "deeplink": "Custom/160",
+            "img_app": "https://winline.ru/resources/images/app_topbar/Liga_Mexica_2026.png",
+            "img_web": "https://winline.ru/resources/images/app_topbar/Liga_Mexica_2026.png",
+            "id": 326,
+            "order": 27
+          }
+        ],
+        "c": [
+          {
+            "inside": {
+              "name": "Кубок Италии",
+              "web_img": "https://winline.ru/resources/images/app_customs/Coppa_Ita_desk.png",
+              "app_img": "https://winline.ru/resources/images/app_customs/Coppa_Ita.png",
+              "text_color": "#ffffff",
+              "stb_theme": 2,
+              "events_tit": "Ближайшие события",
+              "stat_id": "9",
+              "tit_col": "#030303",
+              "gp_img": "https://winline.ru/resources/images/app_customs/image_custom.png",
+              "gp_txt": "Кубок Италии"
+            },
+            "event": {},
+            "event_cell": {},
+            "out_cell": {},
+            "out_inside": {},
+            "video": {},
+            "md_inside": {
+              "img_url": "https://winline.ru/resources/images/app_motd/RPL23.png"
+            },
+            "id": 5,
+            "rules": [
+              {
+                "type": 3,
+                "ids": [
+                  35
+                ],
+                "title": "",
+                "img_url": "",
+                "topfilter": false,
+                "outrights": 2,
+                "params": "XM=0,TF=0,OU=2"
+              }
+            ]
+          },
+          {
+            "inside": {
+              "name": "Кубок Испании",
+              "web_img": "https://winline.ru/resources/images/app_customs/Copa_del_Rey_desk.png",
+              "app_img": "https://winline.ru/resources/images/app_customs/Copa_del_Rey_mob.png",
+              "text_color": "#ffffff",
+              "stb_theme": 2,
+              "events_tit": "Ближайшие события",
+              "stat_id": "99999999",
+              "tit_col": "#030303",
+              "gp_img": "https://winline.ru/resources/images/app_customs/image_custom.png",
+              "gp_txt": "Кубок Испании"
+            },
+            "event": {},
+            "event_cell": {},
+            "out_cell": {},
+            "out_inside": {},
+            "video": {},
+            "md_inside": {},
+            "id": 7,
+            "rules": [
+              {
+                "type": 3,
+                "ids": [
+                  150
+                ],
+                "title": "",
+                "img_url": "",
+                "topfilter": false,
+                "outrights": 2,
+                "params": "XM=0,TF=0,OU=2"
+              }
+            ]
+          },
+          {
+            "inside": {
+              "name": "КХЛ",
+              "web_img": "https://winline.ru/resources/images/app_customs/KHL_2026_desk.png",
+              "app_img": "https://winline.ru/resources/images/app_customs/KHL_2026_mob.png",
+              "text_color": "#030303",
+              "stb_theme": 2,
+              "events_tit": "Ближайшие события",
+              "tit_col": "#030303",
+              "gp_img": "https://winline.ru/resources/images/app_customs/image_custom.png",
+              "gp_txt": "КХЛ"
+            },
+            "event": {},
+            "event_cell": {},
+            "out_cell": {
+              "text_color": "#ffffff",
+              "img_url": "https://winline.ru/resources/images/app_patterns/KHL_2025_outrait.png",
+              "icon_url": "https://winline.ru/resources/images/app_patterns/KHL_logo.png"
+            },
+            "out_inside": {
+              "text": "КХЛ",
+              "img_url": "https://winline.ru/resources/images/app_patterns/KHL_2025_outrait_rospis.png",
+              "icon_url": "https://winline.ru/resources/images/app_patterns/KHL_logo.png"
+            },
+            "video": {},
+            "md_inside": {
+              "and_ver": "1.1.1380",
+              "ios_ver": "2.9.64",
+              "type": 1,
+              "id": 11502280
+            },
+            "and_ver": "1.1.1380",
+            "ios_ver": "2.9.64",
+            "id": 8,
+            "rules": [
+              {
+                "type": 3,
+                "ids": [
+                  673,
+                  1000912234
+                ],
+                "title": "КХЛ",
+                "img_url": "",
+                "topfilter": false,
+                "outrights": 2,
+                "params": "XM=0,TF=0,OU=2"
+              }
+            ]
+          },
+          {
+            "inside": {
+              "name": "ЛЧ",
+              "web_img": "https://winline.ru/resources/images/app_customs/UCL_desk.png",
+              "app_img": "https://winline.ru/resources/images/app_customs/ChampL.png",
+              "text_color": "#ffffff",
+              "stb_theme": 2,
+              "events_tit": "Ближайшие события",
+              "stat_id": "999999999",
+              "tit_col": "#030303",
+              "gp_img": "https://winline.ru/resources/images/app_customs/image_custom.png",
+              "gp_txt": "Лига Чемпионов"
+            },
+            "event": {
+              "img_url": "https://winline.ru/resources/images/app_patterns/LigaChampons.png",
+              "stb_theme": 2
+            },
+            "event_cell": {
+              "text_theme": 2
+            },
+            "out_cell": {
+              "img_url": "https://winline.ru/resources/images/app_patterns/LigaChampons.png",
+              "icon_url": "https://winline.ru/resources/images/app_patterns/CLcup_white.png"
+            },
+            "out_inside": {
+              "text": "Лига Чемпионов",
+              "img_url": "https://winline.ru/resources/images/app_patterns/LigaChampons.png",
+              "icon_url": "https://winline.ru/resources/images/app_patterns/CLcup_white.png",
+              "text_color": "#fdfcfb",
+              "stb_color": "#fdfcfb"
+            },
+            "video": {},
+            "md_inside": {
+              "type": 1,
+              "id": 11737293,
+              "koef_text": 2,
+              "koef_back": 2,
+              "img_url": "https://winline.ru/resources/images/app_motd/LigaChampons_s.png",
+              "hint": "Финал"
+            },
+            "and_ver": "1.1.1380",
+            "ios_ver": "2.9.64",
+            "id": 10,
+            "rules": [
+              {
+                "type": 3,
+                "ids": [
+                  23
+                ],
+                "title": "",
+                "img_url": "",
+                "topfilter": false,
+                "outrights": 2,
+                "params": "XM=0,TF=0,OU=2"
+              }
+            ]
+          },
+          {
+            "inside": {
+              "name": "РПЛ",
+              "web_img": "https://winline.ru/resources/images/app_customs/RPL_2026_desk.png",
+              "app_img": "https://winline.ru/resources/images/app_customs/RPL_2026_mob.png",
+              "text_color": "#ffffff",
+              "has_rpltab": true,
+              "has_xg": true,
+              "stb_theme": 2,
+              "events_tit": "Ближайшие события",
+              "tit_col": "#030303",
+              "gp_img": "https://winline.ru/resources/images/app_customs/image_custom.png",
+              "gp_txt": "РПЛ"
+            },
+            "event": {
+              "img_url": "https://a.winline.ru/resources/images/app_patterns/RPL_rospis.png",
+              "stb_theme": 2,
+              "event_id": 15380657,
+              "video_url": "https://vk.com/video_ext.php?oid=-173505667&id=456239038&hash=d3c1e6d6893cc585&autoplay=1",
+              "has_fact": true
+            },
+            "event_cell": {},
+            "out_cell": {
+              "text_color": "#fdfcfb",
+              "img_url": "https://winline.ru/resources/images/app_patterns/RPL_2025_outrait.png",
+              "icon_url": "https://winline.ru/resources/images/app_patterns/rpl_logo.png",
+              "for_custom": true
+            },
+            "out_inside": {
+              "text": "РПЛ",
+              "img_url": "https://winline.ru/resources/images/app_patterns/RPL_2025_outrait_rospis.png",
+              "icon_url": "https://winline.ru/resources/images/app_patterns/rpl_logo.png",
+              "text_color": "#fdfcfb",
+              "stb_color": "#fdfcfb"
+            },
+            "video": {},
+            "md_inside": {
+              "type": 1,
+              "id": 11784797,
+              "koef_text": 2,
+              "koef_back": 2,
+              "img_url": "https://winline.ru/resources/images/app_motd/RPL23.png",
+              "hint": "Матч года",
+              "order": 2
+            },
+            "eventStyle": 1,
+            "button": [],
+            "id": 11,
+            "rules": [
+              {
+                "type": 3,
+                "ids": [
+                  53
+                ],
+                "title": "",
+                "img_url": "",
+                "topfilter": false,
+                "outrights": 2,
+                "params": "XM=0,TF=0,OU=2"
+              }
+            ]
+          },
+          {
+            "inside": {
+              "name": "Кибер FIFA NHL NBA",
+              "web_img": "https://winline.ru/resources/images/app_customs/cyber_sims_desk_2.png",
+              "app_img": "https://winline.ru/resources/images/app_customs/cyber_sims_2_mob.png",
+              "text_color": "#ffffff",
+              "bar_color": "#000000",
+              "stb_theme": 2,
+              "events_tit": "Ближайшие события",
+              "stat_id": "9",
+              "tit_col": "#030303",
+              "gp_img": "https://winline.ru/resources/images/app_customs/image_custom.png",
+              "gp_txt": "Кибер"
+            },
+            "event": {},
+            "event_cell": {
+              "text_theme": 1
+            },
+            "out_cell": {},
+            "out_inside": {},
+            "video": {},
+            "md_inside": {
+              "type": 2,
+              "id": 11448463,
+              "koef_text": 1,
+              "koef_back": 1,
+              "img_url": "https://winline.ru/resources/images/app_motd/RPL23.png",
+              "hint": "Тест лейбла",
+              "order": 2
+            },
+            "id": 12,
+            "rules": [
+              {
+                "type": 1,
+                "ids": [
+                  195,
+                  192,
+                  193,
+                  194
+                ],
+                "title": "",
+                "img_url": "",
+                "topfilter": false,
+                "outrights": false,
+                "params": "XM=0,TF=0,OU=0"
+              },
+              {
+                "type": 1,
+                "ids": [
+                  195
+                ],
+                "title": "FIFA",
+                "img_url": "https://winline.ru/resources/images/app_custom_blocks/cyber_foot.png",
+                "topfilter": true,
+                "outrights": false,
+                "params": "XM=0,TF=1,OU=0"
+              },
+              {
+                "type": 1,
+                "ids": [
+                  193
+                ],
+                "title": "NBA",
+                "img_url": "https://winline.ru/resources/images/app_custom_blocks/cyber_bb.png",
+                "topfilter": true,
+                "outrights": false,
+                "params": "XM=0,TF=1,OU=0"
+              },
+              {
+                "type": 1,
+                "ids": [
+                  192
+                ],
+                "title": "NHL",
+                "img_url": "https://winline.ru/resources/images/app_custom_blocks/cuber_hoc.png",
+                "topfilter": true,
+                "outrights": false,
+                "params": "XM=0,TF=1,OU=0"
+              }
+            ]
+          },
+          {
+            "inside": {
+              "name": "NBA",
+              "web_img": "https://winline.ru/resources/images/app_customs/NBA_2026_desk.png",
+              "app_img": "https://winline.ru/resources/images/app_customs/NBA_2026_mob.png",
+              "text_color": "#ffffff",
+              "stb_theme": 2,
+              "events_tit": "Ближайшие события",
+              "tit_col": "#030303",
+              "gp_img": "https://winline.ru/resources/images/app_customs/image_custom.png",
+              "gp_txt": "NBA"
+            },
+            "event": {},
+            "event_cell": {},
+            "out_cell": {
+              "img_url": "https://winline.ru/resources/images/app_patterns/NBA_2025_outrait.png",
+              "icon_url": "https://winline.ru/resources/images/app_patterns/nba_icon.png",
+              "for_custom": true
+            },
+            "out_inside": {
+              "text": "NBA",
+              "img_url": "https://winline.ru/resources/images/app_patterns/NBA_2025_outrait_rospis.png",
+              "icon_url": "https://winline.ru/resources/images/app_patterns/nba_icon.png"
+            },
+            "video": {},
+            "md_inside": {},
+            "id": 15,
+            "rules": [
+              {
+                "type": 3,
+                "ids": [
+                  177,
+                  1820
+                ],
+                "title": "",
+                "img_url": "",
+                "topfilter": false,
+                "outrights": 2,
+                "params": "XM=0,TF=0,OU=2"
+              }
+            ]
+          },
+          {
+            "inside": {
+              "name": "АПЛ",
+              "web_img": "https://winline.ru/resources/images/app_customs/EPL_2026_desk.png",
+              "app_img": "https://winline.ru/resources/images/app_customs/EPL_2026_mob.png",
+              "text_color": "#ffffff",
+              "stb_theme": 2,
+              "events_tit": "Ближайшие события",
+              "stat_id": "9",
+              "tit_col": "#030303",
+              "gp_img": "https://winline.ru/resources/images/app_customs/image_custom.png",
+              "gp_txt": "АПЛ"
+            },
+            "event": {},
+            "event_cell": {},
+            "out_cell": {
+              "img_url": "https://winline.ru/resources/images/app_patterns/EPL_2025_outrait.png",
+              "icon_url": "https://winline.ru/resources/images/app_patterns/epl_lion_white.png",
+              "for_custom": true
+            },
+            "out_inside": {
+              "text": "АПЛ",
+              "img_url": "https://winline.ru/resources/images/app_patterns/EPL_2025_outrait_rospis.png",
+              "icon_url": "https://winline.ru/resources/images/app_patterns/epl_lion_white.png"
+            },
+            "video": {},
+            "md_inside": {
+              "and_ver": "min_1.1.2000",
+              "type": 1,
+              "id": 11693607,
+              "koef_text": 2,
+              "koef_back": 2,
+              "img_url": "https://winline.ru/resources/images/app_customs/APL_Match_Big.png",
+              "hint": "Матч тура"
+            },
+            "and_ver": "min_1.1.2000",
+            "eventStyle": 1,
+            "id": 19,
+            "rules": [
+              {
+                "type": 3,
+                "ids": [
+                  1
+                ],
+                "title": "",
+                "img_url": "",
+                "topfilter": false,
+                "outrights": 2,
+                "params": "XM=0,TF=0,OU=2"
+              }
+            ]
+          },
+          {
+            "inside": {
+              "name": "MLS",
+              "web_img": "https://winline.ru/resources/images/app_customs/MLS_2026_desk.png",
+              "app_img": "https://winline.ru/resources/images/app_customs/MLS_2026_mob.png",
+              "text_color": "#ffffff",
+              "stb_theme": 2,
+              "events_tit": "Ближайшие события",
+              "tit_col": "#030303",
+              "gp_img": "https://winline.ru/resources/images/app_customs/image_custom.png",
+              "gp_txt": "MLS"
+            },
+            "event": {},
+            "event_cell": {},
+            "out_cell": {},
+            "out_inside": {},
+            "video": {},
+            "md_inside": {},
+            "id": 21,
+            "rules": [
+              {
+                "type": 3,
+                "ids": [
+                  18,
+                  2288
+                ],
+                "title": "",
+                "img_url": "",
+                "topfilter": false,
+                "outrights": 2,
+                "params": "XM=0,TF=0,OU=2"
+              }
+            ]
+          },
+          {
+            "inside": {
+              "name": "Чемпионат Бразилии",
+              "web_img": "https://winline.ru/resources/images/app_customs/brazil_desk.png",
+              "app_img": "https://winline.ru/resources/images/app_customs/brazil_mob_2.png",
+              "text_color": "#ffffff",
+              "stb_theme": 2,
+              "events_tit": "Ближайшие события",
+              "stat_id": "99999999",
+              "tit_col": "#030303",
+              "gp_img": "https://winline.ru/resources/images/app_customs/image_custom.png",
+              "gp_txt": "Чемпионат Бразилии"
+            },
+            "event": {},
+            "event_cell": {},
+            "out_cell": {},
+            "out_inside": {},
+            "video": {},
+            "md_inside": {},
+            "id": 25,
+            "rules": [
+              {
+                "type": 3,
+                "ids": [
+                  83
+                ],
+                "title": "",
+                "img_url": "",
+                "topfilter": false,
+                "outrights": 2,
+                "params": "XM=0,TF=0,OU=2"
+              }
+            ]
+          },
+          {
+            "inside": {
+              "name": "Bundesliga",
+              "web_img": "https://winline.ru/resources/images/app_customs/Bundesliga_2026_desk.png",
+              "app_img": "https://winline.ru/resources/images/app_customs/Bundesliga_2026_mob.png",
+              "text_color": "#ffffff",
+              "stb_theme": 2,
+              "events_tit": "Ближайшие события",
+              "stat_id": "999999999",
+              "tit_col": "#030303",
+              "gp_img": "https://winline.ru/resources/images/app_customs/image_custom.png",
+              "gp_txt": "Бундеслига"
+            },
+            "event": {},
+            "event_cell": {},
+            "out_cell": {
+              "img_url": "https://winline.ru/resources/images/app_patterns/Bundesliga_2025_autrait.png",
+              "icon_url": "https://winline.ru/resources/images/app_patterns/bundes_icon.png",
+              "for_custom": true
+            },
+            "out_inside": {
+              "text": "Бундеслига",
+              "img_url": "https://winline.ru/resources/images/app_patterns/Bundesliga_2025_autrait_rospis.png",
+              "icon_url": "https://winline.ru/resources/images/app_patterns/bundes_icon.png",
+              "text_color": "#fdfcfb",
+              "stb_color": "#fdfcfb"
+            },
+            "video": {},
+            "md_inside": {
+              "type": 1,
+              "id": 11752036,
+              "koef_text": 2,
+              "koef_back": 2,
+              "img_url": "https://winline.ru/resources/images/app_customs/Bundesliga_Match_Big.png",
+              "hint": "Матч тура"
+            },
+            "eventStyle": 1,
+            "id": 28,
+            "rules": [
+              {
+                "type": 3,
+                "ids": [
+                  42
+                ],
+                "title": "",
+                "img_url": "",
+                "topfilter": false,
+                "outrights": 2,
+                "params": "XM=0,TF=0,OU=2"
+              }
+            ]
+          },
+          {
+            "inside": {
+              "name": "Евролига",
+              "web_img": "https://a.winline.ru/resources/images/app_customs/euroleague_basket_desk.png",
+              "app_img": "https://a.winline.ru/resources/images/app_customs/EuroLeague_basket.png",
+              "text_color": "#FFFFFF",
+              "stb_theme": 2,
+              "events_tit": "Ближайшие  события",
+              "tit_col": "#030303",
+              "gp_img": "https://winline.ru/resources/images/app_customs/image_custom.png",
+              "gp_txt": "Евролига"
+            },
+            "event": {},
+            "event_cell": {},
+            "out_cell": {
+              "icon_url": "https://winline.ru/resources/images/app_patterns/euroleague_icon.png"
+            },
+            "out_inside": {
+              "text": "Евролига",
+              "icon_url": "https://winline.ru/resources/images/app_patterns/euroleague_icon.png"
+            },
+            "video": {},
+            "md_inside": {},
+            "id": 29,
+            "rules": [
+              {
+                "type": 3,
+                "ids": [
+                  2551
+                ],
+                "title": "",
+                "img_url": "",
+                "topfilter": false,
+                "outrights": 2,
+                "params": "XM=0,TF=0,OU=2"
+              }
+            ]
+          },
+          {
+            "inside": {
+              "name": "FA_Cup",
+              "web_img": "https://winline.ru/resources/images/app_customs/FA_Cup_2026_desk.png",
+              "app_img": "https://winline.ru/resources/images/app_customs/FA_Cup_2026_mob.png",
+              "text_color": "#FFFFFF",
+              "stb_theme": 2,
+              "events_tit": "Ближайшие события",
+              "stat_id": "999999999",
+              "tit_col": "#030303",
+              "gp_img": "https://winline.ru/resources/images/app_customs/image_custom.png",
+              "gp_txt": "Кубок Англии"
+            },
+            "event": {},
+            "event_cell": {},
+            "out_cell": {},
+            "out_inside": {},
+            "video": {},
+            "md_inside": {},
+            "id": 30,
+            "rules": [
+              {
+                "type": 3,
+                "ids": [
+                  16
+                ],
+                "title": "",
+                "img_url": "",
+                "topfilter": false,
+                "outrights": 2,
+                "params": "XM=0,TF=0,OU=2"
+              }
+            ]
+          },
+          {
+            "inside": {
+              "name": "Кубок Германии",
+              "web_img": "https://winline.ru/resources/images/app_customs/desk_german_cup.png",
+              "app_img": "https://winline.ru/resources/images/app_customs/mob_german_cup.png",
+              "text_color": "#ffffff",
+              "stb_theme": 2,
+              "events_tit": "Ближайшие  события",
+              "stat_id": "99999999",
+              "tit_col": "#030303",
+              "gp_img": "https://winline.ru/resources/images/app_customs/image_custom.png",
+              "gp_txt": "Кубок Германии"
+            },
+            "event": {},
+            "event_cell": {},
+            "out_cell": {},
+            "out_inside": {},
+            "video": {},
+            "md_inside": {},
+            "id": 31,
+            "rules": [
+              {
+                "type": 3,
+                "ids": [
+                  43
+                ],
+                "title": "",
+                "img_url": "",
+                "topfilter": false,
+                "outrights": 2,
+                "params": "XM=0,TF=0,OU=2"
+              }
+            ]
+          },
+          {
+            "inside": {
+              "name": "Ла Лига",
+              "web_img": "https://winline.ru/resources/images/app_customs/LaLiga_2026_desk.png",
+              "app_img": "https://winline.ru/resources/images/app_customs/LaLiga_2026_mob.png",
+              "text_color": "#ffffff",
+              "stb_theme": 2,
+              "events_tit": "Ближайшие события",
+              "stat_id": "9",
+              "tit_col": "#030303",
+              "gp_img": "https://winline.ru/resources/images/app_customs/image_custom.png",
+              "gp_txt": "Ла лига"
+            },
+            "event": {},
+            "event_cell": {},
+            "out_cell": {
+              "img_url": "https://winline.ru/resources/images/app_patterns/La_Liga_2025_outrait.png",
+              "icon_url": "https://winline.ru/resources/images/app_patterns/laliga23_icon.png"
+            },
+            "out_inside": {
+              "text": "Ла Лига",
+              "img_url": "https://winline.ru/resources/images/app_patterns/La_Liga_2025_outrait_rospis.png",
+              "icon_url": "https://winline.ru/resources/images/app_patterns/laliga23_icon.png"
+            },
+            "video": {},
+            "md_inside": {
+              "type": 1,
+              "id": 11786962,
+              "koef_text": 2,
+              "koef_back": 2,
+              "img_url": "https://winline.ru/resources/images/app_customs/LaLiga_Big.png",
+              "hint": "Матч тура"
+            },
+            "and_ver": "min_1.1.2000",
+            "eventStyle": 1,
+            "id": 33,
+            "rules": [
+              {
+                "type": 3,
+                "ids": [
+                  36
+                ],
+                "title": "",
+                "img_url": "",
+                "topfilter": false,
+                "outrights": 2,
+                "params": "XM=0,TF=0,OU=2"
+              }
+            ]
+          },
+          {
+            "inside": {
+              "name": "Кубок Либертадорес",
+              "web_img": "https://winline.ru/resources/images/app_customs/Libertadores_desk.png",
+              "app_img": "https://winline.ru/resources/images/app_customs/Libertadores.png",
+              "text_color": "#ffffff",
+              "stb_theme": 2,
+              "events_tit": "Ближайшие события",
+              "stat_id": "9",
+              "tit_col": "#030303",
+              "gp_img": "https://winline.ru/resources/images/app_customs/image_custom.png",
+              "gp_txt": "Кубок Либертадорес"
+            },
+            "event": {},
+            "event_cell": {},
+            "out_cell": {},
+            "out_inside": {},
+            "video": {},
+            "md_inside": {},
+            "id": 34,
+            "rules": [
+              {
+                "type": 3,
+                "ids": [
+                  2928
+                ],
+                "title": "",
+                "img_url": "",
+                "topfilter": false,
+                "outrights": 2,
+                "params": "XM=0,TF=0,OU=2"
+              }
+            ]
+          },
+          {
+            "inside": {
+              "name": "Лига 1",
+              "web_img": "https://winline.ru/resources/images/app_customs/Liga1_2026_desk.png",
+              "app_img": "https://winline.ru/resources/images/app_customs/Liga1_2026_mob.png",
+              "text_color": "#ffffff",
+              "stb_theme": 2,
+              "events_tit": "Ближайшие события",
+              "tit_col": "#030303",
+              "gp_img": "https://winline.ru/resources/images/app_customs/image_custom.png",
+              "gp_txt": "Лига 1"
+            },
+            "event": {},
+            "event_cell": {},
+            "out_cell": {
+              "img_url": "https://winline.ru/resources/images/app_patterns/Liga1_2025_autrait.png",
+              "icon_url": "https://winline.ru/resources/images/app_patterns/Liga1_2025_autrait_icon.png",
+              "for_custom": true
+            },
+            "out_inside": {
+              "text": "Лига 1",
+              "img_url": "https://winline.ru/resources/images/app_patterns/Liga1_2025_autrait_rospis.png",
+              "icon_url": "https://winline.ru/resources/images/app_patterns/Liga1_2025_autrait_icon.png",
+              "text_color": "#fdfcfb",
+              "stb_color": "#fdfcfb"
+            },
+            "video": {},
+            "md_inside": {
+              "type": 1,
+              "koef_text": 2,
+              "koef_back": 2
+            },
+            "and_ver": "min_1.1.2000",
+            "eventStyle": 1,
+            "id": 35,
+            "rules": [
+              {
+                "type": 3,
+                "ids": [
+                  4
+                ],
+                "title": "",
+                "img_url": "",
+                "topfilter": false,
+                "outrights": 2,
+                "params": "XM=0,TF=0,OU=2"
+              }
+            ]
+          },
+          {
+            "inside": {
+              "name": "Серия А",
+              "web_img": "https://winline.ru/resources/images/app_customs/Seria_A_2026_desk.png",
+              "app_img": "https://winline.ru/resources/images/app_customs/Seria_A_2026_mob.png",
+              "text_color": "#ffffff",
+              "stb_theme": 2,
+              "events_tit": "Ближайшие события",
+              "stat_id": "999999999",
+              "tit_col": "#030303",
+              "gp_img": "https://winline.ru/resources/images/app_customs/image_custom.png",
+              "gp_txt": "Серия А"
+            },
+            "event": {},
+            "event_cell": {},
+            "out_cell": {
+              "img_url": "https://winline.ru/resources/images/app_patterns/Serie_A_2025_autrait.png",
+              "icon_url": "https://winline.ru/resources/images/app_patterns/Serie_A_2025_autrait_icon.png",
+              "for_custom": true
+            },
+            "out_inside": {
+              "text": "Серия А",
+              "img_url": "https://winline.ru/resources/images/app_patterns/Serie_A_2025_autrait_rospis.png",
+              "icon_url": "https://winline.ru/resources/images/app_patterns/Serie_A_2025_autrait_icon.png",
+              "text_color": "#fdfcfb",
+              "stb_color": "#fdfcfb"
+            },
+            "video": {},
+            "md_inside": {
+              "type": 1,
+              "id": 11785561,
+              "koef_text": 2,
+              "koef_back": 2,
+              "img_url": "https://winline.ru/resources/images/app_motd/motd_seria.png",
+              "hint": "Матч тура"
+            },
+            "and_ver": "min_1.1.2000",
+            "eventStyle": 1,
+            "id": 39,
+            "rules": [
+              {
+                "type": 3,
+                "ids": [
+                  33,
+                  1000909778
+                ],
+                "title": "",
+                "img_url": "",
+                "topfilter": false,
+                "outrights": 2,
+                "params": "XM=0,TF=0,OU=2"
+              }
+            ]
+          },
+          {
+            "inside": {
+              "name": "Лига Конференций",
+              "web_img": "https://winline.ru/resources/images/app_customs/desk_liga_conf.png",
+              "app_img": "https://winline.ru/resources/images/app_customs/mob_liga_conf.png",
+              "text_color": "#ffffff",
+              "stb_theme": 2,
+              "events_tit": "Ближайшие события",
+              "stat_id": "999999999",
+              "tit_col": "#030303",
+              "gp_img": "https://winline.ru/resources/images/app_customs/image_custom.png",
+              "gp_txt": "Лига Конференций"
+            },
+            "event": {
+              "img_url": "https://winline.ru/resources/images/app_patterns/UconfL_pattern2.png",
+              "stb_theme": 2
+            },
+            "event_cell": {},
+            "out_cell": {
+              "img_url": "https://winline.ru/resources/images/app_patterns/UconfL_pattern2.png",
+              "icon_url": "https://winline.ru/resources/images/app_patterns/uconfl_logo_icon.png"
+            },
+            "out_inside": {
+              "text": "Лига Конференций",
+              "img_url": "https://winline.ru/resources/images/app_patterns/UconfL_pattern2.png",
+              "icon_url": "https://winline.ru/resources/images/app_patterns/uconfl_logo_icon.png"
+            },
+            "video": {},
+            "md_inside": {
+              "type": 1,
+              "id": 11741582,
+              "koef_text": 2,
+              "koef_back": 2,
+              "img_url": "https://winline.ru/resources/images/app_motd/UConfL.png",
+              "hint": "Финал"
+            },
+            "id": 40,
+            "rules": [
+              {
+                "type": 3,
+                "ids": [
+                  104090
+                ],
+                "title": "",
+                "img_url": "",
+                "topfilter": false,
+                "outrights": 2,
+                "params": "XM=0,TF=0,OU=2"
+              }
+            ]
+          },
+          {
+            "inside": {
+              "name": "Лига Европы",
+              "web_img": "https://winline.ru/resources/images/app_customs/desk_liga_evrop.png",
+              "app_img": "https://winline.ru/resources/images/app_customs/mob_liga_evrop.png",
+              "text_color": "#ffffff",
+              "stb_theme": 2,
+              "events_tit": "Ближайшие события",
+              "stat_id": "999999999",
+              "tit_col": "#030303",
+              "gp_img": "https://winline.ru/resources/images/app_customs/image_custom.png",
+              "gp_txt": "Лига Европы"
+            },
+            "event": {
+              "img_url": "https://winline.ru/resources/images/app_patterns/event_bg/uel_.png",
+              "stb_theme": 2
+            },
+            "event_cell": {},
+            "out_cell": {
+              "img_url": "https://winline.ru/resources/images/app_patterns/outright/uel_final_motd.png",
+              "icon_url": "https://winline.ru/resources/images/app_patterns/event_img/uel_logo_icon_new.png"
+            },
+            "out_inside": {
+              "text": "Лига Европы",
+              "img_url": "https://winline.ru/resources/images/app_patterns/event_bg/uel_.png",
+              "icon_url": "https://winline.ru/resources/images/app_patterns/event_img/uel_logo_icon_new.png"
+            },
+            "video": {},
+            "md_inside": {},
+            "id": 41,
+            "rules": [
+              {
+                "type": 3,
+                "ids": [
+                  10908
+                ],
+                "title": "",
+                "img_url": "",
+                "topfilter": false,
+                "outrights": 2,
+                "params": "XM=0,TF=0,OU=2"
+              }
+            ]
+          },
+          {
+            "inside": {
+              "name": "Лига ВТБ",
+              "web_img": "https://winline.ru/resources/images/app_customs/Liga_VTB_desk.png",
+              "app_img": "https://winline.ru/resources/images/app_customs/Liga_VTB_mob_2.png",
+              "text_color": "#ffffff",
+              "stb_theme": 2,
+              "events_tit": "Ближайшие события",
+              "stat_id": "999999999",
+              "tit_col": "#030303",
+              "gp_img": "https://winline.ru/resources/images/app_customs/image_custom.png",
+              "gp_txt": "Единая Лига ВТБ"
+            },
+            "event": {},
+            "event_cell": {},
+            "out_cell": {},
+            "out_inside": {},
+            "video": {},
+            "md_inside": {},
+            "id": 42,
+            "rules": [
+              {
+                "type": 3,
+                "ids": [
+                  38610
+                ],
+                "title": "",
+                "img_url": "",
+                "topfilter": false,
+                "outrights": 2,
+                "params": "XM=0,TF=0,OU=2"
+              }
+            ]
+          },
+          {
+            "inside": {
+              "name": "WTA_500",
+              "web_img": "https://winline.ru/resources/images/app_customs/WTA_500_2026_desk.png",
+              "app_img": "https://winline.ru/resources/images/app_customs/WTA_500_2026_mob.png",
+              "text_color": "#ffffff",
+              "bar_color": "#ffffff",
+              "stb_theme": 2,
+              "events_tit": "Ближайшие события",
+              "tf_col": "#FF6A13",
+              "tf_no_col": "#292929",
+              "tit_col": "#030303",
+              "gp_img": "https://winline.ru/resources/images/app_customs/image_custom.png",
+              "gp_txt": "WTA 500"
+            },
+            "event": {},
+            "event_cell": {},
+            "out_cell": {},
+            "out_inside": {},
+            "video": {},
+            "md_inside": {},
+            "id": 44,
+            "rules": [
+              {
+                "type": 3,
+                "ids": [
+                  178693,
+                  178691,
+                  178703,
+                  178705,
+                  178715,
+                  178713,
+                  178717,
+                  178791,
+                  178793,
+                  178795,
+                  178819,
+                  178817,
+                  178821
+                ],
+                "title": "",
+                "img_url": "",
+                "topfilter": false,
+                "outrights": 0,
+                "params": "XM=0,TF=0,OU=0"
+              },
+              {
+                "type": 3,
+                "ids": [
+                  178703,
+                  178713,
+                  178715,
+                  178793,
+                  178819
+                ],
+                "title": "Одиночный",
+                "img_url": "https://winline.ru/resources/images/app_custom_blocks/tennis_women.png",
+                "topfilter": true,
+                "outrights": 2,
+                "params": "XM=0,TF=1,OU=2"
+              },
+              {
+                "type": 3,
+                "ids": [
+                  178693,
+                  178705,
+                  178717,
+                  178795,
+                  178821
+                ],
+                "title": "Пары",
+                "img_url": "https://winline.ru/resources/images/app_custom_blocks/tennis_women_doubles.png",
+                "topfilter": true,
+                "outrights": 2,
+                "params": "XM=0,TF=1,OU=2"
+              }
+            ]
+          },
+          {
+            "inside": {
+              "name": "Кубок России",
+              "web_img": "https://a.winline.ru/resources/images/app_customs/RusCup_desk.png",
+              "app_img": "https://a.winline.ru/resources/images/app_customs/RusCup.png",
+              "text_color": "#ffffff",
+              "stb_theme": 2,
+              "events_tit": "Ближайшие события",
+              "tit_col": "#030303",
+              "gp_img": "https://winline.ru/resources/images/app_customs/image_custom.png",
+              "gp_txt": "Кубок России"
+            },
+            "event": {},
+            "event_cell": {},
+            "out_cell": {
+              "img_url": "https://winline.ru/resources/images/app_patterns/Russian_Cup_outrait.png",
+              "icon_url": "https://winline.ru/resources/images/app_patterns/Russian_Cup_Logo.png"
+            },
+            "out_inside": {
+              "text": "Кубок России",
+              "img_url": "https://winline.ru/resources/images/app_patterns/Russian_Cup_outrait_rospis.png",
+              "icon_url": "https://winline.ru/resources/images/app_patterns/Russian_Cup_Logo.png"
+            },
+            "video": {},
+            "md_inside": {
+              "type": 1,
+              "id": 11770347,
+              "koef_text": 2,
+              "koef_back": 2,
+              "img_url": "https://winline.ru/resources/images/app_customs/RussianCup_Big.png",
+              "hint": "Финал"
+            },
+            "and_ver": "min_1.1.2000",
+            "id": 47,
+            "rules": [
+              {
+                "type": 3,
+                "ids": [
+                  95855,
+                  105060
+                ],
+                "title": "",
+                "img_url": "",
+                "topfilter": false,
+                "outrights": 2,
+                "params": "XM=0,TF=0,OU=2"
+              }
+            ]
+          },
+          {
+            "inside": {
+              "name": "Чемпионат Аргентины",
+              "web_img": "https://winline.ru/resources/images/app_customs/Argentina_2026_desk.png",
+              "app_img": "https://winline.ru/resources/images/app_customs/Argentina_2026_mob.png",
+              "text_color": "#ffffff",
+              "stb_theme": 2,
+              "events_tit": "Ближайшие события",
+              "tit_col": "#030303",
+              "gp_img": "https://winline.ru/resources/images/app_customs/image_custom.png",
+              "gp_txt": "Чемпионат Аргентины"
+            },
+            "event": {
+              "text_color": "#ffffff",
+              "stb_theme": 2
+            },
+            "event_cell": {},
+            "out_cell": {},
+            "out_inside": {},
+            "video": {},
+            "md_inside": {},
+            "id": 48,
+            "rules": [
+              {
+                "type": 3,
+                "ids": [
+                  68
+                ],
+                "title": "",
+                "img_url": "",
+                "topfilter": false,
+                "outrights": 2,
+                "params": "XM=0,TF=0,OU=2"
+              }
+            ]
+          },
+          {
+            "inside": {
+              "name": "Настольный теннис",
+              "web_img": "https://winline.ru/resources/images/app_customs/table_tennis_desk.png",
+              "app_img": "https://winline.ru/resources/images/app_customs/table_tennis_text.png",
+              "text_color": "#ffffff",
+              "stb_theme": 2,
+              "events_tit": "Ближайшие события",
+              "stat_id": "999999999",
+              "tit_col": "#030303",
+              "gp_img": "https://winline.ru/resources/images/app_customs/image_custom.png",
+              "gp_txt": "Настольный теннис"
+            },
+            "event": {
+              "stb_theme": 2
+            },
+            "event_cell": {},
+            "out_cell": {},
+            "out_inside": {},
+            "video": {},
+            "md_inside": {},
+            "id": 49,
+            "rules": [
+              {
+                "type": 1,
+                "ids": [
+                  20
+                ],
+                "title": "sport_tt",
+                "img_url": "",
+                "topfilter": false,
+                "outrights": false,
+                "params": "XM=0,TF=0,OU=0"
+              }
+            ]
+          },
+          {
+            "inside": {
+              "name": "ФНЛ",
+              "web_img": "https://winline.ru/resources/images/app_customs/desk_fnl.png",
+              "app_img": "https://winline.ru/resources/images/app_customs/mob_fnl.png",
+              "text_color": "#ffffff",
+              "stb_theme": 2,
+              "events_tit": "Ближайшие события",
+              "tit_col": "#030303",
+              "gp_img": "https://winline.ru/resources/images/app_customs/image_custom.png",
+              "gp_txt": "Первая Лига"
+            },
+            "event": {
+              "text_color": "#ffffff",
+              "stb_theme": 2
+            },
+            "event_cell": {},
+            "out_cell": {
+              "img_url": "https://winline.ru/resources/images/app_patterns/FNL_2025_outrait_1.png",
+              "icon_url": "https://winline.ru/resources/images/app_patterns/FNL_logo.png"
+            },
+            "out_inside": {
+              "text": "Первая Лига",
+              "img_url": "https://winline.ru/resources/images/app_patterns/FNL_2025_outrait_rospis.png",
+              "icon_url": "https://winline.ru/resources/images/app_patterns/FNL_logo.png"
+            },
+            "video": {},
+            "md_inside": {},
+            "id": 63,
+            "rules": [
+              {
+                "type": 3,
+                "ids": [
+                  1116
+                ],
+                "title": "",
+                "img_url": "",
+                "topfilter": false,
+                "outrights": 2,
+                "params": "XM=0,TF=0,OU=2"
+              }
+            ]
+          },
+          {
+            "inside": {
+              "name": "Судамерикана",
+              "web_img": "https://winline.ru/resources/images/app_customs/sudamericana_desk.png",
+              "app_img": "https://winline.ru/resources/images/app_customs/sudamericana_mob.png",
+              "text_color": "#ffffff",
+              "stb_theme": 2,
+              "events_tit": "Ближайшие события",
+              "tit_col": "#030303",
+              "gp_img": "https://winline.ru/resources/images/app_customs/image_custom.png",
+              "gp_txt": "Копа Судамерикана"
+            },
+            "event": {},
+            "event_cell": {},
+            "out_cell": {},
+            "out_inside": {},
+            "video": {},
+            "md_inside": {},
+            "id": 64,
+            "rules": [
+              {
+                "type": 3,
+                "ids": [
+                  99950,
+                  99932
+                ],
+                "title": "",
+                "img_url": "",
+                "topfilter": false,
+                "outrights": 2,
+                "params": "XM=0,TF=0,OU=2"
+              }
+            ]
+          },
+          {
+            "inside": {
+              "name": "AHL_Test",
+              "web_img": "https://winline.ru/resources/images/app_customs/fast_games_desk.png",
+              "app_img": "https://winline.ru/resources/images/international_2025/cologne_kv_upd.png",
+              "text_color": "#ffffff",
+              "stb_theme": 2,
+              "events_tit": "Ближайшие матчи",
+              "e24_btxt": "Таблица",
+              "tit_col": "#ed5b37",
+              "gp_img": "https://winline.ru/resources/images/app_customs/image_custom.png",
+              "gp_txt": "AHL"
+            },
+            "event": {},
+            "event_cell": {
+              "for_BR": true
+            },
+            "out_cell": {},
+            "out_inside": {},
+            "video": {},
+            "md_inside": {
+              "is_test": true,
+              "koef_text": 2,
+              "koef_back": 2,
+              "hint": "Матч дня"
+            },
+            "is_test": true,
+            "button": [
+              {
+                "sort": 1,
+                "title": "Таблица",
+                "url": "https://widget.pandascore.co/v2/winline/series?id=9362&user=winline&lang=ru-RU&full_height=true",
+                "icon": "https://winline.ru/resources/images/app_tables_nets/tournament_bracket_icon.png",
+                "color": "#E2E6EE",
+                "titl_color": "#000000",
+                "details": true
+              }
+            ],
+            "id": 65,
+            "rules": [
+              {
+                "type": 3,
+                "ids": [
+                  1000907591
+                ],
+                "title": "",
+                "img_url": "",
+                "topfilter": false,
+                "outrights": false,
+                "params": "XM=0,TF=0,OU=0"
+              },
+              {
+                "type": 1,
+                "ids": [
+                  12
+                ],
+                "title": "",
+                "img_url": "",
+                "topfilter": false,
+                "outrights": false,
+                "params": "XM=0,TF=0,OU=0"
+              }
+            ]
+          },
+          {
+            "inside": {
+              "name": "Быстрый спорт",
+              "web_img": "https://winline.ru/resources/images/app_customs/fast_games_desk_2.png",
+              "app_img": "https://winline.ru/resources/images/app_customs/fast_games_mob_2.png",
+              "text_color": "#ffffff",
+              "bar_color": "#ffffff",
+              "stb_theme": 2,
+              "events_tit": "Ближайшие события",
+              "tf_col": "#FF6A13",
+              "tf_no_col": "#292929",
+              "tit_col": "#030303",
+              "gp_img": "https://winline.ru/resources/images/app_customs/image_custom.png",
+              "gp_txt": "Быстрый спорт"
+            },
+            "event": {
+              "text_color": "#ffffff",
+              "stb_theme": 2
+            },
+            "event_cell": {},
+            "out_cell": {},
+            "out_inside": {},
+            "video": {},
+            "md_inside": {
+              "koef_text": 2,
+              "koef_back": 2
+            },
+            "id": 72,
+            "rules": [
+              {
+                "type": 3,
+                "ids": [
+                  1000909439,
+                  1000909835,
+                  1000909272,
+                  1000909337,
+                  1000909111,
+                  1000909110,
+                  1000909508,
+                  1000909509,
+                  1000909036,
+                  1000909037,
+                  1000908207,
+                  1000908193,
+                  1000908206,
+                  1000909912,
+                  1000910382,
+                  1000909504,
+                  1000908813,
+                  1000796401,
+                  1000911465,
+                  1000911464,
+                  1000910465,
+                  1000911466,
+                  1000910466
+                ],
+                "title": "",
+                "img_url": "",
+                "topfilter": false,
+                "outrights": 2,
+                "params": "XM=0,TF=0,OU=2"
+              },
+              {
+                "type": 3,
+                "ids": [
+                  1000909504,
+                  1000908813,
+                  1000911466,
+                  1000910465,
+                  1000911465,
+                  1000911464,
+                  1000910466
+                ],
+                "title": "Баскетбол",
+                "img_url": "https://winline.ru/resources/images/app_custom_blocks/bascetball_olimp_2024.png",
+                "topfilter": true,
+                "outrights": 2,
+                "params": "XM=0,TF=1,OU=2"
+              },
+              {
+                "type": 3,
+                "ids": [
+                  1000909439,
+                  1000909835,
+                  1000909111,
+                  1000909110,
+                  1000909508,
+                  1000909509,
+                  1000910382
+                ],
+                "title": "Хоккей",
+                "img_url": "https://winline.ru/resources/images/app_custom_blocks/hockey_icon.png",
+                "topfilter": true,
+                "outrights": 2,
+                "params": "XM=0,TF=1,OU=2"
+              },
+              {
+                "type": 3,
+                "ids": [
+                  1000909272,
+                  1000909337,
+                  1000909036,
+                  1000909037,
+                  1000908207,
+                  1000908193,
+                  1000908206,
+                  1000909912,
+                  1000796401
+                ],
+                "title": "Футбол",
+                "img_url": "https://winline.ru/resources/images/app_custom_blocks/footbal_icon.png",
+                "topfilter": true,
+                "outrights": 2,
+                "params": "XM=0,TF=1,OU=2"
+              }
+            ]
+          },
+          {
+            "inside": {
+              "name": "Футбол 24/7",
+              "web_img": "https://winline.ru/resources/images/app_customs/desk_cyberfifa.png",
+              "app_img": "https://winline.ru/resources/images/app_customs/mob_cyberfifa.png",
+              "text_color": "#ffffff",
+              "stb_theme": 2,
+              "events_tit": "Ближайшие события",
+              "tit_col": "#030303",
+              "gp_img": "https://winline.ru/resources/images/app_customs/image_custom.png",
+              "gp_txt": "Футбол 24/7"
+            },
+            "event": {},
+            "event_cell": {},
+            "out_cell": {},
+            "out_inside": {},
+            "video": {},
+            "md_inside": {},
+            "id": 76,
+            "rules": [
+              {
+                "type": 1,
+                "ids": [
+                  195
+                ],
+                "title": "",
+                "img_url": "",
+                "topfilter": false,
+                "outrights": false,
+                "params": "XM=0,TF=0,OU=0"
+              }
+            ]
+          },
+          {
+            "inside": {
+              "name": "Лига наций УЕФА",
+              "web_img": "https://winline.ru/resources/images/app_customs/Nations_league_desk.png",
+              "app_img": "https://winline.ru/resources/images/app_customs/Nations_league.png",
+              "text_color": "#ffffff",
+              "stb_theme": 2,
+              "events_tit": "Ближайшие события",
+              "tit_col": "#030303",
+              "gp_img": "https://winline.ru/resources/images/app_customs/image_custom.png",
+              "gp_txt": "Лига наций"
+            },
+            "event": {
+              "img_url": "https://winline.ru/resources/images/app_patterns/NationalLeague_ShAut.jpg",
+              "text_color": "#ffffff",
+              "stb_theme": 2
+            },
+            "event_cell": {},
+            "out_cell": {
+              "text_color": "#fdfcfb",
+              "img_url": "https://winline.ru/resources/images/app_patterns/NationalLeague_PlAut.jpg",
+              "icon_url": "https://winline.ru/resources/images/app_patterns/National_League_icon.png",
+              "for_custom": true
+            },
+            "out_inside": {
+              "text": "Лига наций УЕФА",
+              "img_url": "https://winline.ru/resources/images/app_patterns/NationalLeague_ShAut.jpg",
+              "icon_url": "https://winline.ru/resources/images/app_patterns/National_League_icon.png",
+              "text_color": "#fdfcfb",
+              "stb_color": "#fdfcfb"
+            },
+            "video": {},
+            "md_inside": {
+              "type": 1,
+              "id": 12263489,
+              "koef_text": 2,
+              "koef_back": 2,
+              "img_url": "https://winline.ru/resources/images/app_motd/Nations_League_UEFA.png",
+              "order": 2
+            },
+            "id": 92,
+            "rules": [
+              {
+                "type": 3,
+                "ids": [
+                  66502
+                ],
+                "title": "",
+                "img_url": "",
+                "topfilter": false,
+                "outrights": 2,
+                "params": "XM=0,TF=0,OU=2"
+              }
+            ]
+          },
+          {
+            "inside": {
+              "name": "Лояльность",
+              "web_img": "https://winline.ru/resources/images/app_customs/The_Int_qual_2025_desk.png",
+              "app_img": "https://a.winline.ru/resources/images/new_loyalty/loyalty_images/loyalty_2025/PGL_Wallachia_5_season_mob%203%20x4.png",
+              "text_color": "#ffffff",
+              "bar_color": "#ffffff",
+              "is_cyber": true,
+              "stb_theme": 2,
+              "events_tit": "Матчи турнира",
+              "tf_col": "#FF6A13",
+              "tf_no_col": "#292929",
+              "stat_id": 99999,
+              "e24_wurl": "https://widget.pandascore.co/v2/winline/series?id=9280&user=winline&lang=ru-RU&full_height=true ",
+              "e24_btxt": "Евро",
+              "tit_col": "#ffffff",
+              "lineup_btn": true,
+              "gp_img": "https://a.winline.ru/resources/images/new_loyalty/loyalty_images/loyalty_2025/PGL_Wallachia_5_season_mob%203%20x4.png",
+              "gp_txt": "Название чемпа"
+            },
+            "event": {
+              "event_id": 14394257
+            },
+            "event_cell": {},
+            "out_cell": {},
+            "out_inside": {},
+            "video": {
+              "url": "https://vkvideo.ru/video_ext.php?oid=-127553155&id=456244699&hd=2&autoplay=1",
+              "has_video": true,
+              "bg_video": "2C3539"
+            },
+            "md_inside": {},
+            "button": [
+              {
+                "sort": 1,
+                "title": "Сетка",
+                "url": "http://dev2.wlreps.com:9002",
+                "win_url": "",
+                "icon": "https://winline.ru/resources/images/app_tables_nets/tournament_bracket_icon.png",
+                "color": "#E2E6EE",
+                "titl_color": "#000000",
+                "details": false
+              }
+            ],
+            "banners": [],
+            "id": 95,
+            "rules": [
+              {
+                "type": 1,
+                "ids": [
+                  20
+                ],
+                "title": "",
+                "img_url": "",
+                "topfilter": false,
+                "outrights": false,
+                "params": "XM=0,TF=0,OU=0"
+              }
+            ]
+          },
+          {
+            "inside": {
+              "name": "NHL",
+              "web_img": "https://winline.ru/resources/images/app_customs/NHL_2026_desk.png",
+              "app_img": "https://winline.ru/resources/images/app_customs/NHL_2026_mob.png",
+              "text_color": "#ffffff",
+              "stb_theme": 2,
+              "events_tit": "Ближайшие события",
+              "tit_col": "#030303",
+              "gp_img": "https://winline.ru/resources/images/app_customs/image_custom.png",
+              "gp_txt": "НХЛ"
+            },
+            "event": {},
+            "event_cell": {},
+            "out_cell": {
+              "img_url": "https://winline.ru/resources/images/app_patterns/NHL_2025_outrait.png",
+              "icon_url": "https://winline.ru/resources/images/app_patterns/oie_hihNvFalq4Yl.png",
+              "for_custom": true
+            },
+            "out_inside": {
+              "text": "NHL",
+              "img_url": "https://winline.ru/resources/images/app_patterns/NHL_2025_outrait_rospis.png",
+              "icon_url": "https://winline.ru/resources/images/app_patterns/oie_hihNvFalq4Yl.png"
+            },
+            "video": {},
+            "md_inside": {},
+            "id": 96,
+            "rules": [
+              {
+                "type": 3,
+                "ids": [
+                  142
+                ],
+                "title": "",
+                "img_url": "",
+                "topfilter": false,
+                "outrights": 2,
+                "params": "XM=0,TF=0,OU=2"
+              }
+            ]
+          },
+          {
+            "inside": {
+              "name": "PGL Bucharest",
+              "web_img": "https://winline.ru/resources/images/app_customs/PGL_Bucharest_2026_desk.png",
+              "app_img": "https://winline.ru/resources/images/app_customs/PGL_Bucharest_2026_mob.png",
+              "text_color": "#ffffff",
+              "is_cyber": true,
+              "stb_theme": 2,
+              "events_tit": "Ближайшие события",
+              "stat_color": "#1D1B3E",
+              "e24_wurl": "https://widget.pandascore.co/v2/winline/series?id=10450&user=winline&lang=ru-RU&full_height=true",
+              "e24_btxt": "Сетка",
+              "tit_col": "#ffffff",
+              "gp_img": "https://winline.ru/resources/images/app_customs/image_custom.png",
+              "gp_txt": "PGL Bucharest"
+            },
+            "event": {},
+            "event_cell": {},
+            "out_cell": {},
+            "out_inside": {},
+            "video": {},
+            "md_inside": {},
+            "button": [
+              {
+                "title": "Ход турнира",
+                "url": "https://widget.pandascore.co/v2/winline/series?id=10450&user=winline&lang=ru-RU&full_height=true",
+                "icon": "https://winline.ru/resources/images/app_tables_nets/tournament_bracket_icon.png",
+                "color": "#E2E6EE",
+                "titl_color": "#ffffff",
+                "details": true,
+                "platform": 29
+              }
+            ],
+            "id": 101,
+            "rules": [
+              {
+                "type": 3,
+                "ids": [
+                  1000910583,
+                  1000910761
+                ],
+                "title": "",
+                "img_url": "",
+                "topfilter": false,
+                "outrights": 2,
+                "params": "XM=0,TF=0,OU=2"
+              }
+            ]
+          },
+          {
+            "inside": {
+              "name": "Кубок Франции",
+              "web_img": "https://winline.ru/resources/images/app_customs/Coupe_de_France_desk.png",
+              "app_img": "https://winline.ru/resources/images/app_customs/Coupe_de_France_mob.png",
+              "text_color": "#ffffff",
+              "stb_theme": 2,
+              "events_tit": "Ближайшие события",
+              "tit_col": "#030303",
+              "gp_img": "https://winline.ru/resources/images/app_customs/image_custom.png",
+              "gp_txt": "Кубок Франции"
+            },
+            "event": {},
+            "event_cell": {},
+            "out_cell": {},
+            "out_inside": {},
+            "video": {},
+            "md_inside": {},
+            "id": 104,
+            "rules": [
+              {
+                "type": 3,
+                "ids": [
+                  77
+                ],
+                "title": "",
+                "img_url": "",
+                "topfilter": false,
+                "outrights": 0,
+                "params": "XM=0,TF=0,OU=0"
+              }
+            ]
+          },
+          {
+            "inside": {
+              "name": "ATP 1000",
+              "web_img": "https://winline.ru/resources/images/app_customs/ATP_1000_2026_desk.png",
+              "app_img": "https://winline.ru/resources/images/app_customs/ATP_1000_2026_mob.png",
+              "text_color": "#FFFFFF",
+              "bar_color": "#ffffff",
+              "stb_theme": 2,
+              "events_tit": "Ближайшие события",
+              "tf_col": "#FF6A13",
+              "tf_no_col": "#292929",
+              "tit_col": "#030303",
+              "gp_img": "https://winline.ru/resources/images/app_customs/image_custom.png",
+              "gp_txt": "ATP 1000"
+            },
+            "event": {},
+            "event_cell": {},
+            "out_cell": {
+              "img_url": "https://winline.ru/resources/images/app_patterns/ATP_2025_outrait.png",
+              "icon_url": "https://winline.ru/resources/images/app_patterns/ATP_logo_pattern.png"
+            },
+            "out_inside": {
+              "img_url": "https://winline.ru/resources/images/app_patterns/ATP_2025_outrait_rospis.png",
+              "icon_url": "https://winline.ru/resources/images/app_patterns/ATP_logo_pattern.png"
+            },
+            "video": {},
+            "md_inside": {},
+            "id": 118,
+            "rules": [
+              {
+                "type": 3,
+                "ids": [
+                  157809,
+                  157811,
+                  175183,
+                  175185,
+                  175187,
+                  175189,
+                  175191,
+                  175193,
+                  175229,
+                  175231,
+                  175227
+                ],
+                "title": "",
+                "img_url": "",
+                "topfilter": false,
+                "outrights": 0,
+                "params": "XM=0,TF=0,OU=0"
+              },
+              {
+                "type": 3,
+                "ids": [
+                  157809,
+                  175183,
+                  175185,
+                  175227,
+                  175229
+                ],
+                "title": "Одиночный",
+                "img_url": "https://winline.ru/resources/images/app_custom_blocks/tennis_men.png",
+                "topfilter": true,
+                "outrights": 2,
+                "params": "XM=0,TF=1,OU=2"
+              },
+              {
+                "type": 3,
+                "ids": [
+                  157811,
+                  175187,
+                  175231
+                ],
+                "title": "Пары",
+                "img_url": "https://winline.ru/resources/images/app_custom_blocks/tennis_men_doubles.png",
+                "topfilter": true,
+                "outrights": 2,
+                "params": "XM=0,TF=1,OU=2"
+              }
+            ]
+          },
+          {
+            "inside": {
+              "name": "ТЕСТ",
+              "web_img": "https://winline.ru/resources/images/app_customs/ESL_ONE_Birmingham_2026_desk.png",
+              "app_img": "https://winline.ru/resources/images/app_customs/ESL_ONE_Birmingham_2026_mob.png",
+              "text_color": "#030303",
+              "has_rpltab": true,
+              "has_xg": true,
+              "is_cyber": true,
+              "stb_theme": 2,
+              "events_tit": "Ближайшие  события",
+              "stat_color": "#1D1B3E",
+              "e24_wurl": "https://widget.pandascore.co/v2/winline/series?id=10357&user=winline&lang=ru-RU&full_height=true",
+              "e24_btxt": "Сетка",
+              "tit_col": "#ffffff"
+            },
+            "event": {},
+            "event_cell": {},
+            "out_cell": {},
+            "out_inside": {},
+            "video": {},
+            "md_inside": {
+              "is_test": true,
+              "type": 1,
+              "id": 15094370,
+              "koef_text": 2,
+              "koef_back": 2,
+              "order": 1
+            },
+            "is_test": true,
+            "button": [
+              {
+                "title": "Ход турнира",
+                "platform": 29,
+                "url": "https://widget.pandascore.co/v2/winline/series?id=10357&user=winline&lang=ru-RU&full_height=true",
+                "icon": "https://winline.ru/resources/images/app_tables_nets/tournament_bracket_icon_event.png",
+                "color": "#030303",
+                "titl_color": "#030303",
+                "details": true
+              }
+            ],
+            "id": 139,
+            "rules": [
+              {
+                "type": 3,
+                "ids": [
+                  162239,
+                  58802,
+                  1000909768
+                ],
+                "title": "",
+                "img_url": "",
+                "topfilter": false,
+                "outrights": 2,
+                "params": "XM=0,TF=0,OU=2"
+              }
+            ]
+          },
+          {
+            "inside": {
+              "app_img": "https://winline.ru/resources/images/app_customs/ChampL.png",
+              "text_color": "#ffffff",
+              "stb_theme": 2,
+              "stat_color": "#ffffff"
+            },
+            "event": {
+              "img_url": "https://winline.ru/resources/images/app_patterns/flor1.png"
+            },
+            "event_cell": {},
+            "out_cell": {},
+            "out_inside": {},
+            "video": {},
+            "md_inside": {},
+            "eventStyle": 1,
+            "button": [
+              {
+                "sort": 1,
+                "title": "Таблица",
+                "win_url": "tournament-preview?uniqueTournamentId=7&tabs=standings",
+                "icon": "https://winline.ru/resources/images/app_tables_nets/tournament_bracket_icon.png",
+                "color": "#E2E6EE",
+                "titl_color": "#ffffff"
+              },
+              {
+                "sort": 2,
+                "title": "Статистика",
+                "win_url": "tournament-preview?uniqueTournamentId=7&tabs=overview,leaders,results,teams",
+                "icon": "https://winline.ru/resources/images/app_tables_nets/bombardiers_new_icon.png",
+                "color": "#E2E6EE",
+                "titl_color": "#ffffff"
+              }
+            ],
+            "banners": [
+              {
+                "image": "https://winline.ru/resources/images/international_2025/img%201.png",
+                "deeplink": "main",
+                "type": 0,
+                "btn_ttl": "На главную",
+                "is_complex": true,
+                "back_clr": "#3B376D",
+                "title_clr": "#ffffff",
+                "title": "На главную"
+              },
+              {
+                "image": "https://winline.ru/resources/images/international_2025/img%202.png",
+                "deeplink": "br_main",
+                "type": 1,
+                "btn_ttl": "",
+                "is_complex": true,
+                "back_clr": "#3B376D",
+                "title_clr": "#ffffff",
+                "title": "Турниры"
+              }
+            ],
+            "id": 144,
+            "rules": [
+              {
+                "type": 3,
+                "ids": [
+                  3001,
+                  5920,
+                  11811,
+                  106938,
+                  160805
+                ],
+                "title": "",
+                "img_url": "",
+                "topfilter": false,
+                "outrights": false,
+                "params": "XM=0,TF=0,OU=0"
+              }
+            ]
+          },
+          {
+            "inside": {
+              "name": "ТОП Футбол",
+              "web_img": "https://winline.ru/resources/images/app_customs/Top_FuT_new_desk.jpg",
+              "app_img": "https://winline.ru/resources/images/app_customs/Top_FuT_new_mob.jpg",
+              "text_color": "#ffffff",
+              "bar_color": "#ffffff",
+              "stb_theme": 2,
+              "events_tit": "Ближайшие события",
+              "tf_col": "#FF6A13",
+              "tf_no_col": "#292929",
+              "tit_col": "#030303",
+              "gp_img": "https://winline.ru/resources/images/app_customs/image_custom.png",
+              "gp_txt": "ТОП Футбол"
+            },
+            "event": {},
+            "event_cell": {},
+            "out_cell": {},
+            "out_inside": {},
+            "video": {},
+            "md_inside": {},
+            "eventStyle": 2,
+            "id": 148,
+            "rules": [
+              {
+                "type": 3,
+                "ids": [
+                  53,
+                  36,
+                  1,
+                  33,
+                  4,
+                  42
+                ],
+                "title": "",
+                "img_url": "",
+                "topfilter": false,
+                "outrights": 2,
+                "params": "XM=0,TF=0,OU=2"
+              },
+              {
+                "type": 3,
+                "ids": [
+                  53
+                ],
+                "title": "РПЛ",
+                "img_url": "https://winline.ru/resources/images/app_custom_blocks/Filtr_RPL.png",
+                "topfilter": true,
+                "outrights": 2,
+                "params": "XM=0,TF=1,OU=2"
+              },
+              {
+                "type": 3,
+                "ids": [
+                  36
+                ],
+                "title": "Ла Лига",
+                "img_url": "https://winline.ru/resources/images/app_custom_blocks/Filtr_LaLiga.png",
+                "topfilter": true,
+                "outrights": 2,
+                "params": "XM=0,TF=1,OU=2"
+              },
+              {
+                "type": 3,
+                "ids": [
+                  1
+                ],
+                "title": "АПЛ",
+                "img_url": "https://winline.ru/resources/images/app_custom_blocks/Filtr_APL.png",
+                "topfilter": true,
+                "outrights": 2,
+                "params": "XM=0,TF=1,OU=2"
+              },
+              {
+                "type": 3,
+                "ids": [
+                  33
+                ],
+                "title": "Серия А",
+                "img_url": "https://winline.ru/resources/images/app_custom_blocks/Filtr_Seria_A.png",
+                "topfilter": true,
+                "outrights": 2,
+                "params": "XM=0,TF=1,OU=2"
+              },
+              {
+                "type": 3,
+                "ids": [
+                  4
+                ],
+                "title": "Лига 1",
+                "img_url": "https://winline.ru/resources/images/app_custom_blocks/Filtr_Liga_1.png",
+                "topfilter": true,
+                "outrights": 2,
+                "params": "XM=0,TF=1,OU=2"
+              },
+              {
+                "type": 3,
+                "ids": [
+                  42
+                ],
+                "title": "Бундеслига",
+                "img_url": "https://winline.ru/resources/images/app_custom_blocks/Filtr_Bundesliga.png",
+                "topfilter": true,
+                "outrights": 2,
+                "params": "XM=0,TF=1,OU=2"
+              }
+            ]
+          },
+          {
+            "inside": {
+              "name": "Winline Basket Cup",
+              "web_img": "https://winline.ru/resources/images/app_customs/WBC_desk.jpg",
+              "app_img": "https://winline.ru/resources/images/app_customs/WBC_mob.jpg",
+              "text_color": "#ffffff",
+              "stb_theme": 2,
+              "events_tit": "Ближайшие события",
+              "tit_col": "#030303",
+              "gp_img": "https://winline.ru/resources/images/app_customs/image_custom.png",
+              "gp_txt": "Winline Basket Cup"
+            },
+            "event": {},
+            "event_cell": {},
+            "out_cell": {},
+            "out_inside": {},
+            "video": {},
+            "md_inside": {},
+            "id": 149,
+            "rules": [
+              {
+                "type": 3,
+                "ids": [
+                  177973
+                ],
+                "title": "",
+                "img_url": "",
+                "topfilter": false,
+                "outrights": 2,
+                "params": "XM=0,TF=0,OU=2"
+              }
+            ]
+          },
+          {
+            "inside": {
+              "name": "Чемпионат Мексики",
+              "web_img": "https://winline.ru/resources/images/app_customs/Liga_Mexica_2026_desk.png",
+              "app_img": "https://winline.ru/resources/images/app_customs/Liga_Mexica_2026_mob.png",
+              "text_color": "#ffffff",
+              "stb_theme": 2,
+              "events_tit": "Ближайшие события",
+              "tit_col": "#030303",
+              "gp_img": "https://winline.ru/resources/images/app_customs/image_custom.png",
+              "gp_txt": "Чемпионат Мексики"
+            },
+            "event": {},
+            "event_cell": {},
+            "out_cell": {},
+            "out_inside": {},
+            "video": {},
+            "md_inside": {},
+            "id": 160,
+            "rules": [
+              {
+                "type": 3,
+                "ids": [
+                  28
+                ],
+                "title": "",
+                "img_url": "",
+                "topfilter": false,
+                "outrights": 2,
+                "params": "XM=0,TF=0,OU=2"
+              }
+            ]
+          }
+        ],
+        "b": [
+          {
+            "avail": 2,
+            "deeplink": "br_main",
+            "for_main": false,
+            "for_custom": false,
+            "is_test": false,
+            "story": false,
+            "forWeb": true,
+            "logSort": 1,
+            "notLogSort": 1,
+            "ingWeb": "https://winline.ru/resources/images/app_banners/web_banner_betrace.png",
+            "id": 38,
+            "order": 1
+          },
+          {
+            "avail": 2,
+            "is_fsv": false,
+            "deeplink": "br_tournament/611",
+            "for_main": false,
+            "for_custom": true,
+            "custom_id": 11,
+            "for_cyber": false,
+            "img_url": "https://winline.ru/resources/images/app_banners/Betrace_RPL_2026.png",
+            "type": 2,
+            "m_order": 7,
+            "cust_order": 4,
+            "cyb_order": 100,
+            "is_test": false,
+            "ver_ios": "min_2.10.27",
+            "and_ver": "min_1.1.1753",
+            "is_winpass": false,
+            "is_crm0": false,
+            "is_widget": false,
+            "id": 162,
+            "order": 1
+          },
+          {
+            "avail": 2,
+            "is_fsv": false,
+            "deeplink": "br_tournament/616",
+            "for_main": false,
+            "for_custom": true,
+            "custom_id": 72,
+            "for_cyber": false,
+            "img_url": "https://winline.ru/resources/images/app_banners/Fast_games_banner_2.png",
+            "type": 2,
+            "m_order": 5,
+            "cust_order": 4,
+            "cyb_order": 100,
+            "is_test": false,
+            "ver_ios": "min_2.10.27",
+            "and_ver": "min_1.1.1753",
+            "is_winpass": false,
+            "is_crm0": false,
+            "is_widget": false,
+            "id": 175,
+            "order": 1
+          },
+          {
+            "avail": 2,
+            "is_fsv": false,
+            "deeplink": "br_tournament/609",
+            "for_main": false,
+            "for_custom": true,
+            "custom_id": 33,
+            "for_cyber": false,
+            "img_url": "https://winline.ru/resources/images/app_banners/LaLiga_2026_Betrace.png",
+            "type": 2,
+            "m_order": 7,
+            "cust_order": 4,
+            "cyb_order": 100,
+            "is_test": false,
+            "ver_ios": "min_2.10.27",
+            "and_ver": "min_1.1.1753",
+            "is_winpass": false,
+            "is_crm0": false,
+            "is_widget": false,
+            "id": 176,
+            "order": 1
+          },
+          {
+            "avail": 2,
+            "is_fsv": false,
+            "deeplink": "br_tournament/609",
+            "for_main": false,
+            "for_custom": true,
+            "custom_id": 19,
+            "for_cyber": false,
+            "img_url": "https://winline.ru/resources/images/app_banners/EPL_2026_Betrace.png",
+            "type": 2,
+            "m_order": 7,
+            "cust_order": 4,
+            "cyb_order": 100,
+            "is_test": false,
+            "ver_ios": "min_2.10.27",
+            "and_ver": "min_1.1.1753",
+            "is_winpass": false,
+            "is_crm0": false,
+            "is_widget": false,
+            "id": 177,
+            "order": 1
+          },
+          {
+            "avail": 2,
+            "is_fsv": false,
+            "deeplink": "br_tournament/609",
+            "for_main": false,
+            "for_custom": true,
+            "custom_id": 28,
+            "for_cyber": false,
+            "img_url": "https://winline.ru/resources/images/app_banners/Bundesliga_2025_banner_betrace.png",
+            "type": 2,
+            "m_order": 7,
+            "cust_order": 4,
+            "cyb_order": 100,
+            "is_test": false,
+            "ver_ios": "min_2.10.27",
+            "and_ver": "min_1.1.1753",
+            "is_winpass": false,
+            "is_crm0": false,
+            "is_widget": false,
+            "id": 178,
+            "order": 1
+          },
+          {
+            "avail": 2,
+            "is_fsv": false,
+            "deeplink": "br_tournament/609",
+            "for_main": false,
+            "for_custom": true,
+            "custom_id": 35,
+            "for_cyber": false,
+            "img_url": "https://winline.ru/resources/images/app_banners/Banner_Betrace_Liga1_2025.png",
+            "type": 2,
+            "m_order": 7,
+            "cust_order": 4,
+            "cyb_order": 100,
+            "is_test": false,
+            "ver_ios": "min_2.10.27",
+            "and_ver": "min_1.1.1753",
+            "is_winpass": false,
+            "is_crm0": false,
+            "is_widget": false,
+            "id": 179,
+            "order": 1
+          },
+          {
+            "avail": 2,
+            "is_fsv": false,
+            "deeplink": "br_tournament/609",
+            "for_main": false,
+            "for_custom": true,
+            "custom_id": 39,
+            "for_cyber": false,
+            "img_url": "https://winline.ru/resources/images/app_banners/Serie_A_2025_banner_betrace.png",
+            "type": 2,
+            "m_order": 7,
+            "cust_order": 4,
+            "cyb_order": 100,
+            "is_test": false,
+            "ver_ios": "min_2.10.27",
+            "and_ver": "min_1.1.1753",
+            "is_winpass": false,
+            "is_crm0": false,
+            "is_widget": false,
+            "id": 180,
+            "order": 1
+          },
+          {
+            "avail": 2,
+            "is_fsv": false,
+            "deeplink": "br_tournament/609",
+            "for_main": false,
+            "for_custom": true,
+            "custom_id": 10,
+            "for_cyber": false,
+            "img_url": "https://winline.ru/resources/images/app_banners/banner_betrace_cl.png",
+            "type": 2,
+            "m_order": 7,
+            "cust_order": 4,
+            "cyb_order": 100,
+            "is_test": false,
+            "ver_ios": "min_2.10.27",
+            "and_ver": "min_1.1.1753",
+            "is_winpass": false,
+            "is_crm0": false,
+            "is_widget": false,
+            "id": 181,
+            "order": 1
+          },
+          {
+            "avail": 2,
+            "is_fsv": false,
+            "deeplink": "br_tournament/608",
+            "for_main": false,
+            "for_custom": true,
+            "custom_id": 96,
+            "for_cyber": false,
+            "img_url": "https://winline.ru/resources/images/app_banners/NHL_2026_Betrace.png",
+            "type": 2,
+            "m_order": 5,
+            "cust_order": 4,
+            "cyb_order": 100,
+            "is_test": false,
+            "ver_ios": "min_2.10.27",
+            "and_ver": "min_1.1.1753",
+            "is_winpass": false,
+            "is_crm0": false,
+            "is_widget": false,
+            "id": 184,
+            "order": 1
+          },
+          {
+            "avail": 2,
+            "is_fsv": false,
+            "deeplink": "br_tournament/608",
+            "for_main": false,
+            "for_custom": true,
+            "custom_id": 15,
+            "for_cyber": false,
+            "img_url": "https://winline.ru/resources/images/app_banners/NBA_2026_Betrace.png",
+            "type": 2,
+            "m_order": 5,
+            "cust_order": 4,
+            "cyb_order": 100,
+            "is_test": false,
+            "ver_ios": "min_2.10.27",
+            "and_ver": "min_1.1.1753",
+            "is_winpass": false,
+            "is_crm0": false,
+            "is_widget": false,
+            "id": 191,
+            "order": 1
+          },
+          {
+            "avail": 2,
+            "is_fsv": false,
+            "deeplink": "br_tournament/609",
+            "for_main": false,
+            "for_custom": true,
+            "custom_id": 41,
+            "for_cyber": false,
+            "img_url": "https://winline.ru/resources/images/app_banners/banner_betrace_LE_2.png",
+            "type": 2,
+            "cust_order": 4,
+            "is_test": false,
+            "is_winpass": false,
+            "is_crm0": false,
+            "is_widget": false,
+            "id": 282,
+            "order": 1
+          },
+          {
+            "avail": 2,
+            "is_fsv": false,
+            "deeplink": "br_tournament/609",
+            "for_main": false,
+            "for_custom": true,
+            "custom_id": 40,
+            "for_cyber": false,
+            "img_url": "https://winline.ru/resources/images/app_banners/banner_betrace_LK_2.png",
+            "type": 2,
+            "cust_order": 4,
+            "is_test": false,
+            "is_winpass": false,
+            "is_crm0": false,
+            "is_widget": false,
+            "id": 283,
+            "order": 1
+          },
+          {
+            "deeplink": "main_screen_3",
+            "for_main": true,
+            "for_custom": false,
+            "img_url": "https://winline.ru/resources/images/app_banners/Euro_tour.png",
+            "type": 2,
+            "m_order": 25,
+            "is_test": true,
+            "story": true,
+            "id": 290,
+            "order": 1
+          },
+          {
+            "deeplink": "main_test",
+            "for_main": true,
+            "img_url": "https://winline.ru/resources/images/app_banners/Euro_tour.png",
+            "type": 2,
+            "m_order": 45,
+            "is_test": true,
+            "story": true,
+            "id": 291,
+            "order": 1
+          },
+          {
+            "avail": 2,
+            "deeplink": "/personal/payment?paySystem=SBP",
+            "is_test": false,
+            "story": false,
+            "forWeb": true,
+            "logSort": 2,
+            "notLogSort": 2,
+            "ingWeb": "https://winline.ru/resources/images/app_banners/web_banner_sbp.png",
+            "id": 303,
+            "order": 1
+          },
+          {
+            "avail": 1,
+            "deeplink": "/freebet",
+            "is_test": false,
+            "story": false,
+            "forWeb": true,
+            "notLogSort": 3,
+            "ingWeb": "https://winline.ru/resources/images/app_banners/web_banner_3000_november.png",
+            "id": 304,
+            "order": 1
+          },
+          {
+            "deeplink": "cyber",
+            "for_cyber": true,
+            "type": 2,
+            "cyb_order": 5,
+            "is_test": false,
+            "story": true,
+            "id": 307,
+            "order": 1
+          },
+          {
+            "deeplink": "custom_2",
+            "for_custom": true,
+            "custom_id": 10,
+            "type": 2,
+            "cust_order": 2,
+            "is_test": false,
+            "story": true,
+            "id": 309,
+            "order": 1
+          },
+          {
+            "deeplink": "main_screen",
+            "for_main": true,
+            "type": 2,
+            "m_order": 4,
+            "is_test": false,
+            "is_crm0": true,
+            "story": true,
+            "id": 316,
+            "order": 1
+          }
+        ],
+        "l": [
+          {
+            "text": "К игре",
+            "has_btn": true,
+            "has_area": true,
+            "but_color": "#FF7C1C",
+            "txt_color": "#FFFFFF",
+            "deeplink": "Live",
+            "img_url": "https://winline.ru/resources/images/app_landings/Freebet_sun2.png",
+            "stb_theme": 2,
+            "id": 212,
+            "order": 1
+          },
+          {
+            "text": "В бонус клуб",
+            "has_btn": true,
+            "has_area": true,
+            "but_color": "#FF7C1C",
+            "txt_color": "#ffffff",
+            "deeplink": "https://winline.ru/betrace?session=<SESSION>&target=browser",
+            "img_url": "https://a.winline.ru/resources/images/app_landings/Freebet_sun.png",
+            "is_winpass": false,
+            "stb_theme": 2,
+            "id": 40,
+            "order": 1
+          },
+          {
+            "text": "Играть",
+            "has_btn": true,
+            "but_color": "#FF7C1C",
+            "txt_color": "#ffffff",
+            "deeplink": "https://winline.ru/morefribetov2025?session=<SESSION>",
+            "img_url": "https://a.winline.ru/resources/images/app_landings/Freebet_sun.png",
+            "stb_theme": 2,
+            "id": 244,
+            "order": 1
+          }
+        ],
+        "e": [
+          {
+            "is_crm0": false,
+            "deeplink": "br_main",
+            "and_ver": "",
+            "ios_ver": "",
+            "title": "Bet Race",
+            "is_test": false,
+            "is_master": true,
+            "order": 3,
+            "img_url": "https://winline.ru/resources/images/app_menubar/BetRace.png",
+            "img_color": "",
+            "is_slave": null,
+            "master_id": null,
+            "is_winpass": null,
+            "is_ft": null,
+            "ft_id": "",
+            "id": 41
+          },
+          {
+            "deeplink": "nolink",
+            "title": "Игры 24/7",
+            "is_test": false,
+            "is_master": true,
+            "order": 2,
+            "img_url": "https://winline.ru/resources/images/app_fastgames/icon_FG_menu.png",
+            "fg_for_m": true,
+            "id": 45
+          },
+          {
+            "deeplink": "Games2/client",
+            "title": "Фортуна",
+            "is_master": false,
+            "order": 8,
+            "img_url": "https://winline.ru/resources/images/app_menubar/nardi_x2.png",
+            "is_slave": true,
+            "master_id": 45,
+            "id": 46
+          },
+          {
+            "deeplink": "Games/sport-games-darts",
+            "and_ver": "min_1.1.1456",
+            "ios_ver": "min_2.10.3",
+            "title": "Дартс",
+            "is_test": false,
+            "is_master": false,
+            "order": 60,
+            "img_url": "https://winline.ru/resources/images/app_menubar/darts.png",
+            "is_slave": true,
+            "master_id": 45,
+            "id": 47
+          },
+          {
+            "is_crm0": null,
+            "deeplink": "FavoriteTeam",
+            "and_ver": "",
+            "ios_ver": "",
+            "title": "",
+            "is_test": null,
+            "is_master": false,
+            "order": 1,
+            "img_url": "https://winline.ru/resources/images/app_menubar/noteam_fin.png",
+            "img_color": "#ffffff",
+            "is_slave": null,
+            "master_id": null,
+            "is_winpass": null,
+            "is_ft": true,
+            "ft_id": "",
+            "id": 69
+          },
+          {
+            "deeplink": "Games/sport-games-shootout",
+            "and_ver": "min_1.1.1456",
+            "ios_ver": "min_2.10.3",
+            "title": "Буллиты NHL21",
+            "is_test": false,
+            "is_master": false,
+            "order": 80,
+            "img_url": "https://winline.ru/resources/images/app_menubar/bullit.png",
+            "is_slave": true,
+            "master_id": 45,
+            "id": 75
+          },
+          {
+            "deeplink": "Championship/1",
+            "title": "Проверка видео",
+            "is_test": true,
+            "is_master": true,
+            "order": 1,
+            "img_url": "https://winline.ru/resources/images/app_menubar/euro1.png",
+            "product": 12,
+            "id": 100
+          },
+          {
+            "deeplink": "Games/lottery",
+            "and_ver": "min_1.1.1456",
+            "ios_ver": "min_2.10.3",
+            "title": "Лотерея",
+            "is_test": false,
+            "is_master": false,
+            "order": 225,
+            "img_url": "https://winline.ru/resources/images/app_menubar/lottery.png",
+            "is_slave": true,
+            "master_id": 45,
+            "is_winpass": false,
+            "id": 113
+          },
+          {
+            "deeplink": "Games2/royal",
+            "and_ver": "min_1.1.1500",
+            "ios_ver": "min_2.10.6",
+            "title": "Роял",
+            "is_test": false,
+            "is_master": false,
+            "order": 18,
+            "img_url": "https://winline.ru/resources/images/app_menubar/Royal.png",
+            "is_slave": true,
+            "master_id": 45,
+            "id": 131
+          },
+          {
+            "deeplink": "Games2/ring",
+            "and_ver": "min_1.1.1500",
+            "ios_ver": "min_2.10.6",
+            "title": "Ринг",
+            "is_test": false,
+            "is_master": false,
+            "order": 12,
+            "img_url": "https://winline.ru/resources/images/app_menubar/Ring.png",
+            "is_slave": true,
+            "master_id": 45,
+            "id": 132
+          },
+          {
+            "deeplink": "Games2/twist",
+            "and_ver": "min_1.1.1500",
+            "ios_ver": "min_2.10.6",
+            "title": "Твист",
+            "is_test": false,
+            "is_master": false,
+            "order": 10,
+            "img_url": "https://winline.ru/resources/images/app_menubar/Twist.png",
+            "is_slave": true,
+            "master_id": 45,
+            "id": 199
+          },
+          {
+            "deeplink": "Games/sport-games-crash-boxing",
+            "and_ver": "min_1.1.1456",
+            "ios_ver": "min_2.10.3",
+            "title": "Крэш-бокс",
+            "is_test": false,
+            "is_master": false,
+            "order": 110,
+            "img_url": "https://winline.ru/resources/images/app_menubar/crash_box.png",
+            "is_slave": true,
+            "master_id": 45,
+            "id": 201
+          },
+          {
+            "deeplink": "Games/darts-hilo",
+            "and_ver": "min_1.1.1946",
+            "ios_ver": "min_2.10.44",
+            "title": "Дартс Б|М",
+            "is_test": false,
+            "is_master": false,
+            "order": 140,
+            "img_url": "https://winline.ru/resources/images/app_menubar/darts_hi_low.png",
+            "img_color": "#FFFFFF",
+            "is_slave": true,
+            "master_id": 45,
+            "is_winpass": false,
+            "id": 221
+          },
+          {
+            "deeplink": "Games/boxing",
+            "and_ver": "min_1.1.1456",
+            "ios_ver": "min_2.10.3",
+            "title": "Кибер-бокс",
+            "is_test": false,
+            "is_master": false,
+            "order": 120,
+            "img_url": "https://winline.ru/resources/images/app_menubar/cyber_boxing.png",
+            "is_slave": true,
+            "master_id": 45,
+            "id": 222
+          },
+          {
+            "deeplink": "Games2/kalmar",
+            "and_ver": "min_1.1.1500",
+            "ios_ver": "min_2.10.6",
+            "title": "Кальмар",
+            "is_test": false,
+            "is_master": false,
+            "order": 16,
+            "img_url": "https://winline.ru/resources/images/app_menubar/ico_Calmar.png",
+            "is_slave": true,
+            "master_id": 45,
+            "id": 234
+          },
+          {
+            "deeplink": "Games3/fifa",
+            "and_ver": "min_1.1.1946",
+            "ios_ver": "min_2.10.44",
+            "title": "Пенальти",
+            "is_test": false,
+            "is_master": false,
+            "order": 70,
+            "img_url": "https://winline.ru/resources/images/app_menubar/PENALTY_icon.png",
+            "is_slave": true,
+            "master_id": 45,
+            "is_winpass": false,
+            "id": 247
+          },
+          {
+            "deeplink": "Games3/nhl",
+            "and_ver": "min_1.1.1946",
+            "ios_ver": "min_2.10.44",
+            "title": "Буллиты NHL24",
+            "is_test": false,
+            "is_master": false,
+            "order": 100,
+            "img_url": "https://winline.ru/resources/images/app_menubar/BULLITS_Icon.png",
+            "is_slave": true,
+            "master_id": 45,
+            "is_winpass": false,
+            "id": 248
+          },
+          {
+            "deeplink": "Games3/drone_racing",
+            "and_ver": "min_1.1.1946",
+            "ios_ver": "min_2.10.44",
+            "title": "Гонки дронов",
+            "is_test": false,
+            "is_master": false,
+            "order": 160,
+            "img_url": "https://winline.ru/resources/images/app_menubar/DRONES_Icon.png",
+            "is_slave": true,
+            "master_id": 45,
+            "is_winpass": false,
+            "id": 255
+          },
+          {
+            "deeplink": "fast_games247",
+            "title": "Все игры 24/7",
+            "is_test": false,
+            "is_master": false,
+            "order": 7,
+            "img_url": "https://winline.ru/resources/images/app_fastgames/icon_FG_menu.png",
+            "is_slave": true,
+            "master_id": 45,
+            "id": 257
+          },
+          {
+            "deeplink": "Games2/zoloto",
+            "title": "Золото",
+            "is_test": false,
+            "is_master": false,
+            "order": 14,
+            "img_url": "https://winline.ru/resources/images/app_menubar/ico_GOLDEN_HILL.png",
+            "is_slave": true,
+            "master_id": 45,
+            "id": 268
+          },
+          {
+            "deeplink": "Games4/1",
+            "title": "Нарды классик",
+            "is_test": false,
+            "order": 205,
+            "img_url": "https://winline.ru/resources/images/app_menubar/NardyClassic.png",
+            "is_slave": true,
+            "master_id": 45,
+            "id": 278
+          },
+          {
+            "deeplink": "Games4/3",
+            "title": "Нарды сапер",
+            "is_test": false,
+            "order": 204,
+            "img_url": "https://winline.ru/resources/images/app_menubar/NardySapper.png",
+            "is_slave": true,
+            "master_id": 45,
+            "id": 279
+          },
+          {
+            "deeplink": "Games4/5",
+            "title": "Нарды 21",
+            "is_test": false,
+            "order": 203,
+            "img_url": "https://winline.ru/resources/images/app_menubar/Nardy21.png",
+            "is_slave": true,
+            "master_id": 45,
+            "id": 280
+          },
+          {
+            "deeplink": "Games2/seabattle",
+            "title": "Морской бой",
+            "is_master": false,
+            "order": 22,
+            "img_url": "https://winline.ru/resources/images/app_menubar/ico_SEA_BATTLE.png",
+            "is_slave": true,
+            "master_id": 45,
+            "id": 289
+          },
+          {
+            "deeplink": "Games2/mafia",
+            "title": "Мафия",
+            "is_master": false,
+            "order": 20,
+            "img_url": "https://winline.ru/resources/images/app_menubar/MAFIA_Icon.png",
+            "is_slave": true,
+            "master_id": 45,
+            "product": 12,
+            "fg_for_m": true,
+            "id": 292
+          },
+          {
+            "deeplink": "Custom/95",
+            "title": "Тест РПЛ",
+            "is_test": true,
+            "is_master": true,
+            "order": 1,
+            "img_url": "https://winline.ru/resources/images/app_menubar/euro1.png",
+            "is_slave": false,
+            "product": 12,
+            "id": 298
+          },
+          {
+            "deeplink": "Custom/146",
+            "title": "Тест кубок россии",
+            "is_test": true,
+            "is_master": true,
+            "order": 1,
+            "img_url": "https://winline.ru/resources/images/app_menubar/euro1.png",
+            "is_slave": false,
+            "product": 12,
+            "id": 299
+          },
+          {
+            "deeplink": "Custom/144",
+            "title": "Тест Футзал",
+            "is_test": true,
+            "is_master": true,
+            "order": 1,
+            "img_url": "https://winline.ru/resources/images/app_menubar/euro1.png",
+            "is_slave": true,
+            "product": 12,
+            "id": 300
+          },
+          {
+            "deeplink": "Games2/fishing",
+            "title": "Рыбалка",
+            "img_url": "https://winline.ru/resources/images/app_menubar/Fishing.png",
+            "is_slave": true,
+            "master_id": 45,
+            "id": 324,
+            "order": 13
+          }
+        ],
+        "m": [
+          {
+            "btn_bg_theme": 2,
+            "koef_back": 2,
+            "btn_txt_theme": 2,
+            "koef_text": 2,
+            "img_url": "https://winline.ru/resources/images/app_motd/RPL23.png",
+            "id": 15380657,
+            "order": 1,
+            "hint": "Матч тура",
+            "for_main": true
+          },
+          {
+            "btn_bg_theme": 2,
+            "koef_back": 2,
+            "btn_txt_theme": 2,
+            "koef_text": 2,
+            "img_url": "https://winline.ru/resources/images/app_motd/RPL23.png",
+            "id": 15380655,
+            "order": 2,
+            "for_main": true
+          }
+        ],
+        "VERSION": 80632
+      },
+      "data_keys": [
+        "t",
+        "c",
+        "b",
+        "l",
+        "e",
+        "m",
+        "VERSION"
+      ]
+    }
+  ],
+  "zenit": [
+    {
+      "url": "https://zenit.win/api/line",
+      "status": 200,
+      "content_type": "text/html",
+      "content_length": 2148,
+      "is_json": false,
+      "is_html": true,
+      "title": "ÐÐ ÐÐµÐ½Ð¸Ñ"
+    },
+    {
+      "url": "https://zenit.win/api/v1/line",
+      "status": 200,
+      "content_type": "text/html",
+      "content_length": 2148,
+      "is_json": false,
+      "is_html": true,
+      "title": "ÐÐ ÐÐµÐ½Ð¸Ñ"
+    },
+    {
+      "url": "https://zenit.win/api/events",
+      "status": 200,
+      "content_type": "text/html",
+      "content_length": 2148,
+      "is_json": false,
+      "is_html": true,
+      "title": "ÐÐ ÐÐµÐ½Ð¸Ñ"
+    }
+  ],
+  "betcity": [],
+  "baltbet": [
+    {
+      "url": "https://old.baltbet.ru/",
+      "status": 200,
+      "content_type": "text/html; charset=utf-8",
+      "content_length": 192876,
+      "is_json": false,
+      "is_html": true,
+      "title": "Букмекерская контора БалтБет. Ставки на спорт"
+    }
+  ]
+}

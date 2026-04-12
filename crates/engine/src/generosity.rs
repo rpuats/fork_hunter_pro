@@ -48,9 +48,9 @@ impl GenerosityIndexCalc {
         let best_by_selection: DashMap<String, (String, f64)> = DashMap::new();
         for odd in all_odds {
             let key = format!("{}|{}|{}", odd.event_id, odd.market, odd.selection);
-            let mut entry = best_by_selection.entry(key).or_insert_with(|| {
-                (odd.bookmaker_slug.clone(), odd.odds)
-            });
+            let mut entry = best_by_selection
+                .entry(key)
+                .or_insert_with(|| (odd.bookmaker_slug.clone(), odd.odds));
             if odd.odds > entry.1 {
                 *entry = (odd.bookmaker_slug.clone(), odd.odds);
             }
@@ -85,7 +85,9 @@ impl GenerosityIndexCalc {
 
     /// Получить индекс щедрости для конкретной БК
     pub fn get_index(&self, bookmaker: &str, sport: Sport) -> GenerosityIndex {
-        let stats = self.bookmaker_odds.get(bookmaker)
+        let stats = self
+            .bookmaker_odds
+            .get(bookmaker)
             .map(|e| e.value().clone())
             .unwrap_or_default();
 
@@ -140,7 +142,11 @@ impl GenerosityIndexCalc {
             let bk_slug = entry.key();
             indices.push(self.get_index(bk_slug, sport));
         }
-        indices.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        indices.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         indices
     }
 
@@ -191,10 +197,10 @@ mod tests {
         let events = vec![make_event("e1"), make_event("e2")];
         // bk1 щедрее — предлагает более высокие коэффициенты
         let odds = vec![
-            make_odd("e1", "bk1", "1", 2.00),  // margin = 50%
-            make_odd("e1", "bk2", "1", 1.80),  // margin = 44%
-            make_odd("e2", "bk1", "1", 1.95),  // margin = 48.7%
-            make_odd("e2", "bk2", "1", 1.85),  // margin = 45.9%
+            make_odd("e1", "bk1", "1", 2.00), // margin = 50%
+            make_odd("e1", "bk2", "1", 1.80), // margin = 44%
+            make_odd("e2", "bk1", "1", 1.95), // margin = 48.7%
+            make_odd("e2", "bk2", "1", 1.85), // margin = 45.9%
         ];
 
         calc.update(&events, &odds);
@@ -203,7 +209,12 @@ mod tests {
         let idx2 = calc.get_index("bk2", Sport::Football);
 
         // bk1 щедрее — у него 2 лучших коэффициента из 2
-        assert!(idx1.score > idx2.score, "bk1 score {} should be > bk2 score {}", idx1.score, idx2.score);
+        assert!(
+            idx1.score > idx2.score,
+            "bk1 score {} should be > bk2 score {}",
+            idx1.score,
+            idx2.score
+        );
         assert_eq!(idx1.best_odds_count, 2);
         assert_eq!(idx2.best_odds_count, 0);
     }
@@ -212,19 +223,15 @@ mod tests {
     fn test_generosity_index_multiple_events() {
         let calc = GenerosityIndexCalc::new();
 
-        let events = vec![
-            make_event("e1"),
-            make_event("e2"),
-            make_event("e3"),
-        ];
+        let events = vec![make_event("e1"), make_event("e2"), make_event("e3")];
 
         let odds = vec![
             // bk1 лучше в e1 и e3
-            make_odd("e1", "bk1", "1", 2.10),  // bk1 лучший
+            make_odd("e1", "bk1", "1", 2.10), // bk1 лучший
             make_odd("e1", "bk2", "1", 1.90),
             make_odd("e2", "bk1", "1", 1.95),
-            make_odd("e2", "bk2", "1", 2.00),  // bk2 лучший
-            make_odd("e3", "bk1", "1", 2.05),  // bk1 лучший
+            make_odd("e2", "bk2", "1", 2.00), // bk2 лучший
+            make_odd("e3", "bk1", "1", 2.05), // bk1 лучший
             make_odd("e3", "bk2", "1", 1.85),
         ];
 

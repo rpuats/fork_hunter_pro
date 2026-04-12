@@ -1,0 +1,558 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<!--[if lt IE 7]>      <html xmlns="http://www.w3.org/1999/xhtml" class="no-js lt-ie9 lt-ie8 lt-ie7"> <![endif]-->
+<!--[if IE 7]>         <html xmlns="http://www.w3.org/1999/xhtml" class="no-js lt-ie9 lt-ie8"> <![endif]-->
+<!--[if IE 8]>         <html xmlns="http://www.w3.org/1999/xhtml" class="no-js lt-ie9"> <![endif]-->
+<!--[if IE 9 ]>        <html xmlns="http://www.w3.org/1999/xhtml" class="no-js ie9"> <![endif]-->
+<!--[if gt IE 8]><!--> <html xmlns="http://www.w3.org/1999/xhtml" class="no-js"> <!--<![endif]-->
+<head>
+    <meta http-equiv="Content-Language" content="ru" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1"/>
+    <link rel="icon" href="/favicon.ico" type="image/x-icon"/>
+    <link rel="shortcut icon" href="/favicon.ico" type="image/x-icon"/>
+    <meta name="robots" content="noindex" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Букмекерская контора БалтБет." />
+    <meta property="og:url" content="https://old.baltbet.ru/"/>
+    <meta property="og:image" content="http://old.baltbet.ru/images/logo-og.png" />
+    
+    <meta name="format-detection" content="telephone=no" />
+    <meta name="viewport" content="width=device-width" /> 
+    <meta charset="utf-8"> 
+    
+	<!--[if lt IE 9 ]>
+    <link rel="stylesheet" href="css/ie.css"/><![endif]-->
+    
+    <script type="text/javascript">
+        window.liveUpdateTimeout = 30000;
+        window.liveLeftUpdateTimeout = 30000;
+    </script>
+
+    <script src="/bundles/sitemaster/js?v=M--iG99g0qCEKb_82Uq3slYmxZx-ZQJXFLpEVm96oSQ1"></script>
+
+
+    
+    <script type="text/javascript">
+        __isBasketEnabled = false;
+    </script>
+    
+
+    <!--[if lt IE 9]>
+    <script src="/js/html5shiv.js"></script>
+    <![endif]-->
+    <script type="text/javascript">
+        if (top.location != self.location) {
+            top.location = self.location.href;
+        }
+    </script>
+    <!--[if IE 9]><script>
+            $(function () {
+                $('input').placeholder();
+            });
+    </script><![endif]-->
+    <!--[if lt IE 9 ]>
+    <script>
+            $(function () {
+                $('input').placeholder();
+            });
+    </script>
+    <![endif]-->
+    
+<title> Ставки на спорт</title>
+<script type="text/javascript">
+	$(function () {
+		var search = new RegExp('spoiler-link-([0-9]+)');
+		$('.spoiler-link').click(function (event) {
+			event.preventDefault();
+			var id = search.exec($(this).attr('class'))[1];
+			$('.spoiler-' + id).slideToggle();
+		});
+	});
+</script>
+
+<link href="/bundles/site/css?v=P3gQvhCgPi7Gk2OBOTTUniSIXiMwLCnrFYnA5r-mM341" rel="stylesheet"/>
+
+
+	<script type="text/javascript">
+        $(document).ready(function () {
+            SetDivsScroll();
+            LiveReady();
+            LinkBasket();
+        });
+	</script>
+    
+    
+</head>
+
+<body id="pageBody" class="site_ru">
+
+<form id="form1" method="post" name="form1">
+	<div class="wrapper">
+		<!-- Top start-->
+		
+		<div id="head" class="main-head">				
+			<div class="switcher">
+				<div class="header-inner pusto">
+					<div class="left-block pusto">
+						<div class="logo-block">
+								<a href="/" id="logo" class="logo_tj"></a>							
+						</div>
+					</div>
+					<div class="middle-block">
+						<div class="tp-block">
+							<div class="tp-line">
+								<div id="DivAccountCallbackByPhone" class="tp-callback callback-top">
+                                    <span class="callback__call">Обратный звонок</span>
+									<div class="call__all_pops" style="display: none;">
+										<div id="callback_not_registered_div" class="call__unregister_pop" style="display: block">
+											<div class="call_unreg-inner">
+												<div class="call_unreg_text">Сервис доступен только зарегистрированным пользователям</div>
+											</div>
+										</div>
+										<div id="callback_registered_div" class="callback_popover" style="display: none">
+											<div class="call_popinner">
+												<div class="c_pop_close"></div>
+												<div class="c_pop_head">
+													<span class="c_poptext">Пожалуйста, оставьте заявку, и мы перезвоним Вам!</span>
+												</div>
+												<div class="c_popsubmit">
+													<input name="buttonSubmit" type="submit" class="c-pop__push" value="Оставить заявку" onclick="callbackPressed(60, 0)" />
+												</div>
+											</div>
+										</div>
+									</div>
+								</div>
+                                <div class="service-unavailable">Обратные звонки в период с 01:00 до 08:00 (МСК) не обрабатываются.</div>
+                                <div>
+                                    <div id="callbaccept" class="call__appaccept_pop" style="display: none; opacity: 1;">
+                                        <div class="c_pop_close"></div>
+								        <div class="call_accept-inner">
+								            <div class="call_accept_text">
+									            <div>Ваша заявка принята!</div>
+									            <div>Благодарим за обращение!</div>
+								            </div>
+								        </div>
+				                    </div>
+				                    <div id="callalready" class="call__appaccept_pop" style="display: none; opacity: 1;">
+								        <div class="call_accept-inner">
+		    						        <div class="call_accept_text">
+    		    							    <div>Ваша заявка уже принята</div>
+	    		    					    </div>
+								        </div>
+				                    </div>
+                                     <div id="callUnavailable" class="call__appaccept_pop" style="display: none; opacity: 1;">
+                                         <div class="c_pop_close"></div>
+                                         <div class="call_time-off">
+                                            <div class="call_accept_text">
+                                                <div class="c_pop_head">
+                                                    <p>Обратные звонки обрабатываются в период 08:00 - 01:00 по московскому времени.</p>
+                                                    <p>Если у вас срочный вопрос, воспользуйтесь формой Вопросы в поддержку. Мы оперативно вам поможем.</p>
+                                                </div>
+						                        <a href="/Tickets.aspx" class="c-pop__push">Вопросы в поддержку</a>
+                                            </div>
+                                         </div>
+                                    </div>
+                                </div>
+							</div>
+
+                            <div class="main-head__mobile-presentation">
+                                <a href="https://stat.baltbet.ru/static/top?theme=light" class="middle-block__mobile-presentation-btn m-statistics tooltip" target="_blank" title="Статистика">
+                                    <img src="/images/cps/icon-statistics.png" alt="Статистика"/>
+                                </a>
+                                
+                                    <a href="/content/apps" class="middle-block__mobile-presentation-btn m-ios">
+                                        <img src="images/cps/mobile-presentation-page/available-for-ios.png" class="mobile-presentation-page__image" alt="Скачать приложение" />
+                                    </a>
+                                    <a href="/content/apps" class="middle-block__mobile-presentation-btn">
+                                        <img src="images/cps/mobile-presentation-page/available-for-android.png" class="mobile-presentation-page__image" alt="Скачать приложение" />
+                                    </a>
+                                
+                            </div>
+						</div>
+					</div>
+					
+
+					<div class="right-section">
+					</div>
+				</div>
+			</div>
+		</div>
+			<div id="auth_wait" class="tada-ahtung" style="display:none;">
+				<div class="au-header">
+					<span>Вход в аккаунт</span>
+					<a href="#" class="close-btn ahtung-close" rel="modal:close"></a>
+				</div>
+				<div class="wait-ahtung">
+					<div class="ahtung-head">Внимание!</div>
+					<div class="ahtung-drei">Неверный пароль введен слишком много раз!</div>
+				</div>
+				<div class="time-waiting">
+					<div class="time-w-text">Вы можете повторить попытку через:</div>
+					<div class="ahtung-time"><span id="minutesValue"></span>&nbsp;минут</div>
+				</div>
+			</div>
+		<div class="primary-menu">
+		<nav>
+		<ul id="topmenu" class="nav-main">
+			<li id="menu1" class="t_menu-l">
+			<a href="News.aspx" data-hover="Главная">Главная</a></li>
+			<li id="menu4" class="t_menu-l"><a href="Line1.aspx" data-hover="События">События</a></li>
+			
+            <li id="menu5" class="t_menu-l"><a href="Tota.aspx" data-hover="Балтсистема">Балтсистема</a></li>
+			
+            <li id="menu6" class="t_menu-l"><a href="Results1.aspx" data-hover="Результаты">Результаты</a></li>
+			<li id="menu8" class="t_menu-l"><a href="https://baltbet.ru/faq/help" id="linkAddress" data-hover="Адреса">Помощь</a></li>
+            <li id="menu9" class="t_menu-l"><a href="/cps-bonus">Бонусы</a></li>
+            <li id="menu10" class="t_menu-l"><a href="/content/apps">Приложения</a></li>
+		</ul>
+		</nav>
+		</div>
+		<!-- Top end-->
+
+ <!-- NEW Layout -->
+    <div class="middle">
+        <!-- MIDDLE BOX BB -->
+        <div class="container-box clearf">
+		    <div class="content-middle">
+			    <div class="ccolumn" id="ccolumn">
+				    
+	<span id="Label1"><p><img src="data/images/ru/10918.png" alt="Мобильное приложение уже доступно" /></p>
+<p>Друзья, новое Android-приложение &laquo;БалтБет&raquo; уже доступно, спешите опробовать весь функционал сайта в удобной оболочке!</p>
+<p><big><a href="https://apkupdater.baltbet.ru:1415/com.baltbet.clientapp" target="_blank" rel="noopener">СКАЧАТЬ ПРИЛОЖЕНИЕ</a></big></p>
+<ul>
+<li>• Делайте ставки на события Live, линии и суперэкспресс.</li>
+<li>• Добавляйте любимые события в избранное.</li>
+<li>• Изучайте спортивную статистику и результаты матчей.</li>
+<li>• Настраивайте любимую сумму и ставьте в один клик.</li>
+<li>• Используйте функцию &laquo;продажа ставки&raquo; в разделе &laquo;Мои ставки&raquo;.</li>
+<li>• Активируйте Промокоды в разделе &laquo;Промокоды&raquo; и выигрывайте больше.</li>
+<li>• Легко пополняйте счёт всеми популярными платежными методами.</li>
+<li>• Оставляйте Ваши отзывы о новом приложении в разделе &laquo;Отзыв&raquo;.</li>
+</ul>
+
+<p><br /><img src="data/images/ru/10920.png" alt="Как установить приложение на смартфон?" />
+<br>
+</p>
+<p>Если у Вас телефон на ОС Android версии 6.0 или выше, то для того, чтобы установить приложение &laquo;БалтБет&raquo;, Вам нужно выполнить несколько простых действий:</p>
+<ol>
+<li>Скачайте приложение на Ваш телефон,<span>&nbsp;</span><a href="https://apkupdater.baltbet.ru:1415/com.baltbet.clientapp" target="_blank" rel="noopener">перейдя по этой ссылке</a></li>
+<li>Откройте скачанный файл.</li>
+<li>Если Ваш телефон требует дополнительных разрешений для установки &ndash; можете смело предоставлять доступ, наше приложение абсолютно безопасно.</li>
+<li>Нажмите кнопку &laquo;Установить&raquo;.</li>
+<li>Дождитесь окончания установки.</li>
+<li>Запустите приложение.</li>
+</ol>
+<p><br /><b>iOS приложение - скоро! Следите за новостями!</b></p></span>
+
+
+			    </div>
+		    </div>
+        </div>
+        <!-- ./END MIDDLE BOX BB-->
+        <!-- LEFT ASIDE BB -->
+		<div class="leftcolumn left-sidebar">
+			<!-- Left start-->
+			<div class="left_baskdet_box" id="basketdiv" style="z-index: 10; left: 324px; top: 298px; position: absolute; display: none;">
+			    <table class="basket-table-leftaside">
+                    <tr><td id="baskettd"></td></tr>
+			    </table>
+            </div>
+			
+            
+			
+			
+			<ul id="sidebartab" class="b-aside-left-tabs">
+				<li class="tab-item-side t-item-live active"><div class="b__inner_l_tab" data-rel="tablelivediv">Live!</div></li>
+				<li class="tab-item-side t-item-line"><div class="b__inner_l_tab" data-rel="tablesportdiv">События</div></li>
+			</ul>
+			<!-- TABS NEW -->
+			<div class="tab_container_left" id="tab-bet">
+				<div id="tablelivediv" class="t-aside_box t-live-box"><div class="livew ui-live-left"><div class="live"><div>Экспресс дня</div><ul><li><a class="top" id="addl29900025" href="javascript:openlive('29900025')">Барселона-Эспаньол</a></li><li><a class="top" id="addl29900028" href="javascript:openlive('29900028')">Севилья-Атлетико Мадрид</a></li><li><a class="top" id="addl29897250" href="javascript:openlive('29897250')">Питтсбург Пингвинз-Вашингтон Кэпиталз</a></li><li><a class="top" id="addl29897166" href="javascript:openlive('29897166')">Локомотив-Кубань-БК Нижний Новгород</a></li><li><a class="top" id="addl29897190" href="javascript:openlive('29897190')">Тенерифе-Жирона</a></li><li><a class="top" id="addl29905629" href="javascript:openlive('29905629')">Динамо Москва-Зенит Санкт-Петербург</a></li></ul><div>Футбол</div><ul><li><a class="top" id="addl29900394" href="javascript:openlive('29900394')">Премьер-Лига-2 матча</a></li><li><a class="top" id="addl29714490" href="javascript:openlive('29714490')">Рубин-Оренбург</a></li><li><a id="addl29884673" href="javascript:openlive('29884673')">Рубин(УГЛ)-Оренбург(УГЛ)</a></li><li><a id="addl29888742" href="javascript:openlive('29888742')">Рубин(ЖК)-Оренбург(ЖК)</a></li><li><a id="addl29888757" href="javascript:openlive('29888757')">Рубин(уд. ств.)-Оренбург(уд. ств.)</a></li><li><a id="addl29888788" href="javascript:openlive('29888788')">Рубин(фолы)-Оренбург(фолы)</a></li><li><a id="addl29888805" href="javascript:openlive('29888805')">Рубин(офсайды)-Оренбург(офсайды)</a></li><li><a id="addl29896567" href="javascript:openlive('29896567')">Рубин(каркас ворот)-Оренбург(каркас ворот)</a></li><li><a id="addl29896586" href="javascript:openlive('29896586')">Рубин(уд. от ворот)-Оренбург(уд. от ворот)</a></li><li><a id="addl29906470" href="javascript:openlive('29906470')">Рубин(ауты)-Оренбург(ауты)</a></li><li><a class="top" id="addl29700141" href="javascript:openlive('29700141')">Реал Сосьедад-Алавес</a> </li><li><a class="top" id="addl29888269" href="javascript:openlive('29888269')">Реал Сосьедад(УГЛ)-Алавес(УГЛ)</a></li><li><a class="top" id="addl29890666" href="javascript:openlive('29890666')">Реал Сосьедад(ЖК)-Алавес(ЖК)</a></li><li><a class="top" id="addl29898156" href="javascript:openlive('29898156')">Реал Сосьедад(уд. от ворот)-Алавес(уд. от ворот)</a></li><li><a class="top" id="addl29898157" href="javascript:openlive('29898157')">Реал Сосьедад(ауты)-Алавес(ауты)</a></li><li><a class="top" id="addl29699720" href="javascript:openlive('29699720')">Кальяри-Кремонезе</a> </li><li><a class="top" id="addl29874159" href="javascript:openlive('29874159')">Кальяри(УГЛ)-Кремонезе(УГЛ)</a></li><li><a class="top" id="addl29890185" href="javascript:openlive('29890185')">Кальяри(ЖК)-Кремонезе(ЖК)</a></li><li><a class="top" id="addl29699726" href="javascript:openlive('29699726')">Торино-Верона</a> </li><li><a class="top" id="addl29874160" href="javascript:openlive('29874160')">Торино(УГЛ)-Верона(УГЛ)</a></li><li><a class="top" id="addl29890186" href="javascript:openlive('29890186')">Торино(ЖК)-Верона(ЖК)</a></li><li><a class="top" id="addl29906379" href="javascript:openlive('29906379')">Торино(уд. от ворот)-Верона(уд. от ворот)</a></li><li><a class="top" id="addl29846715" href="javascript:openlive('29846715')">Чайка-Енисей</a> </li><li><a class="top" id="addl29894692" href="javascript:openlive('29894692')">Чайка(УГЛ)-Енисей(УГЛ)</a></li><li><a class="top" id="addl29846476" href="javascript:openlive('29846476')">Черноморец Новороссийск-Спартак Кострома</a> </li><li><a class="top" id="addl29906091" href="javascript:openlive('29906091')">Черноморец Новороссийск(ЖК)-Спартак Кострома(ЖК)</a></li><li><a class="top" id="addl29863591" href="javascript:openlive('29863591')">Хэнань Суншань Лунмэн-Шаньдун Тайшань</a> FT</li><li><a class="top" id="addl29845959" href="javascript:openlive('29845959')">Шанхай Шеньхуа-Шанхай Порт</a> </li><li><a class="top" id="addl29862623" href="javascript:openlive('29862623')">Витебск-БАТЭ</a> </li><li><a class="top" id="addl29898132" href="javascript:openlive('29898132')">Имигресен-Пенанг</a> </li><li><a class="top" id="addl29838088" href="javascript:openlive('29838088')">Богемианс 1905-Злин</a> </li><li><a class="top" id="addl29838082" href="javascript:openlive('29838082')">Яблонец-Баник Острава</a> </li><li><a class="top" id="addl29873619" href="javascript:openlive('29873619')">Лиллестрем-Старт</a> </li><li><a class="top" id="addl29894607" href="javascript:openlive('29894607')">Лиллестрем(УГЛ)-Старт(УГЛ)</a></li><li><a class="top" id="addl29908896" href="javascript:openlive('29908896')">Лиллестрем(ЖК)-Старт(ЖК)</a></li><li><a class="top" id="addl29854921" href="javascript:openlive('29854921')">Видзев Лодзь-Нецеча</a> </li><li><a class="top" id="addl29838848" href="javascript:openlive('29838848')">Казинцбарцика-Уйпешт</a> </li><li><a class="top" id="addl29863830" href="javascript:openlive('29863830')">Вестерос-Эльфсборг</a> </li><li><a class="top" id="addl29863849" href="javascript:openlive('29863849')">Мьяльбю-Эргрюте</a> </li><li><a class="top" id="addl29855561" href="javascript:openlive('29855561')">Гетеборг-Хаккен</a> </li><li><a class="top" id="addl29841499" href="javascript:openlive('29841499')">Пескара-Сампдория</a> </li><li><a class="top" id="addl29886709" href="javascript:openlive('29886709')">Виртус Энтелла(УГЛ)-Венеция(УГЛ)</a> </li><li><a class="top" id="addl29907276" href="javascript:openlive('29907276')">Виртус Энтелла(ЖК)-Венеция(ЖК)</a> </li><li><a class="top" id="addl29841501" href="javascript:openlive('29841501')">Зюдтироль-Модена</a> </li><li><a class="top" id="addl29841498" href="javascript:openlive('29841498')">Юве Стабия-Чезена</a> </li><li><a class="top" id="addl29828690" href="javascript:openlive('29828690')">Ред Стар-Бастия</a> </li><li><a class="top" id="addl29894743" href="javascript:openlive('29894743')">Ред Стар(УГЛ)-Бастия(УГЛ)</a></li><li><a class="top" id="addl29907336" href="javascript:openlive('29907336')">Ред Стар(ЖК)-Бастия(ЖК)</a></li><li><a class="top" id="addl29894742" href="javascript:openlive('29894742')">Булонь-сюр-Мер(УГЛ)-Ле Ман(УГЛ)</a> </li><li><a class="top" id="addl29857134" href="javascript:openlive('29857134')">Олимпия Любляна-Алюминий</a> </li><li><a class="top" id="addl29898133" href="javascript:openlive('29898133')">Селангор-Сабах ФК</a> </li><li><a class="top" id="addl29877228" href="javascript:openlive('29877228')">Металлист 1925-Динамо Киев</a> HT</li><li><a class="top" id="addl29863545" href="javascript:openlive('29863545')">Персия Джакарта-Персебая Сурабая</a> </li><li><a class="top" id="addl29894345" href="javascript:openlive('29894345')">Персия Джакарта(УГЛ)-Персебая Сурабая(УГЛ)</a></li><li><a class="top" id="addl29860390" href="javascript:openlive('29860390')">Персиджап Джепара-Бхаянгкара</a> </li><li><a class="top" id="addl29894349" href="javascript:openlive('29894349')">Персиджап Джепара(УГЛ)-Бхаянгкара(УГЛ)</a></li><li><a class="top" id="addl29846692" href="javascript:openlive('29846692')">Монтевидео Сити Торке-Альбион</a> </li><li><a class="top" id="addl29867752" href="javascript:openlive('29867752')">Пендикспор-Чорум Беледиеспор</a> </li><li><a class="top" id="addl29699849" href="javascript:openlive('29699849')">Хайденхайм-Унион Берлин</a> </li><li><a id="addl29874003" href="javascript:openlive('29874003')">Хайденхайм(УГЛ)-Унион Берлин(УГЛ)</a></li><li><a id="addl29895522" href="javascript:openlive('29895522')">Хайденхайм(ЖК)-Унион Берлин(ЖК)</a></li><li><a id="addl29905846" href="javascript:openlive('29905846')">Хайденхайм(ауты)-Унион Берлин(ауты)</a></li><li><a id="addl29905847" href="javascript:openlive('29905847')">Хайденхайм(каркас ворот)-Унион Берлин(каркас ворот)</a></li><li><a id="addl29905848" href="javascript:openlive('29905848')">Хайденхайм(уд. ств.)-Унион Берлин(уд. ств.)</a></li><li><a id="addl29905849" href="javascript:openlive('29905849')">Хайденхайм(уд. от ворот)-Унион Берлин(уд. от ворот)</a></li><li><a id="addl29905850" href="javascript:openlive('29905850')">Хайденхайм(фолы)-Унион Берлин(фолы)</a></li><li><a id="addl29905851" href="javascript:openlive('29905851')">Хайденхайм(офсайды)-Унион Берлин(офсайды)</a></li><li><a class="top" id="addl29699858" href="javascript:openlive('29699858')">Вольфсбург-Айнтрахт Франкфурт</a> </li><li><a id="addl29874004" href="javascript:openlive('29874004')">Вольфсбург(УГЛ)-Айнтрахт Франкфурт(УГЛ)</a></li><li><a id="addl29895523" href="javascript:openlive('29895523')">Вольфсбург(ЖК)-Айнтрахт Франкфурт(ЖК)</a></li><li><a id="addl29906162" href="javascript:openlive('29906162')">Вольфсбург(ауты)-Айнтрахт Франкфурт(ауты)</a></li><li><a id="addl29906163" href="javascript:openlive('29906163')">Вольфсбург(каркас ворот)-Айнтрахт Франкфурт(каркас ворот)</a></li><li><a id="addl29906164" href="javascript:openlive('29906164')">Вольфсбург(уд. ств.)-Айнтрахт Франкфурт(уд. ств.)</a></li><li><a id="addl29906165" href="javascript:openlive('29906165')">Вольфсбург(уд. от ворот)-Айнтрахт Франкфурт(уд. от ворот)</a></li><li><a id="addl29906166" href="javascript:openlive('29906166')">Вольфсбург(фолы)-Айнтрахт Франкфурт(фолы)</a></li><li><a id="addl29906167" href="javascript:openlive('29906167')">Вольфсбург(офсайды)-Айнтрахт Франкфурт(офсайды)</a></li><li><a id="addl29271640" href="javascript:openlive('29271640')">Накхон Ратчасима-Бангкок Юнайтед</a> </li><li><a id="addl29856523" href="javascript:openlive('29856523')">Бристоль Роверс-Кроли Таун</a> </li><li><a id="addl29898306" href="javascript:openlive('29898306')">Уния Люблин(ж)-Легия Варшава(ж)</a> </li><li><a id="addl29891207" href="javascript:openlive('29891207')">Чэнду Жунчэн 2-Шэньчжэнь 2028</a> </li><li><a id="addl29895743" href="javascript:openlive('29895743')">Дубрава Загреб-Цибалья</a> </li><li><a id="addl29841291" href="javascript:openlive('29841291')">Орхус Фремад-Б-93</a> </li><li><a id="addl29855564" href="javascript:openlive('29855564')">Алемания Аахен-Штутгарт II</a> </li><li><a id="addl29855768" href="javascript:openlive('29855768')">Согндал-Люн Осло</a> </li><li><a id="addl29855770" href="javascript:openlive('29855770')">Вальдхоф Манхейм-Дуйсбург</a> </li><li><a id="addl29855771" href="javascript:openlive('29855771')">Хавелсе-Саарбрюкен</a> </li><li><a id="addl29855772" href="javascript:openlive('29855772')">Виктория Кельн-Веен</a> </li><li><a id="addl29855773" href="javascript:openlive('29855773')">Рот-Вайс Эссен-Ингольштадт 04</a> </li><li><a id="addl29865349" href="javascript:openlive('29865349')">Линфилд-Ларн</a> </li><li><a id="addl29871546" href="javascript:openlive('29871546')">Санднес Ульф-Одд</a> </li><li><a id="addl29871547" href="javascript:openlive('29871547')">Стреммен-Эгерсунд</a> </li><li><a id="addl29871548" href="javascript:openlive('29871548')">Хаугесунд-Стремсгодсет</a> </li><li><a id="addl29875079" href="javascript:openlive('29875079')">Севилья Б-Сабадель</a> </li><li><a id="addl29885590" href="javascript:openlive('29885590')">Астрахань-Рубин Ялта</a> </li><li><a id="addl29885626" href="javascript:openlive('29885626')">Нефтяник Избербаш-Севастополь</a> </li><li><a id="addl29885687" href="javascript:openlive('29885687')">Шахтер Донецк-Ангушт</a> </li><li><a id="addl29885717" href="javascript:openlive('29885717')">Победа Хасавюрт-Кызылташ</a> </li><li><a id="addl29887299" href="javascript:openlive('29887299')">Войтсберг-Унион Гуртен</a> </li><li><a id="addl29888268" href="javascript:openlive('29888268')">Роскилде-Веннсюссель</a> </li><li><a id="addl29888279" href="javascript:openlive('29888279')">Скиве-Брабранд</a> </li><li><a id="addl29893119" href="javascript:openlive('29893119')">Феникс Йыхви-Вильянди Тулевик</a> </li><li><a id="addl29896422" href="javascript:openlive('29896422')">Джаз-ПК Кески-Уусимаа</a> </li><li><a id="addl29896791" href="javascript:openlive('29896791')">Серветт(19)-Санкт Галлен(19)</a> </li><li><a id="addl29896792" href="javascript:openlive('29896792')">Тим Тичино(19)-Люцерн(19)</a> </li><li><a id="addl29896793" href="javascript:openlive('29896793')">Янг Бойз(19)-Цюрих(19)</a> </li><li><a id="addl29896795" href="javascript:openlive('29896795')">СФБ Оуре-АСА Орхус</a> </li><li><a id="addl29897185" href="javascript:openlive('29897185')">Дила-Рустави</a> </li><li><a id="addl29897460" href="javascript:openlive('29897460')">Браттвог-Порс Гренланд</a> </li><li><a id="addl29897461" href="javascript:openlive('29897461')">Сандвикен-Сотра</a> </li><li><a id="addl29897462" href="javascript:openlive('29897462')">Гроруд-Эйдсволд Турн</a> </li><li><a id="addl29897829" href="javascript:openlive('29897829')">Грузия(19)(ж)-Чехия(19)(ж)</a> HT</li><li><a id="addl29898209" href="javascript:openlive('29898209')">Томашув-Мазовецки-Видзев Лодзь II</a> </li><li><a id="addl29898266" href="javascript:openlive('29898266')">Кот д'Ор-Лайтстарс</a> </li><li><a id="addl29899148" href="javascript:openlive('29899148')">Берум-Гамле Осло</a> </li><li><a id="addl29899870" href="javascript:openlive('29899870')">Тлуховя Тлухово-Ключевия</a> </li><li><a id="addl29900697" href="javascript:openlive('29900697')">Барито Путера-ПСС Слеман</a> </li><li><a id="addl29903404" href="javascript:openlive('29903404')">Торнс-ИФК Карлсхамн</a> </li><li><a id="addl29903617" href="javascript:openlive('29903617')">Дребак/Фрогн-Оппсаль</a> </li><li><a id="addl29904584" href="javascript:openlive('29904584')">Оскарсхамнс АИК-Стаффансторп Юнайтед</a> </li><li><a id="addl29904650" href="javascript:openlive('29904650')">Дальсторп-Квидинг</a> </li><li><a id="addl29905203" href="javascript:openlive('29905203')">Дараджани Гого ФК-Кабати Ют</a> </li><li><a id="addl29905563" href="javascript:openlive('29905563')">Марса-Мтарфа</a> </li><li><a id="addl29908901" href="javascript:openlive('29908901')">Гелиос Тарту-Пайде Линнамеесконд 2</a> </li><li><a id="addl29908902" href="javascript:openlive('29908902')">Сэйбл Батье-Астрес Дуала</a> </li><li><a id="addl29908911" href="javascript:openlive('29908911')">Гараж-Мусинга</a> </li><li><a id="addl29908955" href="javascript:openlive('29908955')">Дебрецен II-Эгер</a> </li><li><a id="addl29908960" href="javascript:openlive('29908960')">Татран Прешов(ж)-Петржалка(ж)</a> </li><li><a id="addl29837097" href="javascript:openlive('29837097')">Люнгбю-Колдинг</a> HT</li><li><a id="addl29845723" href="javascript:openlive('29845723')">Чианграй Юнайтед-Сухотай</a> HT</li><li><a id="addl29855504" href="javascript:openlive('29855504')">Аустрия Зальцбург-Адмира Вакер</a> HT</li><li><a id="addl29856431" href="javascript:openlive('29856431')">Лиферинг-ФАК Вена</a> HT</li><li><a id="addl29874350" href="javascript:openlive('29874350')">Лумеццане-Брешиа</a> HT</li><li><a id="addl29874351" href="javascript:openlive('29874351')">Перголеттезе-Виртус Верона</a> HT</li><li><a id="addl29874352" href="javascript:openlive('29874352')">Триестина-Джана Эрминио</a> HT</li><li><a id="addl29874796" href="javascript:openlive('29874796')">Кампобассо-Бра</a> HT</li><li><a id="addl29874797" href="javascript:openlive('29874797')">Губбио-Пьянезе</a> HT</li><li><a id="addl29876172" href="javascript:openlive('29876172')">Пинето Кальчо-СЭФ Торрес</a> HT</li><li><a id="addl29883132" href="javascript:openlive('29883132')">Наксар Лайонс-Флориана</a> HT</li><li><a id="addl29894582" href="javascript:openlive('29894582')">Ривьера-Луччана</a> HT</li><li><a id="addl29896565" href="javascript:openlive('29896565')">Биркиркара-Сейнт Патрик Заббар</a> HT</li><li><a id="addl29896777" href="javascript:openlive('29896777')">ГВВВ-Харденберг</a> HT</li><li><a id="addl29896797" href="javascript:openlive('29896797')">Брешиа(19)-Ренате(19)</a> HT</li><li><a id="addl29896801" href="javascript:openlive('29896801')">Лиссе-ВВСБ</a> HT</li><li><a id="addl29897018" href="javascript:openlive('29897018')">Эксельсиор Масслейс-Квик Бойз</a> HT</li><li><a id="addl29897727" href="javascript:openlive('29897727')">Конинклейке ХФК-Барендрехт</a> HT</li><li><a id="addl29897728" href="javascript:openlive('29897728')">Хук-Козаккен Бойз</a> HT</li><li><a id="addl29897729" href="javascript:openlive('29897729')">РКАВ Волендам-Эйсселмервогелс</a> HT</li><li><a id="addl29897732" href="javascript:openlive('29897732')">Лоренског-Стьордалс-Блинк</a> </li><li><a id="addl29899878" href="javascript:openlive('29899878')">Серрадо ГО(20)-Иньюмас(20)</a> HT</li><li><a id="addl29899994" href="javascript:openlive('29899994')">Вила Нова(20)-Атлетико ГО(20)</a> HT</li><li><a id="addl29909157" href="javascript:openlive('29909157')">Вила-Рика(20)-Жувентуд Баркарененси(20)</a> HT</li><li><a id="addl29909202" href="javascript:openlive('29909202')">Локомотив-БФК-Ташкент ВФА</a> HT</li><li><a id="addl29909243" href="javascript:openlive('29909243')">Азия Талас-Илбирс</a> HT</li><li><a id="addl29909659" href="javascript:openlive('29909659')">Апаресиденсе(20)-Гуанабара Сити(20)</a> </li><li><a id="addl29898541" href="javascript:openlive('29898541')">ПЕК Зволле(21)-НАК Бреда(21)</a> </li><li><a id="addl29867917" href="javascript:openlive('29867917')">Голден Эрроуз-Дурбан Сити</a> </li><li><a id="addl29877981" href="javascript:openlive('29877981')">Кардифф Драконианс-Понтипридд Юнайтед</a> </li><li><a id="addl29884540" href="javascript:openlive('29884540')">Юнайтед Нордик-Хельсингборг</a> </li><li><a id="addl29884895" href="javascript:openlive('29884895')">Динамо-2 Москва-Динамо Ставрополь</a> </li><li><a id="addl29886942" href="javascript:openlive('29886942')">Подхале Новы-Тарг-Шленск Вроцлав II</a> </li><li><a id="addl29886945" href="javascript:openlive('29886945')">Старт Брно-Сигма Оломоуц Б</a> </li><li><a id="addl29886946" href="javascript:openlive('29886946')">Вальс-Грюнау-Лаутерах</a> </li><li><a id="addl29886947" href="javascript:openlive('29886947')">Дорнбирн-Имст</a> </li><li><a id="addl29887302" href="javascript:openlive('29887302')">Вена ФК 2-Швехат</a> </li><li><a id="addl29887306" href="javascript:openlive('29887306')">Донау Клагенфурт-САК Клагенфурт</a> </li><li><a id="addl29887410" href="javascript:openlive('29887410')">Депортиво Карапегуа-3 де Новьембре</a> </li><li><a id="addl29891731" href="javascript:openlive('29891731')">Баник Мост-Бенатки</a> </li><li><a id="addl29895974" href="javascript:openlive('29895974')">Даймонд Харбор-Чанмари</a> </li><li><a id="addl29896423" href="javascript:openlive('29896423')">СалПа-Тампере Юнайтед</a> </li><li><a id="addl29896609" href="javascript:openlive('29896609')">Лугано 2-Базель 2</a> </li><li><a id="addl29896785" href="javascript:openlive('29896785')">Бари(19)-Козенца(19)</a> </li><li><a id="addl29896799" href="javascript:openlive('29896799')">Виченца(19)-Комо(19)</a> </li><li><a id="addl29896811" href="javascript:openlive('29896811')">Дачия Буюкань-Бельцы</a> </li><li><a id="addl29896812" href="javascript:openlive('29896812')">Монополи(19)-Палермо(19)</a> </li><li><a id="addl29896813" href="javascript:openlive('29896813')">Пиза(19)-Катандзаро(19)</a> </li><li><a id="addl29896814" href="javascript:openlive('29896814')">Салернитана(19)-Эмполи(19)</a> </li><li><a id="addl29896815" href="javascript:openlive('29896815')">Специя(19)-Перуджа(19)</a> </li><li><a id="addl29896816" href="javascript:openlive('29896816')">Перголеттезе(19)-Альчоне(19)</a> </li><li><a id="addl29896818" href="javascript:openlive('29896818')">Лекко(19)-Удинезе(19)</a> </li><li><a id="addl29896819" href="javascript:openlive('29896819')">Модена(19)-Виртус Энтелла(19)</a> </li><li><a id="addl29896820" href="javascript:openlive('29896820')">Падова(19)-Читтаделла(19)</a> </li><li><a id="addl29896821" href="javascript:openlive('29896821')">Про Верчелли(19)-Зюдтироль(19)</a> </li><li><a id="addl29896822" href="javascript:openlive('29896822')">Сампдория(19)-Реджана(19)</a> </li><li><a id="addl29896823" href="javascript:openlive('29896823')">Буррель-Скендербеу Корча</a> </li><li><a id="addl29896824" href="javascript:openlive('29896824')">КС Илирия Фуша-Круя-КС Луфтетари Гирокастра</a> </li><li><a id="addl29896825" href="javascript:openlive('29896825')">Кастриоти-Лачи</a> </li><li><a id="addl29896826" href="javascript:openlive('29896826')">Поградец-ФК Кукеси</a> </li><li><a id="addl29896827" href="javascript:openlive('29896827')">Паганезе-Афраголезе</a> </li><li><a id="addl29897182" href="javascript:openlive('29897182')">Спарта Роттердам(м)-Амстердам ФК</a> </li><li><a id="addl29897838" href="javascript:openlive('29897838')">Спакенбург-Алмере Сити 2</a> </li><li><a id="addl29897951" href="javascript:openlive('29897951')">Тукумс 2000 2-Беитар</a> </li><li><a id="addl29898007" href="javascript:openlive('29898007')">Доманьяно-Ла Фиорита</a> </li><li><a id="addl29898010" href="javascript:openlive('29898010')">Лион(19)-Бобиньи(19)</a> </li><li><a id="addl29898018" href="javascript:openlive('29898018')">Тре Пенне-Кайлунго</a> </li><li><a id="addl29898022" href="javascript:openlive('29898022')">Ренн(19)-Сен-Ренан(19)</a> </li><li><a id="addl29898023" href="javascript:openlive('29898023')">Монако(19)-Кавигаль Ницца(19)</a> </li><li><a id="addl29898307" href="javascript:openlive('29898307')">Мидлендс Уондерерс-Касрик Старс</a> </li><li><a id="addl29898309" href="javascript:openlive('29898309')">НАПСА Старс-Призон Леопардс</a> </li><li><a id="addl29898310" href="javascript:openlive('29898310')">Пауэр Динамос-Нкана</a> </li><li><a id="addl29898311" href="javascript:openlive('29898311')">Булавайо Чифс-Скоттланд Мабвуку</a> </li><li><a id="addl29898315" href="javascript:openlive('29898315')">Хантерс 2020-Кэпс Юнайтед</a> </li><li><a id="addl29898317" href="javascript:openlive('29898317')">Приштина э Ре-Малишева</a> </li><li><a id="addl29898790" href="javascript:openlive('29898790')">Эсбьерг 2-Хольстебро</a> </li><li><a id="addl29899572" href="javascript:openlive('29899572')">Блекитни С-Щ-КТС-К Люзино</a> </li><li><a id="addl29899888" href="javascript:openlive('29899888')">Олессун 2-Квик Тронхейм</a> </li><li><a id="addl29900290" href="javascript:openlive('29900290')">Кастаньял(20)-Понте Нова(20)</a> </li><li><a id="addl29900513" href="javascript:openlive('29900513')">Спорт Колумбия-Клуб Атлетико Колегиалес</a> </li><li><a id="addl29900770" href="javascript:openlive('29900770')">Олимпия Де Ита-Ривер Плейт Асунсьон</a> </li><li><a id="addl29900972" href="javascript:openlive('29900972')">Атлетик Клуб(20)-Интер де Минас(20)</a> </li><li><a id="addl29902075" href="javascript:openlive('29902075')">Китай(20)(ж)-Узбекистан(20)(ж)</a> </li><li><a id="addl29904345" href="javascript:openlive('29904345')">Барока-Лестерфорд Сити</a> </li><li><a id="addl29908868" href="javascript:openlive('29908868')">СКА-1938-Нива Долбизно</a> </li><li><a id="addl29909453" href="javascript:openlive('29909453')">Диноко Сити-Лерума Юнайтед</a> </li><li><a id="addl29909462" href="javascript:openlive('29909462')">ФК Париж(19)(ж)-ПСЖ(19)(ж)</a> </li><li><a id="addl29909467" href="javascript:openlive('29909467')">Эдинг Спорт-Нгокетунджа Баменда</a> </li><li><a id="addl29909480" href="javascript:openlive('29909480')">Ботев Нови-Пазар-Лудогорец III Разград</a> </li><li><a id="addl29909481" href="javascript:openlive('29909481')">КТП Котка(ж)-ЮПК(ж)</a> </li><li><a id="addl29909485" href="javascript:openlive('29909485')">Кораби Пешкопия-Аполония Фиери</a> </li><li><a id="addl29909490" href="javascript:openlive('29909490')">Виндбьярт-Бродд</a> </li><li><a id="addl29909493" href="javascript:openlive('29909493')">СУМУ/СОБ-ЕПС</a> </li><li><a id="addl29909499" href="javascript:openlive('29909499')">Политехника Кишинев-Флорести</a> </li><li><a id="addl29909510" href="javascript:openlive('29909510')">Тембиса Голливуд Тандер-Юниверсити Йоханнесбург</a> </li><li><a id="addl29909511" href="javascript:openlive('29909511')">Минас(20)-Сосиал Минас-Жерайс(20)</a> </li><li><a id="addl29909567" href="javascript:openlive('29909567')">Виимси 2-Флора(19)</a> </li><li><a id="addl29838169" href="javascript:openlive('29838169')">Ружомберок-Скалица</a></li><li><a id="addl29894832" href="javascript:openlive('29894832')">Ружомберок(УГЛ)-Скалица(УГЛ)</a></li><li><a id="addl29846851" href="javascript:openlive('29846851')">Тренчин-Татран Прешов</a></li><li><a id="addl29894833" href="javascript:openlive('29894833')">Тренчин(УГЛ)-Татран Прешов(УГЛ)</a></li><li><a id="addl29847951" href="javascript:openlive('29847951')">Железиарне Подбрезова-Жилина</a></li><li><a id="addl29894821" href="javascript:openlive('29894821')">Железиарне Подбрезова(УГЛ)-Жилина(УГЛ)</a></li><li><a id="addl29868002" href="javascript:openlive('29868002')">Банга-Судува</a></li><li><a id="addl29874012" href="javascript:openlive('29874012')">Боруссия Дортмунд(УГЛ)-Байер 04(УГЛ)</a> </li><li><a id="addl29874013" href="javascript:openlive('29874013')">Лейпциг(УГЛ)-Боруссия Менхенгладбах(УГЛ)</a> </li><li><a id="addl29877642" href="javascript:openlive('29877642')">Молд Александра-Брикфилд Рейнджерс</a></li><li><a id="addl29877653" href="javascript:openlive('29877653')">Гилсфилд-Каерсус</a></li><li><a id="addl29877654" href="javascript:openlive('29877654')">Ньютаун-Лландудно Таун</a></li><li><a id="addl29877655" href="javascript:openlive('29877655')">Пенринкох-Гресфорд Атлетик</a></li><li><a id="addl29887687" href="javascript:openlive('29887687')">Бланско-Зброевка Брно Б</a></li><li><a id="addl29887688" href="javascript:openlive('29887688')">Глубина-Злин Б</a></li><li><a id="addl29887689" href="javascript:openlive('29887689')">Годонин-Карвина Б</a></li><li><a id="addl29891669" href="javascript:openlive('29891669')">Петрвалд на Мораве-Шумперк</a> </li><li><a id="addl29895462" href="javascript:openlive('29895462')">Пюник-Арарат-Армения</a></li><li><a id="addl29895524" href="javascript:openlive('29895524')">Боруссия Дортмунд(ЖК)-Байер 04(ЖК)</a> </li><li><a id="addl29895533" href="javascript:openlive('29895533')">Лейпциг(ЖК)-Боруссия Менхенгладбах(ЖК)</a> </li><li><a id="addl29897565" href="javascript:openlive('29897565')">Штернберк-Нове Сады</a></li><li><a id="addl29898316" href="javascript:openlive('29898316')">Силекс-Башкими Куманово</a> </li><li><a id="addl29898318" href="javascript:openlive('29898318')">Тетекс-Преспа</a></li><li><a id="addl29898319" href="javascript:openlive('29898319')">Победа Прилеп-Беласица Струмица</a> </li><li><a id="addl29899149" href="javascript:openlive('29899149')">Шаффхаузен-Бюль</a></li><li><a id="addl29899238" href="javascript:openlive('29899238')">Вардар-Работнички</a> </li><li><a id="addl29900514" href="javascript:openlive('29900514')">БДФ XI-Суа Фламинго</a> </li><li><a id="addl29900515" href="javascript:openlive('29900515')">Кэлендар Старз-Морупулу Уондерерс</a></li><li><a id="addl29903970" href="javascript:openlive('29903970')">Попрад-Гуменне</a></li><li><a id="addl29905827" href="javascript:openlive('29905827')">Лейпциг(ауты)-Боруссия Менхенгладбах(ауты)</a></li><li><a id="addl29905828" href="javascript:openlive('29905828')">Лейпциг(каркас ворот)-Боруссия Менхенгладбах(каркас ворот)</a></li><li><a id="addl29905829" href="javascript:openlive('29905829')">Лейпциг(уд. ств.)-Боруссия Менхенгладбах(уд. ств.)</a></li><li><a id="addl29905830" href="javascript:openlive('29905830')">Лейпциг(уд. от ворот)-Боруссия Менхенгладбах(уд. от ворот)</a></li><li><a id="addl29905831" href="javascript:openlive('29905831')">Лейпциг(фолы)-Боруссия Менхенгладбах(фолы)</a></li><li><a id="addl29905832" href="javascript:openlive('29905832')">Лейпциг(офсайды)-Боруссия Менхенгладбах(офсайды)</a></li><li><a id="addl29906404" href="javascript:openlive('29906404')">Боруссия Дортмунд(уд. ств.)-Байер 04(уд. ств.)</a> </li><li><a id="addl29906405" href="javascript:openlive('29906405')">Боруссия Дортмунд(фолы)-Байер 04(фолы)</a> </li><li><a id="addl29906436" href="javascript:openlive('29906436')">Боруссия Дортмунд(ауты)-Байер 04(ауты)</a></li><li><a id="addl29906437" href="javascript:openlive('29906437')">Боруссия Дортмунд(уд. от ворот)-Байер 04(уд. от ворот)</a></li><li><a id="addl29906449" href="javascript:openlive('29906449')">Боруссия Дортмунд(каркас ворот)-Байер 04(каркас ворот)</a> </li><li><a id="addl29909389" href="javascript:openlive('29909389')">Холленбах-Мангейм ФфР</a></li></ul><div>Хоккей</div><ul><li><a class="top" id="addl29897543" href="javascript:openlive('29897543')">Хозяева-Гости</a></li><li><a class="top" id="addl29888353" href="javascript:openlive('29888353')">Динамо Минск-Ак Барс</a></li><li><a class="top" id="addl29898739" href="javascript:openlive('29898739')">Динамо Минск(игроки)-Ак Барс(игроки)</a></li><li><a class="top" id="addl29888756" href="javascript:openlive('29888756')">Динамо Минск(штр. вр.)-Ак Барс(штр. вр.)</a></li><li><a class="top" id="addl29888753" href="javascript:openlive('29888753')">Динамо Минск(голы в бол.)-Ак Барс(голы в бол.)</a></li><li><a class="top" id="addl29909582" href="javascript:openlive('29909582')">Лулео(штр. вр.)-Шеллефтео(штр. вр.)</a> </li><li><a class="top" id="addl29909581" href="javascript:openlive('29909581')">Лулео(голы в бол.)-Шеллефтео(голы в бол.)</a> </li><li><a class="top" id="addl29826359" href="javascript:openlive('29826359')">Буран Москва-Металлург Вологодская Область</a> </li><li><a id="addl29902429" href="javascript:openlive('29902429')">Литва-Польша</a> </li><li><a id="addl29905728" href="javascript:openlive('29905728')">Болгария-Исландия</a></li></ul><div>Баскетбол</div><ul><li><a class="top" id="addl29868384" href="javascript:openlive('29868384')">Автодор-Енисей</a> </li><li><a class="top" id="addl29906102" href="javascript:openlive('29906102')">Автодор(3-х очковые)-Енисей(3-х очковые)</a></li><li><a class="top" id="addl29906116" href="javascript:openlive('29906116')">Автодор(2-х очковые)-Енисей(2-х очковые)</a></li><li><a class="top" id="addl29898486" href="javascript:openlive('29898486')">Шаньси Лунгс-Синьцзян Тайгерс</a> </li><li><a class="top" id="addl29908677" href="javascript:openlive('29908677')">Шаньси Лунгс(3-х очковые)-Синьцзян Тайгерс(3-х очковые)</a></li><li><a class="top" id="addl29898961" href="javascript:openlive('29898961')">Макао Блэк Бирс-Мералко Болтс</a> </li><li><a class="top" id="addl29908867" href="javascript:openlive('29908867')">Макао Блэк Бирс(3-х очковые)-Мералко Болтс(3-х очковые)</a></li><li><a class="top" id="addl29908866" href="javascript:openlive('29908866')">Макао Блэк Бирс(2-х очковые)-Мералко Болтс(2-х очковые)</a></li><li><a class="top" id="addl29886651" href="javascript:openlive('29886651')">Мозир Кросно-Анвил</a> </li><li><a class="top" id="addl29909474" href="javascript:openlive('29909474')">Мозир Кросно(3-х очковые)-Анвил(3-х очковые)</a></li><li><a id="addl29908887" href="javascript:openlive('29908887')">МЗТ Скопье Аэродром-Козув</a> </li><li><a id="addl29886292" href="javascript:openlive('29886292')">Кардифф Мет Арчерс(ж)-Каледония Гладиаторз(ж)</a></li><li><a id="addl29886873" href="javascript:openlive('29886873')">Бурхание(ж)-Кыркларели ФБ(ж)</a> </li><li><a id="addl29886874" href="javascript:openlive('29886874')">Самсун Баскетбол(ж)-Эмлак Конут Гелишим(ж)</a> </li><li><a id="addl29886885" href="javascript:openlive('29886885')">Норрчепинг Долфинс(ж)-Седертелье(ж)</a> </li><li><a id="addl29887387" href="javascript:openlive('29887387')">Тандер Мателика(ж)-Виртус Кальяри(ж)</a> </li><li><a id="addl29899275" href="javascript:openlive('29899275')">Санта-Крус де Тенерифе-Лос Тосконс</a> </li><li><a id="addl29900420" href="javascript:openlive('29900420')">УС Сетиф-НА Хуссейн Дей</a> </li><li><a id="addl29905459" href="javascript:openlive('29905459')">Академия Жаны Лелас(ж)-Рагуза(ж)</a> </li><li><a id="addl29886948" href="javascript:openlive('29886948')">Херлев-Вайен</a></li></ul><div>Теннис</div><ul><li><a class="top" id="addl29905238" href="javascript:openlive('29905238')">Офнер Себастьян-Санчес Килес Алехо</a></li><li><a class="top" id="addl29909427" href="javascript:openlive('29909427')">Офнер Себастьян(дв. ошибки)-Санчес Килес Алехо(дв. ошибки)</a></li><li><a class="top" id="addl29909428" href="javascript:openlive('29909428')">Офнер Себастьян(эйсы)-Санчес Килес Алехо(эйсы)</a></li><li><a class="top" id="addl29905302" href="javascript:openlive('29905302')">Шевченко Александр-Дедура-Паломеро Диего</a></li><li><a class="top" id="addl29908891" href="javascript:openlive('29908891')">Шевченко Александр(дв. ошибки)-Дедура-Паломеро Диего(дв. ошибки)</a></li><li><a class="top" id="addl29908892" href="javascript:openlive('29908892')">Шевченко Александр(эйсы)-Дедура-Паломеро Диего(эйсы)</a></li><li><a class="top" id="addl29908607" href="javascript:openlive('29908607')">Джустино Лоренцо-Нагал Сумит</a></li><li><a class="top" id="addl29909554" href="javascript:openlive('29909554')">Джустино Лоренцо(дв. ошибки)-Нагал Сумит(дв. ошибки)</a></li><li><a class="top" id="addl29909555" href="javascript:openlive('29909555')">Джустино Лоренцо(эйсы)-Нагал Сумит(эйсы)</a></li><li><a class="top" id="addl29905308" href="javascript:openlive('29905308')">Карбальес-Баэна Роберто-Молчан Алекс</a></li><li><a class="top" id="addl29909673" href="javascript:openlive('29909673')">Карбальес-Баэна Роберто(дв. ошибки)-Молчан Алекс(дв. ошибки)</a></li><li><a class="top" id="addl29909674" href="javascript:openlive('29909674')">Карбальес-Баэна Роберто(эйсы)-Молчан Алекс(эйсы)</a></li><li><a class="top" id="addl29905715" href="javascript:openlive('29905715')">Нимайер Юле-Фридзам Анна-Лена</a></li><li><a class="top" id="addl29909239" href="javascript:openlive('29909239')">Нимайер Юле(дв. ошибки)-Фридзам Анна-Лена(дв. ошибки)</a></li><li><a class="top" id="addl29909240" href="javascript:openlive('29909240')">Нимайер Юле(эйсы)-Фридзам Анна-Лена(эйсы)</a></li><li><a class="top" id="addl29906013" href="javascript:openlive('29906013')">Шиманович Ирина-Мартынов Дайана</a></li><li><a class="top" id="addl29909301" href="javascript:openlive('29909301')">Шиманович Ирина(дв. ошибки)-Мартынов Дайана(дв. ошибки)</a></li><li><a class="top" id="addl29909302" href="javascript:openlive('29909302')">Шиманович Ирина(эйсы)-Мартынов Дайана(эйсы)</a></li><li><a class="top" id="addl29906015" href="javascript:openlive('29906015')">Роббе Элис-Тан Амони</a></li><li><a class="top" id="addl29909531" href="javascript:openlive('29909531')">Роббе Элис(дв. ошибки)-Тан Амони(дв. ошибки)</a></li><li><a class="top" id="addl29909532" href="javascript:openlive('29909532')">Роббе Элис(эйсы)-Тан Амони(эйсы)</a></li><li><a class="top" id="addl29898664" href="javascript:openlive('29898664')">Путинцева Юлия-Андрееску Бьянка</a></li><li><a id="addl29907970" href="javascript:openlive('29907970')">Путинцева Юлия(дв. ошибки)-Андрееску Бьянка(дв. ошибки)</a></li><li><a id="addl29907971" href="javascript:openlive('29907971')">Путинцева Юлия(эйсы)-Андрееску Бьянка(эйсы)</a></li><li><a class="top" id="addl29899930" href="javascript:openlive('29899930')">Минтехи Дель Ольмо Ане-Бассолс Рибера Марина</a></li><li><a class="top" id="addl29909589" href="javascript:openlive('29909589')">Минтехи Дель Ольмо Ане(дв. ошибки)-Бассолс Рибера Марина(дв. ошибки)</a></li><li><a class="top" id="addl29909590" href="javascript:openlive('29909590')">Минтехи Дель Ольмо Ане(эйсы)-Бассолс Рибера Марина(эйсы)</a></li><li><a class="top" id="addl29895606" href="javascript:openlive('29895606')">Бельгия(пары)(ж)-США(пары)(ж)</a></li><li><a class="top" id="addl29897681" href="javascript:openlive('29897681')">Пауль Я. / Воцел М.-Жилле С. / Вербек С.</a></li><li><a class="top" id="addl29900000" href="javascript:openlive('29900000')">Себов Катрин-Дуденей Алисия</a></li><li><a id="addl29908689" href="javascript:openlive('29908689')">Хиетаранта Лаура-Самир Сандра</a></li><li><a id="addl29908794" href="javascript:openlive('29908794')">Адкар Вайшнави-Пак Сохюн</a></li><li><a id="addl29905242" href="javascript:openlive('29905242')">Меджедович Хамад-Гаубас Вилиус</a></li><li><a id="addl29909715" href="javascript:openlive('29909715')">Меджедович Хамад(дв. ошибки)-Гаубас Вилиус(дв. ошибки)</a></li><li><a id="addl29909716" href="javascript:openlive('29909716')">Меджедович Хамад(эйсы)-Гаубас Вилиус(эйсы)</a></li></ul><div>Волейбол</div><ul><li><a class="top" id="addl29866805" href="javascript:openlive('29866805')">Динамо Москва(ж)-Уралочка-НТМК(ж)</a></li><li><a class="top" id="addl29883675" href="javascript:openlive('29883675')">Сокол Могильно(ж)-Радомка Радом(ж)</a></li><li><a class="top" id="addl29905957" href="javascript:openlive('29905957')">Динамо Анапа(ж)-Локомотив-2 Калин. обл.(ж)</a></li><li><a class="top" id="addl29895597" href="javascript:openlive('29895597')">ПЛДТ(ж)-Кремлайн Кул Смешерс(ж)</a></li><li><a class="top" id="addl29897887" href="javascript:openlive('29897887')">Лавани Нэви-Джакарта Гаруда</a></li><li><a class="top" id="addl29905950" href="javascript:openlive('29905950')">Кама-Академия-Казань</a></li><li><a class="top" id="addl29905958" href="javascript:openlive('29905958')">Уралочка-2-УрГЭУ(ж)-Муром(ж)</a></li><li><a class="top" id="addl29901131" href="javascript:openlive('29901131')">Менен-Маасейк</a></li><li><a class="top" id="addl29904951" href="javascript:openlive('29904951')">АСВ Орхус-Норденсков</a></li><li><a class="top" id="addl29905945" href="javascript:openlive('29905945')">ВК Минск-Коммунальник Могилев</a></li><li><a class="top" id="addl29905947" href="javascript:openlive('29905947')">Столица Минск-Легион Обухово</a></li><li><a id="addl29908642" href="javascript:openlive('29908642')">Седертелье(ж)-Лулео(ж)</a></li><li><a id="addl29900174" href="javascript:openlive('29900174')">Унион Деблинг-Грац 2</a></li><li><a id="addl29901572" href="javascript:openlive('29901572')">Хюльте-Хальмстад-Флоби</a></li><li><a id="addl29906677" href="javascript:openlive('29906677')">ПО Шлев-Кастел</a></li><li><a id="addl29906681" href="javascript:openlive('29906681')">ЕС Сетиф-Олимпик Айн-Млила</a></li><li><a id="addl29909078" href="javascript:openlive('29909078')">Рубеж Псков-ВК Амкрас</a></li><li><a id="addl29909642" href="javascript:openlive('29909642')">Университет Гданьск(ж)-АВФиС Гданьск(ж)</a></li><li><a id="addl29901203" href="javascript:openlive('29901203')">Имир(ж)-УМФГ(ж)</a></li><li><a id="addl29897896" href="javascript:openlive('29897896')">Авенир-Роян Атлантик Воллей</a></li><li><a id="addl29901830" href="javascript:openlive('29901830')">Викинг ТИФ-ОКСИЛ</a></li><li><a id="addl29909429" href="javascript:openlive('29909429')">Кладно(22)-Злин(22)</a></li><li><a id="addl29909473" href="javascript:openlive('29909473')">АВФ Гожув-Велькопольски-АВФ Катовице</a></li><li><a id="addl29909478" href="javascript:openlive('29909478')">Эшмориш Б(ж)-Повуа-2(ж)</a></li><li><a id="addl29909483" href="javascript:openlive('29909483')">СУМед Катовице(ж)-УЕ Вроцлав(ж)</a></li><li><a id="addl29909488" href="javascript:openlive('29909488')">Политехника Ченстохова-Политехника Ополе</a></li><li><a id="addl29909520" href="javascript:openlive('29909520')">Чрно Беле 011(ж)-Борац(ж)</a></li><li><a id="addl29909587" href="javascript:openlive('29909587')">КАШИ Сарга(20)(ж)-УТЕ Лила(20)(ж)</a></li><li><a id="addl29909653" href="javascript:openlive('29909653')">Джиночи(ж)-Печ(ж)</a></li><li><a id="addl29909692" href="javascript:openlive('29909692')">Висбаден-2(ж)-Альтдорф(ж)</a></li></ul><div>Гандбол</div><ul><li><a id="addl29886045" href="javascript:openlive('29886045')">Динамо Сунгуль-Чеховские Медведи</a> </li><li><a id="addl29886060" href="javascript:openlive('29886060')">Зенит-ЦСКА Москва</a> </li><li><a id="addl29906068" href="javascript:openlive('29906068')">Динамо Астрахань-СГАУ-Саратов</a> </li><li><a id="addl29906141" href="javascript:openlive('29906141')">Скиф Омск-Виктор</a> </li><li><a id="addl29882952" href="javascript:openlive('29882952')">Нордшелланд-Рингстед</a> </li><li><a id="addl29909509" href="javascript:openlive('29909509')">Гранкулла ИФК-БК-46</a> </li></ul><div>Киберспорт</div><ul><li><a class="top" id="addl29908928" href="javascript:openlive('29908928')">3DMAX-MongolZ</a></li><li><a class="top" id="addl29909456" href="javascript:openlive('29909456')">PVISION-Nigma Galaxy</a></li><li><a class="top" id="addl29908958" href="javascript:openlive('29908958')">EDward Gaming-Dragon Ranger Gaming</a></li><li><a class="top" id="addl29908932" href="javascript:openlive('29908932')">team Heretics-Natus Vincere</a></li><li><a class="top" id="addl29908621" href="javascript:openlive('29908621')">Olgod Efterskole-sAw</a></li><li><a class="top" id="addl29908734" href="javascript:openlive('29908734')">Metizport-basement bobs</a></li><li><a class="top" id="addl29908872" href="javascript:openlive('29908872')">MVK Esports-GAM Esports</a></li><li><a class="top" id="addl29909010" href="javascript:openlive('29909010')">RRQ Tora-AC Esports</a></li><li><a class="top" id="addl29909419" href="javascript:openlive('29909419')">NeverPlay-Wave</a></li><li><a class="top" id="addl29909457" href="javascript:openlive('29909457')">Cheeki_Breeki-enjoy boys</a></li><li><a class="top" id="addl29909487" href="javascript:openlive('29909487')">Nuxeria Esport-Mandatory</a></li><li><a class="top" id="addl29909551" href="javascript:openlive('29909551')">Natus Vincere Junior-Lost Puppies</a></li><li><a class="top" id="addl29909513" href="javascript:openlive('29909513')">Earth Gaming-Outsiders(CU)</a></li><li><a class="top" id="addl29909558" href="javascript:openlive('29909558')">CYBERHERO-Virtus.pro</a></li><li><a class="top" id="addl29909617" href="javascript:openlive('29909617')">Blaze Tracers-Rapid Reflexes</a></li><li><a id="addl29909311" href="javascript:openlive('29909311')">Team Flash-GAM Esports</a></li></ul><div>Регби</div><ul><li><a id="addl29908873" href="javascript:openlive('29908873')">Дания-Чехия</a> </li><li><a id="addl29909164" href="javascript:openlive('29909164')">Халл КР-Йорк Сити Найтс</a> </li><li><a id="addl29909652" href="javascript:openlive('29909652')">Англия(ж)-Ирландия(ж)</a> </li></ul><div>Бадминтон</div><ul><li><a id="addl29909498" href="javascript:openlive('29909498')">Алфиан Ф / Фикри М.Ш.-Кан Мин Х / Ки Дон Джу</a></li><li><a id="addl29900905" href="javascript:openlive('29900905')">Кьерсфельдт Лине-Блихфельдт Мия</a></li><li><a id="addl29901457" href="javascript:openlive('29901457')">Лундгаард Д / Вестергаард М-Лейн Б / Венди Ш</a></li></ul><div>Баскетбол 3х3</div><ul><li><a class="top" id="addl29909298" href="javascript:openlive('29909298')">Сингапур-Бразилия</a> </li></ul><div>Велоспорт</div><ul><li><a id="addl29902754" href="javascript:openlive('29902754')">Техада Харольд-Шампуссен Клеман</a></li><li><a id="addl29902763" href="javascript:openlive('29902763')">Ромо Хавьер-Баудин Алекс</a></li><li><a id="addl29902767" href="javascript:openlive('29902767')">Бильбао Пельо-Исагирре Ион</a></li></ul><div>Водное поло</div><ul><li><a id="addl29894277" href="javascript:openlive('29894277')">Сербия-Нидерланды</a> </li><li><a id="addl29905323" href="javascript:openlive('29905323')">Украина-Грузия</a> </li></ul><div>Крикет</div><ul><li><a id="addl29873800" href="javascript:openlive('29873800')">Эссекс-Сомерсет</a></li><li><a id="addl29873801" href="javascript:openlive('29873801')">Сассекс Шаркс-Уорикшир(Беарс)</a></li><li><a id="addl29873802" href="javascript:openlive('29873802')">Йоркшир-Хэмпшир</a></li><li><a id="addl29873808" href="javascript:openlive('29873808')">Суррей-Лестершир Фоксес</a></li><li><a id="addl29873809" href="javascript:openlive('29873809')">Ноттингемшир-Гламорган</a></li><li><a id="addl29885291" href="javascript:openlive('29885291')">Саутерн Рокс-Маунтейнирз</a></li><li><a id="addl29896520" href="javascript:openlive('29896520')">Дарем(ж)-Ланкашир(ж)</a></li><li><a id="addl29896521" href="javascript:openlive('29896521')">Хэмпшир(ж)-Эссекс(ж)</a></li><li><a id="addl29896522" href="javascript:openlive('29896522')">Сомерсет(ж)-Йоркшир(ж)</a></li><li><a id="addl29896523" href="javascript:openlive('29896523')">Уорикшир(Беарс)(ж)-Суррей(ж)</a></li><li><a id="addl29585647" href="javascript:openlive('29585647')">Пенджаб Кингз-Санрайзерс Хайдарабад</a></li><li><a id="addl29908899" href="javascript:openlive('29908899')">Мозамбик(ж)-Малави(ж)</a></li><li><a id="addl29909198" href="javascript:openlive('29909198')">Мира Бхайандар Лайонс-Санпада Скорпионс</a></li><li><a id="addl29909241" href="javascript:openlive('29909241')">Норбери-Спортинг Альфас</a></li></ul><div>Настольный теннис</div><ul><li><a id="addl29909548" href="javascript:openlive('29909548')">Кводавский Бартош-Марушак Петр</a></li><li><a id="addl29905279" href="javascript:openlive('29905279')">Горпаде Я./Читале Д.П.-Мукхерджи А./Мукхерджи С.</a></li><li><a id="addl29907492" href="javascript:openlive('29907492')">Валдхаузер Войтек-Кузен Жан Батист</a></li><li><a id="addl29909651" href="javascript:openlive('29909651')">Кесик Грациан-Котыль Кшиштоф</a></li></ul><div>Падел</div><ul><li><a id="addl29906484" href="javascript:openlive('29906484')">Служителева Н. / Попова В.-Йованович Б. / Стоячич А.</a></li></ul><div>Пляжный волейбол</div><ul><li><a id="addl29908377" href="javascript:openlive('29908377')">Клингер Д / Клингер Р-Иттлингер / Грюне</a></li><li><a id="addl29908565" href="javascript:openlive('29908565')">Мишель / Полетти Корралес-Пауликене / Раупелите</a></li></ul><div>Флорбол</div><ul><li><a id="addl29851952" href="javascript:openlive('29851952')">Пруске(ж)-Комета Спишска-Нова-Вес(ж)</a> </li></ul><div>Футзал</div><ul><li><a id="addl29898969" href="javascript:openlive('29898969')">Байтерек-Астана</a> </li><li><a id="addl29906975" href="javascript:openlive('29906975')">Дания-Андорра</a> </li></ul><div>Хоккейбол</div><ul><li><a id="addl29900869" href="javascript:openlive('29900869')">Керт Парк Прага-Эльба ДДМ Усти над Лабем</a> </li></ul></div></div></div>
+				<div id="tablesportdiv" class="t-aside_box t-line-box">
+					<div class="allbetw ui-bet-left">
+						<div class="allbet"><ul id="tablesportsdiv"><li style="background: url(images/icons/351473.gif) 0 50% no-repeat;"><a href="javascript:openall('351473')">Австралийский футбол</a></li><li style="background: url(/data/132.png) 0 50% no-repeat;"><a href="javascript:openall('2753')">Американский футбол</a></li><li style="background: url(images/icons/793416.gif) 0 50% no-repeat;"><a href="javascript:openall('793416')">Армрестлинг</a></li><li style="background: url(/data/134.png) 0 50% no-repeat;"><a href="javascript:openall('153044')">Бадминтон</a></li><li style="background: url(/data/135.png) 0 50% no-repeat;"><a href="javascript:openall('920')">Баскетбол</a></li><li style="background: url(/data/136.png) 0 50% no-repeat;"><a href="javascript:openall('855')">Бейсбол</a></li><li style="background: url(/data/138.png) 0 50% no-repeat;"><a href="javascript:openall('14681')">Бильярд</a></li><li style="background: url(images/icons/551288.gif) 0 50% no-repeat;"><a href="javascript:openall('551288')">Бокс</a></li><li style="background: url(/data/140.png) 0 50% no-repeat;"><a href="javascript:openall('6056')">Велоспорт</a></li><li style="background: url(/data/142.png) 0 50% no-repeat;"><a href="javascript:openall('5150')">Водное поло</a></li><li style="background: url(/data/143.png) 0 50% no-repeat;"><a href="javascript:openall('938')">Волейбол</a></li><li style="background: url(/data/144.png) 0 50% no-repeat;"><a href="javascript:openall('1680')">Гандбол</a></li><li style="background: url(images/icons/530567.gif) 0 50% no-repeat;"><a href="javascript:openall('530567')">Гэльский футбол</a></li><li style="background: url(/data/146.png) 0 50% no-repeat;"><a href="javascript:openall('3194')">Дартс</a></li><li style="background: url(/data/139.png) 0 50% no-repeat;"><a href="javascript:openall('1695')">Единоборства</a></li><li style="background: url(/data/148.png) 0 50% no-repeat;"><a href="javascript:openall('121147')">Киберспорт</a></li><li style="background: url(images/icons/486541.gif) 0 50% no-repeat;"><a href="javascript:openall('486541')">Крикет</a></li><li style="background: url(images/icons/548150.gif) 0 50% no-repeat;"><a href="javascript:openall('548150')">Лакросс</a></li><li style="background: url(/data/155.png) 0 50% no-repeat;"><a href="javascript:openall('4458')">Настольный теннис</a></li><li style="background: url(images/icons/493373.gif) 0 50% no-repeat;"><a href="javascript:openall('493373')">Нетбол</a></li><li style="background: url(images/icons/893474.gif) 0 50% no-repeat;"><a href="javascript:openall('893474')">Падел</a></li><li style="background: url(/data/157.png) 0 50% no-repeat;"><a href="javascript:openall('8390')">Пляжный волейбол</a></li><li style="background: url(/data/162.png) 0 50% no-repeat;"><a href="javascript:openall('4716')">Регби</a></li><li style="background: url(/data/163.png) 0 50% no-repeat;"><a href="javascript:openall('2509')">Снукер</a></li><li style="background: url(/data/164.png) 0 50% no-repeat;"><a href="javascript:openall('893')">Теннис</a></li><li style="background: url(/data/167.png) 0 50% no-repeat;"><a href="javascript:openall('24270')">Флорбол</a></li><li style="background: url(/data/168.png) 0 50% no-repeat;"><a href="javascript:openall('5035')">Формула 1</a></li><li style="background: url(/data/133.png) 0 50% no-repeat;"><a href="javascript:openall('1')">Футбол</a></li><li style="background: url(/data/169.png) 0 50% no-repeat;"><a href="javascript:openall('2739')">Футзал</a></li><li style="background: url(images/icons/530569.gif) 0 50% no-repeat;"><a href="javascript:openall('530569')">Херлинг</a></li><li style="background: url(/data/170.png) 0 50% no-repeat;"><a href="javascript:openall('14')">Хоккей</a></li><li style="background: url(images/icons/699119.gif) 0 50% no-repeat;"><a href="javascript:openall('699119')">Хоккей на роликах</a></li><li style="background: url(/data/171.png) 0 50% no-repeat;"><a href="javascript:openall('3775')">Хоккей на траве</a></li><li style="background: url(images/icons/703771.gif) 0 50% no-repeat;"><a href="javascript:openall('703771')">Экспресс дня</a></li></ul></div>
+					</div>
+				</div>
+			</div>
+            
+			<!-- Left end-->
+		</div>
+        <!-- ./END LEFT ASIDE-->
+        <!-- RIGHT ASIDE BB-->
+		<div class="rightcolumn clearf right-sidebar" id="rightnews">
+            <div class="aside-right-basket basket-box">
+                <div id="tablelogindiv" class="aside-right-userinfo">
+                    <div id="TableUser">
+                        
+                            <div class="cps-auth-aside">
+                                
+                                <div class="cps-auth-aside__title">Войти</div>
+                                
+                                <div action="/account/AjaxQuickLogin" method="post" class="cps-auth-aside__form" replacetag="form">
+                                    
+                                    
+                                    <div class="cps-auth-aside__input-wrapper">
+                                        <input class="cps-auth-aside__input" data-val="true" data-val-required="Требуется номер телефона или имя пользователя" id="Login" name="Login" placeholder="+7хххххххххх или логин" type="text" value="" />
+                                    </div>
+                                    <div class="cps-auth-aside__input-wrapper">
+                                        <input class="cps-auth-aside__input" data-val="true" data-val-required="Поле Пароль должно быть заполнено" id="Password" name="Password" placeholder="Пароль" type="password"/>
+                                       <input id="Fingerprint" name="Fingerprint" type="hidden"/>
+                                    </div>
+                                    
+                                    <div class="cps-auth-aside__footer">
+                                        
+                                            <input block-selector=".cps-auth-aside" block-messageSelector=".spinner-container" block-type="transparent" type="submit" onclick="Ajax.submit(this); return false;" value="Войти" class="cps-auth-aside__submit" />
+                                        
+                                        <a href="/account/register" class="cps-auth-aside__reg-page-link">Регистрация</a>
+                                        
+
+                                        <!--div style="margin: 10px 0 0; font-size: 12px; padding: 10px; background: #eee; border: 1px solid #ddd; border-radius: 10px;">
+                                            Регистрация на сайте доступна только для игроков, прошедших идентификацию в пункте приема ставок <a style="text-decoration: underline;" href="/Address.aspx"><b>Балтбет</b></a> и активизировавших Qiwi кошелек
+                                        </div-->
+                                      
+                                        
+                                        <a href="/restore/RestorePassword" class="cps-auth-aside__recovery-link">Забыли пароль?</a>
+                                        
+                                    </div>
+                                </div>
+                                <div class="spinner-container">
+                                    <div class="spinner">
+                                        <img src="/images/cps/spinner-white.svg" alt="" />
+                                    </div>
+                                </div>
+                            </div>
+
+                        
+                    </div>
+                </div>
+            </div>
+				<div id="Div1" style="height: 0px; line-height: 0px; display: none"></div>
+				
+
+            <a onclick="Ajax.postJson('/account/AjaxAddReviewRequest', {uiBlock:UiBlock.getUiBlockDescriptor(this)} ); return false;" class="add-review-button" block-messageSelector = ".spinner-container" block-selector = "_window", block-type = "transparent">Оставить отзыв</a>
+            <div class="spinner-container">
+                <div class="spinner">
+                    <img src="/images/cps/spinner-white.svg" alt="" />
+                </div>
+            </div>
+            <div>
+                <a href="https://baltbet.ru" class="right-sidebar__uni-btn"></a>
+            </div>
+           <a href="https://baltbet.ru/campaigns" class="right-sidebar__banner-campaigns"></a>
+			<table id="table1" border="0" cellspacing="0">
+</table>
+
+			
+			
+
+		</div>
+        <!-- ./END RIGHT ASIDE -->
+    </div>
+ <!-- END Layout -->
+        </div>
+
+	<!-- Bottom start-->
+	<div class="up_scroll" id="top_scroll"></div>
+        
+
+
+<footer class="site-footer">
+    <div class="footer-pay-systems">
+        <div class="footer-pay-systems__title">
+            <span class="footer-pay-systems__title-text">Платежные системы</span>
+        </div>
+        <div class="footer-pay-systems__items">
+            <div class="footer-pay-systems__item">
+                <img src="/images/cps/pay-systems/mir.png" alt="Мир" />
+            </div>
+            <div class="footer-pay-systems__item">
+                <img src="/images/cps/pay-systems/visa.png" alt="Visa" />
+            </div>
+            <div class="footer-pay-systems__item">
+                <img src="/images/cps/pay-systems/mastercard.png" alt="Mastercard" />
+            </div>
+            <div class="footer-pay-systems__item">
+                <img src="/images/cps/pay-systems/U-money.png" alt="UMoney" />
+            </div>
+            <div class="footer-pay-systems__item">
+                <img src="/images/cps/pay-systems/megafon.png" alt="Мегафон" />
+            </div>
+            <div class="footer-pay-systems__item">
+                <img src="/images/cps/pay-systems/mts.png" alt="МТС" />
+            </div>
+            <div class="footer-pay-systems__item">
+                <img src="/images/cps/pay-systems/beeline.png" alt="Билайн" />
+            </div>
+            <div class="footer-pay-systems__item">
+                <img src="/images/cps/pay-systems/tele2.png" alt="Теле2" />
+            </div>
+            <div class="footer-pay-systems__item">
+                <img src="/images/cps/pay-systems/apple.png" alt="ApplePay" />
+            </div>
+            <div class="footer-pay-systems__item">
+                <img src="/images/cps/pay-systems/WebMoney.png" alt="WebMoney" />
+            </div>
+             <div class="footer-pay-systems__item">
+                <img src="/images/cps/pay-systems/cupis.png" alt="Tsupis" />
+            </div>
+            <div class="footer-pay-systems__item">
+                <img src="/images/cps/pay-systems/samsung.png" alt="Samsung" />
+            </div>
+            <div class="footer-pay-systems__item">
+                <img src="/images/cps/pay-systems/google-pay.png" alt="GooglePay" />
+            </div>
+             <div class="footer-pay-systems__item">
+                <img src="/images/cps/pay-systems/sber-pay.png" alt="SberPay" />
+            </div>
+             <div class="footer-pay-systems__item">
+                <img src="/images/cps/pay-systems/tinkoff-pay.png" alt="TinkoffPay" />
+            </div>
+             <div class="footer-pay-systems__item">
+                <img src="/images/cps/pay-systems/eleksnet.png" alt="Eleksnet" />
+            </div>
+        </div>
+    </div>
+    <div class="site-footer__content">
+        <div class="site-footer__row">
+            <div class="site-footer__logo">
+                <a href="/" class="site-footer__logo-link">
+                    <img src="/images/cps/baltbet-logo-gray.png" alt="Балтбет" />
+                </a>
+                <img src="/images/cps/age-limit.png" alt="18+" class="site-footer__age-limit" />
+            </div>
+            <nav class="site-footer__navigation">
+                <a href="/About.aspx" class="site-footer__navigation-link">О компании</a>
+                <a href="https://baltbet.ru/help/rules#common" class="site-footer__navigation-link">Правила</a>
+                
+                <a href="/Address.aspx" class="site-footer__navigation-link">Адреса</a>
+                
+
+                <a href="/Results1.aspx" class="site-footer__navigation-link">Результаты</a>
+            </nav>
+            <div class="site-footer__social-links">
+                <a target="_blank" href="https://t.me/rubaltbet" title="Мы в telegram" class="site-footer-social-link m-telegram tooltip"></a>
+                
+                    <a target="_blank" href="https://vk.com/rubaltbet" title="Мы в vk" class="site-footer-social-link m-vk tooltip"></a>
+                
+            </div>
+        </div>
+        <div class="site-footer__row">
+            <div class="site-footer__copyright">
+                © 2003 — 2026 ООО «САНТОРИН»
+            </div>
+            <div class="site-footer__contacts">
+                <div class="site-footer-support">
+                    <div class="site-footer-support__title">
+                        Служба поддержки
+                    </div>
+                    <div class="site-footer-support__phone">                        
+                        <img src="/images/cps/icon-support-phone-gray.png" class="site-footer-support__phone-icon" alt="">                        
+                        <div class="site-footer-support__phone-number">
+                            <div class="site-footer-support__phone-number-bold"><a href="tel:8-800-700-29-90">8-800-700-29-90</a></div>
+                            <div class="site-footer-support__phone-number-sign">По России бесплатно</div>
+                        </div>
+                    </div>
+                    <div class="site-footer-support__email">
+                        <a href="mailto: report@baltbet.ru" class="site-footer-support__email-link">
+                            <img src="/images/cps/icon-support-email-gray.png" class="site-footer-support__email-icon" alt="" />
+                            <span class="site-footer-support__email-text">report@baltbet.ru</span>
+                        </a>
+                    </div>
+                    <div class="site-footer-support__telegram">
+                        <a href="https://t.me/hotline_baltbet_bot" target="_blank" class="site-footer-support__telegram-link">
+                            <img src="/images/cps/icon-support-telegram-gray.png" class="site-footer-support__telegram-icon" alt="telegram" />
+                            <span class="site-footer-support__email-text">Telegram</span>
+                        </a>                        
+                    </div>
+                </div>
+            </div>
+            <div class="site-footer__tagline">
+                БАЛТБЕТ — старейшая букмекерская контора России
+            </div>
+        </div>
+    </div>
+</footer>   
+	<script async="async" type="text/javascript" src="https://old.baltbet.ru?aid=0&srv="></script>
+	<!-- Bottom end-->
+    
+</form>    
+<div class="user-review-popup-container"></div>
+
+    <script type="text/javascript">
+
+        $(window).on('load', function () {
+            var clientInfo = new ClientJS();
+            var fingerprint = clientInfo.getFingerprint();
+            $("#Fingerprint").val(fingerprint);
+        });
+
+        var auxMessage;
+        auxMessage = (function (auxMessage) {
+            function closeAuxMessage(isClosedByUser) {
+                if (isClosedByUser) {
+                    Cookies.set('auxMessageClosed', 'true', { expires: 1 });
+                }
+                $('#auxSitesMessage').fadeOut(200);
+            }
+
+            function showAuxMessage() {
+                $('#auxSitesMessage').fadeIn(200);
+            }
+
+            function handleCloseMessageClick() {
+                closeAuxMessage(true);
+            }
+
+            $('.aux-close-btn', '#auxSitesMessage').on('click', handleCloseMessageClick);
+            if (Cookies.getJSON('auxMessageClosed')) {
+                closeAuxMessage(false);
+            }
+            else {
+                showAuxMessage();
+            }
+
+            return auxMessage;
+        })(auxMessage || {});
+
+        var callbackPressed = function (retryUnavailableInSeconds, accountId) {
+            if ($(".call__all_pops").css('display') == "block") {
+                Cookies.set('callbackPressed', 'true', { expires: 5 });
+                console.log('callbackPressed');
+                retryUnavailableHandler(retryUnavailableInSeconds, accountId)
+            }
+        }
+
+        var retryUnavailableHandler = function (retryUnavailableInSeconds, accountId) {
+            const callbackEl = $(`#DivAccountCallbackByPhone`);
+            let startTime = new Date();
+
+            if (callbackEl) {
+                callbackEl.addClass('tp-callback-disabled');
+                sessionStorage.setItem('callbackSubmitButtonDisabledTimeStamp' + accountId, Date.now().toString());
+
+                setTimeout(() => {
+                    callbackEl.removeClass('tp-callback-disabled');
+                }, Math.max(retryUnavailableInSeconds * 1000, 1));
+            }
+        };
+
+        $(function () {
+            const callbackEl = $(`#DivAccountCallbackByPhone`);
+            let accountId = 0;
+            let retryUnavailableInSeconds = 60;
+
+            if (callbackEl && accountId && retryUnavailableInSeconds) {
+                let callbackSubmitButtonDisabledTimeStamp = sessionStorage.getItem('callbackSubmitButtonDisabledTimeStamp' + accountId);
+                if (callbackSubmitButtonDisabledTimeStamp) {
+                    let timeDiff = (parseInt(callbackSubmitButtonDisabledTimeStamp) + retryUnavailableInSeconds * 1000) - Date.now();
+                    let timerSecondsLeft = timeDiff / 1000;
+                    if (timeDiff > 0) {
+                        retryUnavailableHandler(timerSecondsLeft, accountId);
+                    }
+                }
+            }
+        });
+    </script>    
+</body>
+</html>

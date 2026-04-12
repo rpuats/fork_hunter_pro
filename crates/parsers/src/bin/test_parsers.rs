@@ -32,8 +32,10 @@ async fn main() {
 
                 // Покажу первые 2 события
                 for event in result.events.iter().take(2) {
-                    println!("  > {} vs {} (L: {}, Live: {})",
-                        event.home_team, event.away_team, event.league, event.is_live);
+                    println!(
+                        "  > {} vs {} (L: {}, Live: {})",
+                        event.home_team, event.away_team, event.league, event.is_live
+                    );
                 }
 
                 // Покажу первые 3 коэффициента

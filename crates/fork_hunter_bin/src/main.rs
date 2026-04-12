@@ -20,6 +20,7 @@ use engine::value::ValueDetector;
 use engine::verifier::OddsVerifier;
 use express_forks::scanner::ExpressForkScanner;
 use parsers::parser_factory::ParserFactory;
+use persistence::execution_state::ExecutionStateStore;
 use persistence::history::SurebetHistory;
 use scanner::engine::GhostScanner;
 use scanner::runner::ScannerRunner;
@@ -29,8 +30,9 @@ use shared::{AppConfig, AutoBetConfig, BankrollConfig, BonusConfig};
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt()
         .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "fork_hunter=info,scanner=info,engine=info,parsers=info,tower_http=info".into()),
+            tracing_subscriber::EnvFilter::try_from_default_env().unwrap_or_else(|_| {
+                "fork_hunter=info,scanner=info,engine=info,parsers=info,tower_http=info".into()
+            }),
         )
         .init();
 
@@ -46,7 +48,10 @@ async fn main() -> anyhow::Result<()> {
             .build()?,
     );
 
-    let parser_factory = ParserFactory::new(http_client.clone());
+    let parser_factory = Arc::new(ParserFactory::new(http_client.clone()));
+    let parser_metadata = Arc::new(parser_factory.bookmaker_metadata());
+    let parser_coverage = Arc::new(parser_factory.parser_coverage());
+    let parser_health = Arc::new(parser_factory.parser_health_snapshots());
     let parsers = parser_factory.get_enabled();
     tracing::info!("{} parsers loaded", parsers.len());
 
@@ -89,7 +94,18 @@ async fn main() -> anyhow::Result<()> {
     ));
     let bankroll_manager = Arc::new(BankrollManager::new(BankrollConfig::default()));
     let bonus_hunter = Arc::new(BonusHunter::new(BonusConfig::default()));
-    let auto_bet_engine = Arc::new(AutoBetEngine::new(AutoBetConfig::default()));
+
+    let execution_state_store = Arc::new(ExecutionStateStore::new(&config.database.url).await?);
+    let execution_registry = Arc::new(auto_betting::ExecutionRegistry::with_persistence(
+        execution_state_store,
+    ));
+    if let Err(error) = execution_registry.restore_persisted_state().await {
+        tracing::warn!(error = %error, "Failed to restore execution registry state");
+    }
+    let auto_bet_engine = Arc::new(AutoBetEngine::with_registry(
+        AutoBetConfig::default(),
+        execution_registry,
+    ));
 
     let event_bus = Arc::new(shared::EventBus::new());
     let history = SurebetHistory::new(&config.database.url).await?;
@@ -141,9 +157,9 @@ async fn main() -> anyhow::Result<()> {
         odds_verifier,
         corridor_scanner,
         express_fork_scanner,
-        bankroll_manager,
-        bonus_hunter,
-        auto_bet_engine,
+        bankroll_manager.clone(),
+        bonus_hunter.clone(),
+        auto_bet_engine.clone(),
         event_bus.clone(),
         config.scanner.scan_interval_secs,
     ));
@@ -152,9 +168,15 @@ async fn main() -> anyhow::Result<()> {
 
     let api_state = AppState {
         scanner: scanner_runner.clone(),
+        bookmakers: parser_metadata,
+        parser_coverage,
+        parser_health,
         history: history.clone(),
         freebet_hunter: freebet_hunter.clone(),
         generosity_index: generosity_index.clone(),
+        auto_bet_engine: auto_bet_engine.clone(),
+        bankroll_manager: bankroll_manager.clone(),
+        bonus_hunter: bonus_hunter.clone(),
         event_bus: event_bus.clone(),
     };
 

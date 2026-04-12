@@ -1,10 +1,10 @@
-import asyncio, sys
-sys.path.insert(0, r'C:\Users\Administrator\Desktop\ai\Grok вилки\fork_hunter_pro')
-from scanner.parsers import BaltbetPlaywrightParser
+import asyncio, sys, os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'scanner', 'parsers'))
+from baltbet_playwright import BaltbetRegexParser
 
 async def s():
-    p = BaltbetPlaywrightParser()
-    events = await asyncio.wait_for(p.get_events(), timeout=90)
-    print(f'BALTBET: {len(events)} events')
+    async with BaltbetRegexParser() as p:
+        events = await p.get_events()
+        print(f'BALTBET: {len(events)} events')
 
 asyncio.run(s())

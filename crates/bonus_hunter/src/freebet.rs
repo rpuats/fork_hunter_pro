@@ -24,7 +24,8 @@ impl FreebetPlanner {
         } else {
             0.0
         };
-        let estimated_profit = (request.freebet_amount * freebet_retention) - request.estimated_qualifying_loss;
+        let estimated_profit =
+            (request.freebet_amount * freebet_retention) - request.estimated_qualifying_loss;
 
         let hedge = FreebetHedgeLeg {
             bookmaker: request.hedge_bookmaker.clone(),

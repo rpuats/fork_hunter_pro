@@ -54,10 +54,17 @@ impl MomentumScanner {
 
         for entry in self.live_events.iter() {
             let state = entry.value();
-            if state.momentum_score < 0.5 { continue; }
+            if state.momentum_score < 0.5 {
+                continue;
+            }
 
             if let Some(latest_odds) = state.odds_history.last() {
-                if let Some(surebet) = Self::find_quick_surebet(&state.event, latest_odds, self.min_profit, self.default_stake) {
+                if let Some(surebet) = Self::find_quick_surebet(
+                    &state.event,
+                    latest_odds,
+                    self.min_profit,
+                    self.default_stake,
+                ) {
                     surebets.push(surebet);
                 }
             }
@@ -76,17 +83,27 @@ impl MomentumScanner {
 
     pub fn cleanup_stale(&self, max_age_secs: i64) {
         let cutoff = Utc::now() - chrono::Duration::seconds(max_age_secs);
-        self.live_events.retain(|_, state| state.last_update >= cutoff);
+        self.live_events
+            .retain(|_, state| state.last_update >= cutoff);
     }
 
     pub fn stats(&self) -> MomentumStats {
         let total = self.live_events.len();
-        let high_momentum = self.live_events.iter().filter(|e| e.value().momentum_score >= 0.7).count();
-        MomentumStats { total_tracked: total, high_momentum }
+        let high_momentum = self
+            .live_events
+            .iter()
+            .filter(|e| e.value().momentum_score >= 0.7)
+            .count();
+        MomentumStats {
+            total_tracked: total,
+            high_momentum,
+        }
     }
 
     fn calc_momentum(history: &[Vec<Odd>]) -> f64 {
-        if history.len() < 2 { return 0.0; }
+        if history.len() < 2 {
+            return 0.0;
+        }
         let mut total_change = 0.0_f64;
         let mut change_count = 0_u64;
 
@@ -94,7 +111,10 @@ impl MomentumScanner {
             let prev = &window[0];
             let curr = &window[1];
             for p in prev {
-                if let Some(c) = curr.iter().find(|o| o.selection == p.selection && o.market == p.market) {
+                if let Some(c) = curr
+                    .iter()
+                    .find(|o| o.selection == p.selection && o.market == p.market)
+                {
                     let change = (c.odds - p.odds).abs() / p.odds;
                     total_change += change;
                     change_count += 1;
@@ -102,11 +122,18 @@ impl MomentumScanner {
             }
         }
 
-        if change_count == 0 { return 0.0; }
+        if change_count == 0 {
+            return 0.0;
+        }
         (total_change / change_count as f64 * 10.0).min(1.0)
     }
 
-    fn find_quick_surebet(event: &Event, odds: &[Odd], min_profit: f64, default_stake: f64) -> Option<Surebet> {
+    fn find_quick_surebet(
+        event: &Event,
+        odds: &[Odd],
+        min_profit: f64,
+        default_stake: f64,
+    ) -> Option<Surebet> {
         let by_market: HashMap<String, Vec<&Odd>> = {
             let mut m: HashMap<String, Vec<&Odd>> = HashMap::new();
             for odd in odds {
@@ -118,7 +145,11 @@ impl MomentumScanner {
 
         for (_market, market_odds) in &by_market {
             let mut seen = std::collections::HashSet::new();
-            let best: Vec<&Odd> = market_odds.iter().filter(|o| seen.insert(&o.bookmaker_slug)).cloned().collect();
+            let best: Vec<&Odd> = market_odds
+                .iter()
+                .filter(|o| seen.insert(&o.bookmaker_slug))
+                .cloned()
+                .collect();
 
             if best.len() >= 2 {
                 let odds_values: Vec<f64> = best.iter().map(|o| o.odds).collect();
@@ -136,16 +167,20 @@ impl MomentumScanner {
                             is_live: event.is_live,
                             profit_percent: profit,
                             total_stake: default_stake,
-                            legs: best.iter().zip(stakes.iter()).map(|(odd, &stake)| SurebetLeg {
-                                bookmaker: odd.bookmaker_slug.clone(),
-                                market: odd.market.clone(),
-                                selection: odd.selection.clone(),
-                                odds: odd.odds,
-                                line: odd.line,
-                                stake,
-                                payout,
-                                url: None,
-                            }).collect(),
+                            legs: best
+                                .iter()
+                                .zip(stakes.iter())
+                                .map(|(odd, &stake)| SurebetLeg {
+                                    bookmaker: odd.bookmaker_slug.clone(),
+                                    market: odd.market.clone(),
+                                    selection: odd.selection.clone(),
+                                    odds: odd.odds,
+                                    line: odd.line,
+                                    stake,
+                                    payout,
+                                    url: None,
+                                })
+                                .collect(),
                             detected_at: Utc::now(),
                             verified: false,
                             mirror: false,
@@ -172,10 +207,31 @@ mod tests {
     use std::collections::HashMap;
 
     fn make_event(id: &str, live: bool) -> Event {
-        Event { id: id.into(), sport: Sport::Football, league: "Test".into(), home_team: "A".into(), away_team: "B".into(), start_time: None, is_live: live, bookmaker_slug: "test".into(), raw_url: None, extra: HashMap::new() }
+        Event {
+            id: id.into(),
+            sport: Sport::Football,
+            league: "Test".into(),
+            home_team: "A".into(),
+            away_team: "B".into(),
+            start_time: None,
+            is_live: live,
+            bookmaker_slug: "test".into(),
+            raw_url: None,
+            extra: HashMap::new(),
+        }
     }
     fn make_odd(event_id: &str, bk: &str, sel: &str, odds: f64) -> Odd {
-        Odd { id: format!("{}-{}-{}", event_id, bk, sel), event_id: event_id.into(), bookmaker_slug: bk.into(), market: "1X2".into(), selection: sel.into(), odds, odds_type: OddsType::Home, line: None, timestamp: Utc::now() }
+        Odd {
+            id: format!("{}-{}-{}", event_id, bk, sel),
+            event_id: event_id.into(),
+            bookmaker_slug: bk.into(),
+            market: "1X2".into(),
+            selection: sel.into(),
+            odds,
+            odds_type: OddsType::Home,
+            line: None,
+            timestamp: Utc::now(),
+        }
     }
 
     #[test]

@@ -1,0 +1,25 @@
+{
+  "bk": "bettery",
+  "timestamp": "20260411_174758",
+  "total_endpoints": 7,
+  "endpoints": [
+    "https://origin.at58f5-resources.com/webStaticAT/website/2.3.147/locale/site/locale.at.ru.json",
+    "https://origin.at58f5-resources.com/webStaticAT/website/2.3.147/config-8150c83967645d42500ecee48104557b.json",
+    "https://line01.at58f5-resources.com/getApiState",
+    "https://clientsapi51.at58f5-resources.com/client/defaultProfile",
+    "https://clientsapi51.at58f5-resources.com/getApiState",
+    "https://clientsapi01.at58f5-resources.com/getApiState",
+    "https://line51.at58f5-resources.com/getApiState"
+  ],
+  "live_endpoints": [],
+  "prematch_endpoints": [],
+  "general_endpoints": [
+    "https://origin.at58f5-resources.com/webStaticAT/website/2.3.147/locale/site/locale.at.ru.json",
+    "https://origin.at58f5-resources.com/webStaticAT/website/2.3.147/config-8150c83967645d42500ecee48104557b.json",
+    "https://clientsapi51.at58f5-resources.com/client/defaultProfile",
+    "https://clientsapi51.at58f5-resources.com/getApiState",
+    "https://clientsapi01.at58f5-resources.com/getApiState",
+    "https://line01.at58f5-resources.com/getApiState",
+    "https://line51.at58f5-resources.com/getApiState"
+  ]
+}

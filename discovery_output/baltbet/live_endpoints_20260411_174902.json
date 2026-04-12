@@ -1,0 +1,13 @@
+{
+  "bk": "baltbet",
+  "type": "live",
+  "timestamp": "20260411_174902",
+  "endpoints": [
+    "https://bonus.baltbet.ru/api/campaigns/campaignsbanner?Page=0&Size=0&PageIndex=0&PageSize=0",
+    "https://baltbet.ru/Live/ToggleSportFilterItem?",
+    "https://events.baltbet.ru/api/live/table/fetch/diff",
+    "https://reg.baltbet.ru/api/custompage/content?subject=live&",
+    "https://baltbet.ru/resources/getresources/9b4b4ca364ae120cd7acca722f51f765d8c3c28c9e17bdf84a34636f20b498c8/ru",
+    "https://baltbet.ru/Live/EnableOnlyOneItem?"
+  ]
+}

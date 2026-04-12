@@ -12,12 +12,8 @@ impl CorridorCalculator {
         let by_market = Self::group_by_market(all_odds);
 
         for (_market_key, odds) in &by_market {
-            let over_odds: Vec<_> = odds.iter()
-                .filter(|o| Self::is_over(o))
-                .collect();
-            let under_odds: Vec<_> = odds.iter()
-                .filter(|o| Self::is_under(o))
-                .collect();
+            let over_odds: Vec<_> = odds.iter().filter(|o| Self::is_over(o)).collect();
+            let under_odds: Vec<_> = odds.iter().filter(|o| Self::is_under(o)).collect();
 
             for &over in &over_odds {
                 for &under in &under_odds {
@@ -28,12 +24,18 @@ impl CorridorCalculator {
                         if line_over > line_under {
                             let corridor_size = line_over - line_under;
                             if corridor_size >= min_corridor_size {
-                                let double_win_prob = Self::calc_double_win_probability(over.odds, under.odds);
-                                let expected_roi = Self::calc_expected_roi(over.odds, under.odds, corridor_size);
+                                let double_win_prob =
+                                    Self::calc_double_win_probability(over.odds, under.odds);
+                                let expected_roi =
+                                    Self::calc_expected_roi(over.odds, under.odds, corridor_size);
 
                                 corridors.push(shared::CorridorOpportunity {
                                     id: uuid::Uuid::new_v4(),
-                                    sport: over.market.contains("football").then(|| shared::Sport::Football).unwrap_or(shared::Sport::Other),
+                                    sport: over
+                                        .market
+                                        .contains("football")
+                                        .then(|| shared::Sport::Football)
+                                        .unwrap_or(shared::Sport::Other),
                                     league: String::new(),
                                     home_team: String::new(),
                                     away_team: String::new(),
@@ -58,7 +60,11 @@ impl CorridorCalculator {
             }
         }
 
-        corridors.sort_by(|a, b| b.expected_roi.partial_cmp(&a.expected_roi).unwrap_or(std::cmp::Ordering::Equal));
+        corridors.sort_by(|a, b| {
+            b.expected_roi
+                .partial_cmp(&a.expected_roi)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         corridors
     }
 
@@ -70,13 +76,19 @@ impl CorridorCalculator {
         let by_market = Self::group_by_market(all_odds);
 
         for (_market_key, odds) in &by_market {
-            let ah_odds: Vec<_> = odds.iter()
-                .filter(|o| o.market.to_lowercase().contains("asian") || o.market.to_lowercase().contains("азиат"))
+            let ah_odds: Vec<_> = odds
+                .iter()
+                .filter(|o| {
+                    o.market.to_lowercase().contains("asian")
+                        || o.market.to_lowercase().contains("азиат")
+                })
                 .collect();
 
             for (i, odd_a) in ah_odds.iter().enumerate() {
                 for odd_b in ah_odds.iter().skip(i + 1) {
-                    if odd_a.bookmaker_slug == odd_b.bookmaker_slug { continue; }
+                    if odd_a.bookmaker_slug == odd_b.bookmaker_slug {
+                        continue;
+                    }
                     if let (Some(line_a), Some(line_b)) = (odd_a.line, odd_b.line) {
                         if (line_a - line_b).abs() > 0.0 && (line_a - line_b).abs() <= 1.0 {
                             let corridor_size = (line_a - line_b).abs();

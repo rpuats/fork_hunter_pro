@@ -34,7 +34,7 @@ PARSERS = {
     },
     'baltbet': {
         'module': 'baltbet_playwright',
-        'class': 'BaltbetPlaywrightParser',
+        'class': 'BaltbetRegexParser',
         'urls': [
             "https://baltbet.ru/line",
             "https://baltbet.ru/live",

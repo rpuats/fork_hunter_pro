@@ -87,7 +87,7 @@ impl Default for ServerConfig {
     fn default() -> Self {
         Self {
             host: "0.0.0.0".to_string(),
-            port: 8080,
+            port: 9090,
             cors_origins: vec!["*".to_string()],
             ws_max_connections: 100,
         }
@@ -192,8 +192,14 @@ impl AppConfig {
             .set_default("proxies.rotation_strategy", "Random")?
             .set_default("bookmakers.enabled", Vec::<String>::new())?
             .set_default("bookmakers.disabled", Vec::<String>::new())?
-            .set_default("bookmakers.per_bookmaker_delay_ms", HashMap::<String, u64>::new())?
-            .set_default("bookmakers.per_bookmaker_timeout_secs", HashMap::<String, u64>::new())?;
+            .set_default(
+                "bookmakers.per_bookmaker_delay_ms",
+                HashMap::<String, u64>::new(),
+            )?
+            .set_default(
+                "bookmakers.per_bookmaker_timeout_secs",
+                HashMap::<String, u64>::new(),
+            )?;
 
         let config_path = PathBuf::from("config.yaml");
         if config_path.exists() {

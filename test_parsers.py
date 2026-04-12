@@ -5,7 +5,7 @@ sys.path.insert(0, '.')
 from scanner.parsers import (
     WinlinePlaywrightParser,
     PariPlaywrightParser,
-    BaltbetPlaywrightParser,
+    BaltbetRegexParser,
     BetteryPlaywrightParser,
     BetcityPlaywrightParser,
     MarathonPlaywrightParser,
@@ -17,7 +17,7 @@ async def test():
     parsers = [
         ('Winline', WinlinePlaywrightParser()),
         ('Pari', PariPlaywrightParser()),
-        ('Baltbet', BaltbetPlaywrightParser()),
+        ('Baltbet', BaltbetRegexParser()),
         ('Bettery', BetteryPlaywrightParser()),
         ('Betcity', BetcityPlaywrightParser()),
         ('Marathon', MarathonPlaywrightParser()),

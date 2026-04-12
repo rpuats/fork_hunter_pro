@@ -32,10 +32,13 @@ impl OddsErrorDetector {
 
             let odds_values: Vec<f64> = odds.iter().map(|o| o.odds).collect();
             let avg = odds_values.iter().sum::<f64>() / odds_values.len() as f64;
-            let variance: f64 = odds_values.iter().map(|&o| (o - avg).powi(2)).sum::<f64>() / odds_values.len() as f64;
+            let variance: f64 = odds_values.iter().map(|&o| (o - avg).powi(2)).sum::<f64>()
+                / odds_values.len() as f64;
             let std_dev = variance.sqrt();
 
-            if std_dev == 0.0 { continue; }
+            if std_dev == 0.0 {
+                continue;
+            }
 
             for odd in odds {
                 let deviation = ((odd.odds - avg).abs() / std_dev) * 100.0;
@@ -94,7 +97,14 @@ impl OddsErrorDetector {
     fn group_by_selection<'a>(&self, all_odds: &'a [Odd]) -> HashMap<String, Vec<&'a Odd>> {
         let mut map: HashMap<String, Vec<&'a Odd>> = HashMap::new();
         for odd in all_odds {
-            let key = format!("{}|{}|{}", odd.market, odd.selection, odd.line.map(|l| l.to_string()).unwrap_or_else(|| "none".into()));
+            let key = format!(
+                "{}|{}|{}",
+                odd.market,
+                odd.selection,
+                odd.line
+                    .map(|l| l.to_string())
+                    .unwrap_or_else(|| "none".into())
+            );
             map.entry(key).or_insert_with(Vec::new).push(odd);
         }
         map

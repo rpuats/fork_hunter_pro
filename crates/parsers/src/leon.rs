@@ -30,9 +30,15 @@ impl LeonParser {
 
 #[async_trait]
 impl BookmakerParser for LeonParser {
-    fn name(&self) -> &str { "Leon" }
-    fn slug(&self) -> &str { "leon" }
-    fn is_enabled(&self) -> bool { true }
+    fn name(&self) -> &str {
+        "Leon"
+    }
+    fn slug(&self) -> &str {
+        "leon"
+    }
+    fn is_enabled(&self) -> bool {
+        true
+    }
 
     async fn fetch_events(&self) -> Result<Vec<Event>, Box<dyn std::error::Error + Send + Sync>> {
         let mut all_events = Vec::new();
@@ -46,7 +52,10 @@ impl BookmakerParser for LeonParser {
         Ok(all_events)
     }
 
-    async fn fetch_odds(&self, _event_id: &str) -> Result<Vec<Odd>, Box<dyn std::error::Error + Send + Sync>> {
+    async fn fetch_odds(
+        &self,
+        _event_id: &str,
+    ) -> Result<Vec<Odd>, Box<dyn std::error::Error + Send + Sync>> {
         let mut all_odds = Vec::new();
         for (url, is_live) in [(&self.live_url, true), (&self.prematch_url, false)] {
             match self.fetch_api(url, is_live).await {
@@ -73,16 +82,29 @@ impl BookmakerParser for LeonParser {
         }
 
         let elapsed = start.elapsed().as_millis() as u64;
-        info!(events = all_events.len(), odds = all_odds.len(), time_ms = elapsed, "Leon fetch complete");
+        info!(
+            events = all_events.len(),
+            odds = all_odds.len(),
+            time_ms = elapsed,
+            "Leon fetch complete"
+        );
         Ok(ParserResult::new("leon", all_events, all_odds, elapsed))
     }
 
-    fn base_url(&self) -> &str { "https://leon.ru" }
-    fn user_agent(&self) -> &str { "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" }
+    fn base_url(&self) -> &str {
+        "https://leon.ru"
+    }
+    fn user_agent(&self) -> &str {
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
 }
 
 impl LeonParser {
-    async fn fetch_api(&self, url: &str, is_live: bool) -> Result<(Vec<Event>, Vec<Odd>), Box<dyn std::error::Error + Send + Sync>> {
+    async fn fetch_api(
+        &self,
+        url: &str,
+        is_live: bool,
+    ) -> Result<(Vec<Event>, Vec<Odd>), Box<dyn std::error::Error + Send + Sync>> {
         debug!(url = url, "Leon: fetching");
 
         let resp = self.client.get(url)
@@ -104,7 +126,10 @@ impl LeonParser {
         Self::parse_api_response(&json, is_live)
     }
 
-    fn parse_api_response(json: &serde_json::Value, is_live: bool) -> Result<(Vec<Event>, Vec<Odd>), Box<dyn std::error::Error + Send + Sync>> {
+    fn parse_api_response(
+        json: &serde_json::Value,
+        is_live: bool,
+    ) -> Result<(Vec<Event>, Vec<Odd>), Box<dyn std::error::Error + Send + Sync>> {
         let mut events = Vec::new();
         let mut all_odds = Vec::new();
         let now = Utc::now();
@@ -125,7 +150,8 @@ impl LeonParser {
             };
 
             let event_key = format!("leon-{}", event_id);
-            let league = league_name.unwrap_or_else(|| if is_live { "Live" } else { "Prematch" }.to_string());
+            let league = league_name
+                .unwrap_or_else(|| if is_live { "Live" } else { "Prematch" }.to_string());
 
             let sport = Sport::Football; // Leon API возвращает смешанные виды спорта, пока футбол
 
@@ -146,7 +172,10 @@ impl LeonParser {
             // Parse markets into odds
             if let Some(markets) = event_data.get("markets").and_then(|m| m.as_array()) {
                 for market in markets {
-                    let market_name = market.get("name").and_then(|v| v.as_str()).unwrap_or("unknown");
+                    let market_name = market
+                        .get("name")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown");
                     if let Some(runners) = market.get("runners").and_then(|r| r.as_array()) {
                         for runner in runners {
                             if let (Some(selection), Some(price)) = (
@@ -154,7 +183,8 @@ impl LeonParser {
                                 runner.get("price").and_then(|v| v.as_f64()),
                             ) {
                                 if price > 1.0 {
-                                    let odds_type = Self::selection_to_odds_type(selection, market_name);
+                                    let odds_type =
+                                        Self::selection_to_odds_type(selection, market_name);
                                     all_odds.push(Odd {
                                         id: format!("{}-{}-{}", event_key, market_name, selection),
                                         event_id: event_key.clone(),
@@ -178,7 +208,9 @@ impl LeonParser {
         Ok((events, all_odds))
     }
 
-    fn extract_event_info(data: &serde_json::Value) -> Option<(String, String, String, Option<String>)> {
+    fn extract_event_info(
+        data: &serde_json::Value,
+    ) -> Option<(String, String, String, Option<String>)> {
         let event_id = data.get("id")?.to_string().trim_matches('"').to_string();
 
         let competitors = data.get("competitors").and_then(|c| c.as_array())?;
@@ -186,17 +218,20 @@ impl LeonParser {
             return None;
         }
 
-        let home = competitors.get(0)
+        let home = competitors
+            .get(0)
             .and_then(|c| c.get("name"))
             .and_then(|v| v.as_str())?
             .to_string();
 
-        let away = competitors.get(1)
+        let away = competitors
+            .get(1)
             .and_then(|c| c.get("name"))
             .and_then(|v| v.as_str())?
             .to_string();
 
-        let league = data.get("league")
+        let league = data
+            .get("league")
             .and_then(|l| l.get("name"))
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
@@ -209,9 +244,14 @@ impl LeonParser {
         let market_lower = market_name.to_lowercase();
 
         if market_lower.contains("тотал") || market_lower.contains("total") {
-            if lower.contains("больше") || lower.contains("over") || lower == "тб" || lower == "tb" {
+            if lower.contains("больше") || lower.contains("over") || lower == "тб" || lower == "tb"
+            {
                 return OddsType::Over;
-            } else if lower.contains("меньше") || lower.contains("under") || lower == "тм" || lower == "tm" {
+            } else if lower.contains("меньше")
+                || lower.contains("under")
+                || lower == "тм"
+                || lower == "tm"
+            {
                 return OddsType::Under;
             }
         }

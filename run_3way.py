@@ -8,7 +8,7 @@ from scanner.parsers import (
     WinlinePlaywrightParser,
     PariPlaywrightParser,
     ZenitPlaywrightParser,
-    BaltbetPlaywrightParser,
+    BaltbetRegexParser,
 )
 
 
@@ -20,7 +20,7 @@ async def find():
         ('Winline', WinlinePlaywrightParser),
         ('Pari', PariPlaywrightParser),
         ('Zenit', ZenitPlaywrightParser),
-        ('Baltbet', BaltbetPlaywrightParser),
+        ('Baltbet', BaltbetRegexParser),
     ]
 
     for name, cls in parsers:

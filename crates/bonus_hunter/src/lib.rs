@@ -1,9 +1,9 @@
-pub mod hunter;
 pub mod calculator;
-pub mod plan;
 pub mod freebet;
+pub mod hunter;
+pub mod plan;
 
-pub use hunter::BonusHunter;
 pub use calculator::BonusCalculator;
-pub use plan::BonusPlanner;
 pub use freebet::FreebetPlanner;
+pub use hunter::BonusHunter;
+pub use plan::BonusPlanner;

@@ -74,7 +74,10 @@ impl EventPool {
     }
 
     pub fn get_all(&self) -> Vec<Event> {
-        self.events.iter().map(|e| e.value().event.clone()).collect()
+        self.events
+            .iter()
+            .map(|e| e.value().event.clone())
+            .collect()
     }
 
     pub fn get_bookmakers_for_event(&self, key: &str) -> Vec<String> {

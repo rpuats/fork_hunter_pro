@@ -23,8 +23,12 @@ impl PariParser {
     pub fn new(client: Arc<Client>) -> Self {
         Self {
             client,
-            live_url: "https://line-lb01-w.pb06e2-resources.com/events/list?lang=ru&scopeMarket=2300".to_string(),
-            prematch_url: "https://line-lb01-w.pb06e2-resources.com/events/listBase?lang=ru&scopeMarket=2300".to_string(),
+            live_url:
+                "https://line-lb01-w.pb06e2-resources.com/events/list?lang=ru&scopeMarket=2300"
+                    .to_string(),
+            prematch_url:
+                "https://line-lb01-w.pb06e2-resources.com/events/listBase?lang=ru&scopeMarket=2300"
+                    .to_string(),
         }
     }
 
@@ -42,9 +46,15 @@ impl PariParser {
 
 #[async_trait]
 impl BookmakerParser for PariParser {
-    fn name(&self) -> &str { "Pari" }
-    fn slug(&self) -> &str { "pari" }
-    fn is_enabled(&self) -> bool { true }
+    fn name(&self) -> &str {
+        "Pari"
+    }
+    fn slug(&self) -> &str {
+        "pari"
+    }
+    fn is_enabled(&self) -> bool {
+        true
+    }
 
     async fn fetch_events(&self) -> Result<Vec<Event>, Box<dyn std::error::Error + Send + Sync>> {
         let mut all_events = Vec::new();
@@ -58,7 +68,10 @@ impl BookmakerParser for PariParser {
         Ok(all_events)
     }
 
-    async fn fetch_odds(&self, _event_id: &str) -> Result<Vec<Odd>, Box<dyn std::error::Error + Send + Sync>> {
+    async fn fetch_odds(
+        &self,
+        _event_id: &str,
+    ) -> Result<Vec<Odd>, Box<dyn std::error::Error + Send + Sync>> {
         let mut all_odds = Vec::new();
         for (url, is_live) in [(&self.live_url, true), (&self.prematch_url, false)] {
             match self.fetch_api(url, is_live).await {
@@ -85,28 +98,43 @@ impl BookmakerParser for PariParser {
         }
 
         let elapsed = start.elapsed().as_millis() as u64;
-        debug!(events = all_events.len(), odds = all_odds.len(), time_ms = elapsed, "Pari fetch complete");
+        debug!(
+            events = all_events.len(),
+            odds = all_odds.len(),
+            time_ms = elapsed,
+            "Pari fetch complete"
+        );
         Ok(ParserResult::new("pari", all_events, all_odds, elapsed))
     }
 
-    fn base_url(&self) -> &str { "https://pari.ru" }
-    fn user_agent(&self) -> &str { "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" }
+    fn base_url(&self) -> &str {
+        "https://pari.ru"
+    }
+    fn user_agent(&self) -> &str {
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
 }
 
 impl PariParser {
-    async fn fetch_api(&self, url: &str, is_live: bool) -> Result<(Vec<Event>, Vec<Odd>), Box<dyn std::error::Error + Send + Sync>> {
+    async fn fetch_api(
+        &self,
+        url: &str,
+        is_live: bool,
+    ) -> Result<(Vec<Event>, Vec<Odd>), Box<dyn std::error::Error + Send + Sync>> {
         eprintln!("[PARI] Fetching {}", url);
-        
-        // Create a fresh client for each request
+
+        // Создаём клиент с поддержкой gzip
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(30))
+            .gzip(true)
             .build()?;
-        
+
         eprintln!("[PARI] Sending request...");
         let resp = client.get(url)
             .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
             .header("Accept", "application/json, text/plain, */*")
             .header("Accept-Language", "ru-RU,ru;q=0.9")
+            .header("Accept-Encoding", "gzip, deflate, br")
             .send()
             .await?;
 
@@ -125,7 +153,10 @@ impl PariParser {
         result
     }
 
-    fn parse_api_response(json: &serde_json::Value, is_live: bool) -> Result<(Vec<Event>, Vec<Odd>), Box<dyn std::error::Error + Send + Sync>> {
+    fn parse_api_response(
+        json: &serde_json::Value,
+        is_live: bool,
+    ) -> Result<(Vec<Event>, Vec<Odd>), Box<dyn std::error::Error + Send + Sync>> {
         // Parse events
         let events_data = match json.get("events").and_then(|e| e.as_array()) {
             Some(e) => e,
@@ -140,9 +171,15 @@ impl PariParser {
                 event_data.get("team1").and_then(|v| v.as_str()),
                 event_data.get("team2").and_then(|v| v.as_str()),
             ) {
-                let sport_id = event_data.get("sportId").and_then(|v| v.as_u64()).unwrap_or(0);
+                let sport_id = event_data
+                    .get("sportId")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0);
                 let start_time = event_data.get("startTime").and_then(|v| v.as_i64());
-                event_map.insert(id, (sport_id, team1.to_string(), team2.to_string(), start_time));
+                event_map.insert(
+                    id,
+                    (sport_id, team1.to_string(), team2.to_string(), start_time),
+                );
             }
         }
 
@@ -161,35 +198,46 @@ impl PariParser {
                         // Create event if not seen
                         if seen_events.insert(event_id) {
                             let sport = Self::sport_id_to_sport(*sport_id);
-                            let start_dt = start_time.map(|ts| chrono::DateTime::from_timestamp(ts, 0).unwrap_or_default());
-                            
-                            all_odds.push((Event {
-                                id: format!("pari-{}", event_id),
-                                sport,
-                                league: String::new(),
-                                home_team: team1.clone(),
-                                away_team: team2.clone(),
-                                start_time: start_dt,
-                                is_live,
-                                bookmaker_slug: "pari".to_string(),
-                                raw_url: None,
-                                extra: HashMap::new(),
-                            }, Vec::new()));
+                            let start_dt = start_time.map(|ts| {
+                                chrono::DateTime::from_timestamp(ts, 0).unwrap_or_default()
+                            });
+
+                            all_odds.push((
+                                Event {
+                                    id: format!("pari-{}", event_id),
+                                    sport,
+                                    league: String::new(),
+                                    home_team: team1.clone(),
+                                    away_team: team2.clone(),
+                                    start_time: start_dt,
+                                    is_live,
+                                    bookmaker_slug: "pari".to_string(),
+                                    raw_url: None,
+                                    extra: HashMap::new(),
+                                },
+                                Vec::new(),
+                            ));
                         }
 
                         // Parse factors into odds
-                        let event_idx = all_odds.iter().position(|(e, _)| e.id == format!("pari-{}", event_id));
+                        let event_idx = all_odds
+                            .iter()
+                            .position(|(e, _)| e.id == format!("pari-{}", event_id));
                         if let Some(idx) = event_idx {
                             for factor in factors {
                                 if let (Some(fid), Some(val)) = (
                                     factor.get("f").and_then(|v| v.as_u64()),
                                     factor.get("v").and_then(|v| v.as_f64()),
                                 ) {
-                                    if val <= 1.0 { continue; }
-                                    
-                                    let line = factor.get("p").and_then(|v| v.as_f64()).map(|p| p / 100.0);
-                                    let (market, selection, odds_type) = Self::factor_to_market(fid);
-                                    
+                                    if val <= 1.0 {
+                                        continue;
+                                    }
+
+                                    let line =
+                                        factor.get("p").and_then(|v| v.as_f64()).map(|p| p / 100.0);
+                                    let (market, selection, odds_type) =
+                                        Self::factor_to_market(fid);
+
                                     let (_, odds_vec) = &mut all_odds[idx];
                                     odds_vec.push(Odd {
                                         id: format!("pari-{}-{}", event_id, fid),
@@ -250,9 +298,17 @@ impl PariParser {
             1034 => ("2H_Result".into(), "X".into(), OddsType::Draw),
             1035 => ("2H_Result".into(), "2".into(), OddsType::Away),
             // Correct Score (partial)
-            1040..=1050 => ("CorrectScore".into(), format!("score_{}", fid), OddsType::Custom),
+            1040..=1050 => (
+                "CorrectScore".into(),
+                format!("score_{}", fid),
+                OddsType::Custom,
+            ),
             // Fallback
-            _ => (format!("factor_{}", fid), format!("{}", fid), OddsType::Custom),
+            _ => (
+                format!("factor_{}", fid),
+                format!("{}", fid),
+                OddsType::Custom,
+            ),
         }
     }
 

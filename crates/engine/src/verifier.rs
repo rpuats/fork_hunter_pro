@@ -85,7 +85,11 @@ impl OddsVerifier {
         result
     }
 
-    pub async fn batch_verify(&self, surebets: &[Surebet], all_odds: &[Odd]) -> Vec<VerificationResult> {
+    pub async fn batch_verify(
+        &self,
+        surebets: &[Surebet],
+        all_odds: &[Odd],
+    ) -> Vec<VerificationResult> {
         let mut results = Vec::new();
         for surebet in surebets {
             let result = self.verify_surebet(surebet, all_odds).await;
@@ -142,8 +146,26 @@ mod tests {
     async fn test_verify_valid_surebet() {
         let verifier = OddsVerifier::new(3, 10, 60);
         let legs = vec![
-            SurebetLeg { bookmaker: "bk1".into(), market: "1X2".into(), selection: "1".into(), odds: 2.10, line: None, stake: 500.0, payout: 1050.0, url: None },
-            SurebetLeg { bookmaker: "bk2".into(), market: "1X2".into(), selection: "2".into(), odds: 2.10, line: None, stake: 500.0, payout: 1050.0, url: None },
+            SurebetLeg {
+                bookmaker: "bk1".into(),
+                market: "1X2".into(),
+                selection: "1".into(),
+                odds: 2.10,
+                line: None,
+                stake: 500.0,
+                payout: 1050.0,
+                url: None,
+            },
+            SurebetLeg {
+                bookmaker: "bk2".into(),
+                market: "1X2".into(),
+                selection: "2".into(),
+                odds: 2.10,
+                line: None,
+                stake: 500.0,
+                payout: 1050.0,
+                url: None,
+            },
         ];
         let surebet = make_surebet(legs);
         let all_odds = vec![make_odd("bk1", "1", 2.10), make_odd("bk2", "2", 2.10)];
@@ -156,8 +178,26 @@ mod tests {
     async fn test_verify_changed_odds() {
         let verifier = OddsVerifier::new(3, 10, 60);
         let legs = vec![
-            SurebetLeg { bookmaker: "bk1".into(), market: "1X2".into(), selection: "1".into(), odds: 2.10, line: None, stake: 500.0, payout: 1050.0, url: None },
-            SurebetLeg { bookmaker: "bk2".into(), market: "1X2".into(), selection: "2".into(), odds: 2.10, line: None, stake: 500.0, payout: 1050.0, url: None },
+            SurebetLeg {
+                bookmaker: "bk1".into(),
+                market: "1X2".into(),
+                selection: "1".into(),
+                odds: 2.10,
+                line: None,
+                stake: 500.0,
+                payout: 1050.0,
+                url: None,
+            },
+            SurebetLeg {
+                bookmaker: "bk2".into(),
+                market: "1X2".into(),
+                selection: "2".into(),
+                odds: 2.10,
+                line: None,
+                stake: 500.0,
+                payout: 1050.0,
+                url: None,
+            },
         ];
         let surebet = make_surebet(legs);
         let all_odds = vec![make_odd("bk1", "1", 1.80), make_odd("bk2", "2", 2.10)];

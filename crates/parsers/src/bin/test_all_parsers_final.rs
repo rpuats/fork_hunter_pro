@@ -34,8 +34,13 @@ async fn main() {
                 total_events += events;
                 total_odds += odds;
                 results.push((parser.name().to_string(), events, odds, elapsed));
-                println!("{}: {} событий, {} коэффициентов, {}ms", 
-                    parser.name(), events, odds, elapsed);
+                println!(
+                    "{}: {} событий, {} коэффициентов, {}ms",
+                    parser.name(),
+                    events,
+                    odds,
+                    elapsed
+                );
             }
             Ok(Err(e)) => {
                 println!("{}: ОШИБКА - {}", parser.name(), e);
@@ -54,8 +59,10 @@ async fn main() {
     println!("\nДетализация:");
     for (name, events, odds, time) in &results {
         let status = if *events > 0 { "✅" } else { "❌" };
-        println!("  {} {} - {} событий, {} коэффициентов, {}ms", 
-            status, name, events, odds, time);
+        println!(
+            "  {} {} - {} событий, {} коэффициентов, {}ms",
+            status, name, events, odds, time
+        );
     }
 
     println!("\n=== ГОТОВО ===");

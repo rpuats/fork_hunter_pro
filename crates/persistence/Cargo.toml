@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+auto_betting = { path = "../auto_betting" }
 shared = { path = "../shared" }
 engine = { path = "../engine" }
 sqlx.workspace = true
@@ -14,3 +15,6 @@ chrono.workspace = true
 uuid.workspace = true
 moka.workspace = true
 anyhow = "1.0"
+serde_json.workspace = true
+serde.workspace = true
+async-trait.workspace = true

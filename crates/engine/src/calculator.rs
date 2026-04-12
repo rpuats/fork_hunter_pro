@@ -2,7 +2,7 @@ use bloomfilter::Bloom;
 use chrono::Utc;
 use dashmap::DashMap;
 use parking_lot::RwLock;
-use shared::odds::{calculate_surebet_profit, calculate_stakes, OddsType};
+use shared::odds::{calculate_stakes, calculate_surebet_profit};
 use shared::{Event, Odd, Surebet, SurebetLeg};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -19,7 +19,13 @@ pub struct SurebetCalculator {
 }
 
 impl SurebetCalculator {
-    pub fn new(min_profit: f64, max_profit: f64, default_stake: f64, capacity: usize, error_rate: f64) -> Self {
+    pub fn new(
+        min_profit: f64,
+        max_profit: f64,
+        default_stake: f64,
+        capacity: usize,
+        error_rate: f64,
+    ) -> Self {
         Self {
             min_profit,
             max_profit,
@@ -36,7 +42,9 @@ impl SurebetCalculator {
         for event in events {
             if let Some(event_odds) = odds_by_event.get(&event.id) {
                 if let Some(surebet) = self.analyze_event(event, event_odds) {
-                    if surebet.profit_percent >= self.min_profit && surebet.profit_percent <= self.max_profit {
+                    if surebet.profit_percent >= self.min_profit
+                        && surebet.profit_percent <= self.max_profit
+                    {
                         let key = self.surebet_key(&surebet);
                         if !self.seen_surebets.read().check(&key) {
                             debug!(profit = surebet.profit_percent, "New surebet found");
@@ -78,7 +86,9 @@ impl SurebetCalculator {
     fn group_odds_by_event(&self, all_odds: &[Odd]) -> HashMap<String, Vec<Odd>> {
         let mut map = HashMap::new();
         for odd in all_odds {
-            map.entry(odd.event_id.clone()).or_insert_with(Vec::new).push(odd.clone());
+            map.entry(odd.event_id.clone())
+                .or_insert_with(Vec::new)
+                .push(odd.clone());
         }
         map
     }
@@ -98,7 +108,12 @@ impl SurebetCalculator {
     }
 
     /// Ищем вилку для конкретного рынка
-    fn find_market_surebet(&self, event: &Event, market_key: &str, odds: &[&Odd]) -> Option<Surebet> {
+    fn find_market_surebet(
+        &self,
+        event: &Event,
+        market_key: &str,
+        odds: &[&Odd],
+    ) -> Option<Surebet> {
         let lower = market_key.to_lowercase();
 
         // 3-way: 1X2, 1H_Result, 2H_Result
@@ -141,18 +156,33 @@ impl SurebetCalculator {
         for odd in odds {
             let sel = odd.selection.to_lowercase();
             if sel == "1" || sel == "п1" || sel == "home" {
-                if best_1.map_or(true, |b| odd.odds > b.odds) { best_1 = Some(odd); }
+                if best_1.map_or(true, |b| odd.odds > b.odds) {
+                    best_1 = Some(odd);
+                }
             } else if sel == "x" || sel == "draw" || sel == "х" || sel == "ничья" {
-                if best_x.map_or(true, |b| odd.odds > b.odds) { best_x = Some(odd); }
+                if best_x.map_or(true, |b| odd.odds > b.odds) {
+                    best_x = Some(odd);
+                }
             } else if sel == "2" || sel == "п2" || sel == "away" {
-                if best_2.map_or(true, |b| odd.odds > b.odds) { best_2 = Some(odd); }
+                if best_2.map_or(true, |b| odd.odds > b.odds) {
+                    best_2 = Some(odd);
+                }
             }
         }
 
         if let (Some(&o1), Some(&ox), Some(&o2)) = (best_1, best_x, best_2) {
             // Проверяем что все от разных БК
-            let bks: std::collections::HashSet<&str> = [o1.bookmaker_slug.as_str(), ox.bookmaker_slug.as_str(), o2.bookmaker_slug.as_str()].iter().cloned().collect();
-            if bks.len() < 2 { return None; } // Минимум 2 разные БК
+            let bks: std::collections::HashSet<&str> = [
+                o1.bookmaker_slug.as_str(),
+                ox.bookmaker_slug.as_str(),
+                o2.bookmaker_slug.as_str(),
+            ]
+            .iter()
+            .cloned()
+            .collect();
+            if bks.len() < 2 {
+                return None;
+            } // Минимум 2 разные БК
 
             if let Some(profit) = calculate_surebet_profit(&[o1.odds, ox.odds, o2.odds]) {
                 if profit >= self.min_profit {
@@ -169,9 +199,36 @@ impl SurebetCalculator {
                         profit_percent: profit,
                         total_stake: self.default_stake,
                         legs: vec![
-                            SurebetLeg { bookmaker: o1.bookmaker_slug.clone(), market: o1.market.clone(), selection: o1.selection.clone(), odds: o1.odds, line: o1.line, stake: stakes[0], payout, url: None },
-                            SurebetLeg { bookmaker: ox.bookmaker_slug.clone(), market: ox.market.clone(), selection: ox.selection.clone(), odds: ox.odds, line: ox.line, stake: stakes[1], payout, url: None },
-                            SurebetLeg { bookmaker: o2.bookmaker_slug.clone(), market: o2.market.clone(), selection: o2.selection.clone(), odds: o2.odds, line: o2.line, stake: stakes[2], payout, url: None },
+                            SurebetLeg {
+                                bookmaker: o1.bookmaker_slug.clone(),
+                                market: o1.market.clone(),
+                                selection: o1.selection.clone(),
+                                odds: o1.odds,
+                                line: o1.line,
+                                stake: stakes[0],
+                                payout,
+                                url: None,
+                            },
+                            SurebetLeg {
+                                bookmaker: ox.bookmaker_slug.clone(),
+                                market: ox.market.clone(),
+                                selection: ox.selection.clone(),
+                                odds: ox.odds,
+                                line: ox.line,
+                                stake: stakes[1],
+                                payout,
+                                url: None,
+                            },
+                            SurebetLeg {
+                                bookmaker: o2.bookmaker_slug.clone(),
+                                market: o2.market.clone(),
+                                selection: o2.selection.clone(),
+                                odds: o2.odds,
+                                line: o2.line,
+                                stake: stakes[2],
+                                payout,
+                                url: None,
+                            },
                         ],
                         detected_at: Utc::now(),
                         verified: false,
@@ -184,10 +241,15 @@ impl SurebetCalculator {
     }
 
     /// 2-way комплементарные: Over/Under, Handicap1/Handicap2 с той же линией
-    fn find_two_way_complementary(&self, event: &Event, market_key: &str, odds: &[&Odd]) -> Option<Surebet> {
+    fn find_two_way_complementary(
+        &self,
+        event: &Event,
+        market_key: &str,
+        odds: &[&Odd],
+    ) -> Option<Surebet> {
         // Извлекаем line из market_key
-        let line = if let Some(pos) = market_key.rfind('|') {
-            market_key[pos+1..].parse::<f64>().ok()
+        let _line = if let Some(pos) = market_key.rfind('|') {
+            market_key[pos + 1..].parse::<f64>().ok()
         } else {
             None
         };
@@ -197,22 +259,44 @@ impl SurebetCalculator {
 
         for odd in odds {
             let sel = odd.selection.to_lowercase();
-            let is_over = sel.contains("over") || sel.contains("больше") || sel.contains("тб") || sel.contains("да") || sel.contains("yes") || sel.contains("чёт") || sel.contains("even") || sel == "1";
-            let is_under = sel.contains("under") || sel.contains("меньше") || sel.contains("тм") || sel.contains("нет") || sel.contains("no") || sel.contains("нечет") || sel.contains("odd") || sel == "2";
+            let is_over = sel.contains("over")
+                || sel.contains("больше")
+                || sel.contains("тб")
+                || sel.contains("да")
+                || sel.contains("yes")
+                || sel.contains("чёт")
+                || sel.contains("even")
+                || sel == "1";
+            let is_under = sel.contains("under")
+                || sel.contains("меньше")
+                || sel.contains("тм")
+                || sel.contains("нет")
+                || sel.contains("no")
+                || sel.contains("нечет")
+                || sel.contains("odd")
+                || sel == "2";
 
             if is_over {
-                if best_over.map_or(true, |b| odd.odds > b.odds) { best_over = Some(odd); }
+                if best_over.map_or(true, |b| odd.odds > b.odds) {
+                    best_over = Some(odd);
+                }
             } else if is_under {
-                if best_under.map_or(true, |b| odd.odds > b.odds) { best_under = Some(odd); }
+                if best_under.map_or(true, |b| odd.odds > b.odds) {
+                    best_under = Some(odd);
+                }
             }
         }
 
         if let (Some(&o_over), Some(&o_under)) = (best_over, best_under) {
-            if o_over.bookmaker_slug == o_under.bookmaker_slug { return None; }
-            
+            if o_over.bookmaker_slug == o_under.bookmaker_slug {
+                return None;
+            }
+
             // Проверяем что line совпадает (для тоталов/фор)
             if let (Some(l1), Some(l2)) = (o_over.line, o_under.line) {
-                if (l1 - l2).abs() > 0.01 { return None; }
+                if (l1 - l2).abs() > 0.01 {
+                    return None;
+                }
             }
 
             if let Some(profit) = calculate_surebet_profit(&[o_over.odds, o_under.odds]) {
@@ -230,8 +314,26 @@ impl SurebetCalculator {
                         profit_percent: profit,
                         total_stake: self.default_stake,
                         legs: vec![
-                            SurebetLeg { bookmaker: o_over.bookmaker_slug.clone(), market: o_over.market.clone(), selection: o_over.selection.clone(), odds: o_over.odds, line: o_over.line, stake: stakes[0], payout, url: None },
-                            SurebetLeg { bookmaker: o_under.bookmaker_slug.clone(), market: o_under.market.clone(), selection: o_under.selection.clone(), odds: o_under.odds, line: o_under.line, stake: stakes[1], payout, url: None },
+                            SurebetLeg {
+                                bookmaker: o_over.bookmaker_slug.clone(),
+                                market: o_over.market.clone(),
+                                selection: o_over.selection.clone(),
+                                odds: o_over.odds,
+                                line: o_over.line,
+                                stake: stakes[0],
+                                payout,
+                                url: None,
+                            },
+                            SurebetLeg {
+                                bookmaker: o_under.bookmaker_slug.clone(),
+                                market: o_under.market.clone(),
+                                selection: o_under.selection.clone(),
+                                odds: o_under.odds,
+                                line: o_under.line,
+                                stake: stakes[1],
+                                payout,
+                                url: None,
+                            },
                         ],
                         detected_at: Utc::now(),
                         verified: false,
@@ -250,16 +352,32 @@ impl SurebetCalculator {
 
         for odd in odds {
             let sel = odd.selection.to_lowercase();
-            if sel.contains("yes") || sel.contains("да") || sel.contains("even") || sel.contains("чёт") || sel == "1" {
-                if best_yes.map_or(true, |b| odd.odds > b.odds) { best_yes = Some(odd); }
-            } else if sel.contains("no") || sel.contains("нет") || sel.contains("odd") || sel.contains("нечет") || sel == "2" {
-                if best_no.map_or(true, |b| odd.odds > b.odds) { best_no = Some(odd); }
+            if sel.contains("yes")
+                || sel.contains("да")
+                || sel.contains("even")
+                || sel.contains("чёт")
+                || sel == "1"
+            {
+                if best_yes.map_or(true, |b| odd.odds > b.odds) {
+                    best_yes = Some(odd);
+                }
+            } else if sel.contains("no")
+                || sel.contains("нет")
+                || sel.contains("odd")
+                || sel.contains("нечет")
+                || sel == "2"
+            {
+                if best_no.map_or(true, |b| odd.odds > b.odds) {
+                    best_no = Some(odd);
+                }
             }
         }
 
         if let (Some(&y), Some(&n)) = (best_yes, best_no) {
-            if y.bookmaker_slug == n.bookmaker_slug { return None; }
-            
+            if y.bookmaker_slug == n.bookmaker_slug {
+                return None;
+            }
+
             if let Some(profit) = calculate_surebet_profit(&[y.odds, n.odds]) {
                 if profit >= self.min_profit {
                     let stakes = calculate_stakes(&[y.odds, n.odds], self.default_stake);
@@ -275,8 +393,26 @@ impl SurebetCalculator {
                         profit_percent: profit,
                         total_stake: self.default_stake,
                         legs: vec![
-                            SurebetLeg { bookmaker: y.bookmaker_slug.clone(), market: y.market.clone(), selection: y.selection.clone(), odds: y.odds, line: y.line, stake: stakes[0], payout, url: None },
-                            SurebetLeg { bookmaker: n.bookmaker_slug.clone(), market: n.market.clone(), selection: n.selection.clone(), odds: n.odds, line: n.line, stake: stakes[1], payout, url: None },
+                            SurebetLeg {
+                                bookmaker: y.bookmaker_slug.clone(),
+                                market: y.market.clone(),
+                                selection: y.selection.clone(),
+                                odds: y.odds,
+                                line: y.line,
+                                stake: stakes[0],
+                                payout,
+                                url: None,
+                            },
+                            SurebetLeg {
+                                bookmaker: n.bookmaker_slug.clone(),
+                                market: n.market.clone(),
+                                selection: n.selection.clone(),
+                                odds: n.odds,
+                                line: n.line,
+                                stake: stakes[1],
+                                payout,
+                                url: None,
+                            },
                         ],
                         detected_at: Utc::now(),
                         verified: false,
@@ -297,11 +433,17 @@ impl SurebetCalculator {
         for odd in odds {
             let sel = odd.selection.to_lowercase();
             if sel == "1x" {
-                if best_1x.map_or(true, |b| odd.odds > b.odds) { best_1x = Some(odd); }
+                if best_1x.map_or(true, |b| odd.odds > b.odds) {
+                    best_1x = Some(odd);
+                }
             } else if sel == "12" {
-                if best_12.map_or(true, |b| odd.odds > b.odds) { best_12 = Some(odd); }
+                if best_12.map_or(true, |b| odd.odds > b.odds) {
+                    best_12 = Some(odd);
+                }
             } else if sel == "x2" {
-                if best_x2.map_or(true, |b| odd.odds > b.odds) { best_x2 = Some(odd); }
+                if best_x2.map_or(true, |b| odd.odds > b.odds) {
+                    best_x2 = Some(odd);
+                }
             }
         }
 
@@ -323,8 +465,26 @@ impl SurebetCalculator {
                             profit_percent: profit,
                             total_stake: self.default_stake,
                             legs: vec![
-                                SurebetLeg { bookmaker: a.bookmaker_slug.clone(), market: a.market.clone(), selection: a.selection.clone(), odds: a.odds, line: a.line, stake: stakes[0], payout, url: None },
-                                SurebetLeg { bookmaker: b.bookmaker_slug.clone(), market: b.market.clone(), selection: b.selection.clone(), odds: b.odds, line: b.line, stake: stakes[1], payout, url: None },
+                                SurebetLeg {
+                                    bookmaker: a.bookmaker_slug.clone(),
+                                    market: a.market.clone(),
+                                    selection: a.selection.clone(),
+                                    odds: a.odds,
+                                    line: a.line,
+                                    stake: stakes[0],
+                                    payout,
+                                    url: None,
+                                },
+                                SurebetLeg {
+                                    bookmaker: b.bookmaker_slug.clone(),
+                                    market: b.market.clone(),
+                                    selection: b.selection.clone(),
+                                    odds: b.odds,
+                                    line: b.line,
+                                    stake: stakes[1],
+                                    payout,
+                                    url: None,
+                                },
                             ],
                             detected_at: Utc::now(),
                             verified: false,
@@ -339,24 +499,37 @@ impl SurebetCalculator {
     }
 
     /// Multi-way вилка (для Correct Score и других рынков с N исходами)
-    fn find_multi_way_surebet(&self, event: &Event, odds: &[&Odd], min_outcomes: usize) -> Option<Surebet> {
+    fn find_multi_way_surebet(
+        &self,
+        event: &Event,
+        odds: &[&Odd],
+        min_outcomes: usize,
+    ) -> Option<Surebet> {
         // Группируем по selection
         let by_selection: std::collections::HashMap<String, Vec<&Odd>> = {
-            let mut m: std::collections::HashMap<String, Vec<&Odd>> = std::collections::HashMap::new();
+            let mut m: std::collections::HashMap<String, Vec<&Odd>> =
+                std::collections::HashMap::new();
             for odd in odds {
-                m.entry(odd.selection.to_lowercase()).or_default().push(*odd);
+                m.entry(odd.selection.to_lowercase())
+                    .or_default()
+                    .push(*odd);
             }
             m
         };
 
-        if by_selection.len() < min_outcomes { return None; }
+        if by_selection.len() < min_outcomes {
+            return None;
+        }
 
         // Берём лучший odds от разных БК для каждого selection
         let mut best_odds: Vec<&Odd> = Vec::new();
         let mut seen_bks: std::collections::HashSet<String> = std::collections::HashSet::new();
 
         for (_, group) in &by_selection {
-            if let Some(&best) = group.iter().max_by(|a, b| a.odds.partial_cmp(&b.odds).unwrap()) {
+            if let Some(&best) = group
+                .iter()
+                .max_by(|a, b| a.odds.partial_cmp(&b.odds).unwrap())
+            {
                 if !seen_bks.contains(&best.bookmaker_slug) {
                     seen_bks.insert(best.bookmaker_slug.clone());
                     best_odds.push(best);
@@ -364,15 +537,19 @@ impl SurebetCalculator {
             }
         }
 
-        if best_odds.len() < 2 { return None; }
+        if best_odds.len() < 2 {
+            return None;
+        }
 
         let odds_vec: Vec<f64> = best_odds.iter().map(|o| o.odds).collect();
         if let Some(profit) = calculate_surebet_profit(&odds_vec) {
             if profit >= self.min_profit {
                 let stakes = calculate_stakes(&odds_vec, self.default_stake);
                 let payout = stakes[0] * best_odds[0].odds;
-                let legs: Vec<SurebetLeg> = best_odds.iter().zip(stakes.iter()).map(|(o, &s)| {
-                    SurebetLeg {
+                let legs: Vec<SurebetLeg> = best_odds
+                    .iter()
+                    .zip(stakes.iter())
+                    .map(|(o, &s)| SurebetLeg {
                         bookmaker: o.bookmaker_slug.clone(),
                         market: o.market.clone(),
                         selection: o.selection.clone(),
@@ -381,8 +558,8 @@ impl SurebetCalculator {
                         stake: s,
                         payout,
                         url: None,
-                    }
-                }).collect();
+                    })
+                    .collect();
 
                 return Some(Surebet {
                     id: Uuid::new_v4(),
@@ -405,6 +582,7 @@ impl SurebetCalculator {
         None
     }
 
+    #[inline]
     fn group_by_market<'a>(&self, odds: &'a [Odd]) -> HashMap<String, Vec<&'a Odd>> {
         let mut map = HashMap::new();
         for odd in odds {
@@ -420,166 +598,13 @@ impl SurebetCalculator {
         map
     }
 
-    fn find_cross_bookmaker_surebet(&self, event: &Event, _market: &str, odds: &[&Odd]) -> Option<Surebet> {
-        let mut seen_bk = std::collections::HashSet::new();
-        let bookmakers: Vec<&Odd> = odds.iter()
-            .filter(|odd| seen_bk.insert(&odd.bookmaker_slug))
-            .cloned()
-            .collect();
-
-        if bookmakers.len() < 2 { return None; }
-
-        for (i, odd_a) in bookmakers.iter().enumerate() {
-            for odd_b in bookmakers.iter().skip(i + 1) {
-                if odd_a.bookmaker_slug == odd_b.bookmaker_slug { continue; }
-                if let Some(profit) = calculate_surebet_profit(&[odd_a.odds, odd_b.odds]) {
-                    if profit >= self.min_profit {
-                        let stakes = calculate_stakes(&[odd_a.odds, odd_b.odds], self.default_stake);
-                        let payout = stakes[0] * odd_a.odds;
-                        return Some(Surebet {
-                            id: Uuid::new_v4(),
-                            sport: event.sport.clone(),
-                            league: event.league.clone(),
-                            home_team: event.home_team.clone(),
-                            away_team: event.away_team.clone(),
-                            start_time: event.start_time,
-                            is_live: event.is_live,
-                            profit_percent: profit,
-                            total_stake: self.default_stake,
-                            legs: vec![
-                                SurebetLeg { bookmaker: odd_a.bookmaker_slug.clone(), market: odd_a.market.clone(), selection: odd_a.selection.clone(), odds: odd_a.odds, line: odd_a.line, stake: stakes[0], payout, url: None },
-                                SurebetLeg { bookmaker: odd_b.bookmaker_slug.clone(), market: odd_b.market.clone(), selection: odd_b.selection.clone(), odds: odd_b.odds, line: odd_b.line, stake: stakes[1], payout, url: None },
-                            ],
-                            detected_at: Utc::now(),
-                            verified: false,
-                            mirror: false,
-                        });
-                    }
-                }
-            }
-        }
-        None
-    }
-
-    /// Ищем 2-way вилки по комплементарным исходам (Over/Under с той же линией, Yes/No)
-    fn find_two_way_complementary_surebet(&self, event: &Event, odds: &[Odd]) -> Option<Surebet> {
-        // Группием по market + line (для тоталов/фор)
-        let mut by_market_line: HashMap<String, Vec<&Odd>> = HashMap::new();
-        for odd in odds {
-            let line_key = odd.line.map(|l| format!("{:.2}", l)).unwrap_or_default();
-            let key = format!("{}|{}", odd.market, line_key);
-            by_market_line.entry(key).or_default().push(odd);
-        }
-
-        // Для каждой группы ищем Over/Under или Yes/No от разных БК
-        for (_key, market_odds) in &by_market_line {
-            let mut best_over: Option<&Odd> = None;
-            let mut best_under: Option<&Odd> = None;
-
-            for odd in market_odds {
-                let sel = odd.selection.to_lowercase();
-                if sel.contains("over") || sel.contains("больше") || sel.contains("тб")
-                    || sel.contains("да") || sel.contains("yes") || sel.contains("чёт") || sel.contains("even") {
-                    if best_over.map_or(true, |b| odd.odds > b.odds) {
-                        best_over = Some(odd);
-                    }
-                } else if sel.contains("under") || sel.contains("меньше") || sel.contains("тм")
-                    || sel.contains("нет") || sel.contains("no") || sel.contains("нечет") || sel.contains("odd") {
-                    if best_under.map_or(true, |b| odd.odds > b.odds) {
-                        best_under = Some(odd);
-                    }
-                }
-            }
-
-            if let (Some(o_over), Some(o_under)) = (best_over, best_under) {
-                if o_over.bookmaker_slug == o_under.bookmaker_slug {
-                    continue; // Оба от одной БК — не вилка
-                }
-                if let Some(profit) = calculate_surebet_profit(&[o_over.odds, o_under.odds]) {
-                    if profit >= self.min_profit {
-                        let stakes = calculate_stakes(&[o_over.odds, o_under.odds], self.default_stake);
-                        let payout = stakes[0] * o_over.odds;
-                        return Some(Surebet {
-                            id: Uuid::new_v4(),
-                            sport: event.sport.clone(),
-                            league: event.league.clone(),
-                            home_team: event.home_team.clone(),
-                            away_team: event.away_team.clone(),
-                            start_time: event.start_time,
-                            is_live: event.is_live,
-                            profit_percent: profit,
-                            total_stake: self.default_stake,
-                            legs: vec![
-                                SurebetLeg { bookmaker: o_over.bookmaker_slug.clone(), market: o_over.market.clone(), selection: o_over.selection.clone(), odds: o_over.odds, line: o_over.line, stake: stakes[0], payout, url: None },
-                                SurebetLeg { bookmaker: o_under.bookmaker_slug.clone(), market: o_under.market.clone(), selection: o_under.selection.clone(), odds: o_under.odds, line: o_under.line, stake: stakes[1], payout, url: None },
-                            ],
-                            detected_at: Utc::now(),
-                            verified: false,
-                            mirror: false,
-                        });
-                    }
-                }
-            }
-        }
-        None
-    }
-
-    /// Ищем 3-way вилку: 1 от одной БК, X от другой, 2 от третьей (все на одном событии)
-    fn find_three_way_surebet(&self, event: &Event, odds: &[Odd]) -> Option<Surebet> {
-        let mut best_1: Option<&Odd> = None;
-        let mut best_x: Option<&Odd> = None;
-        let mut best_2: Option<&Odd> = None;
-
-        for odd in odds {
-            let sel = odd.selection.to_lowercase();
-            if sel == "1" || sel == "п1" || sel == "home" {
-                if best_1.map_or(true, |b| odd.odds > b.odds) {
-                    best_1 = Some(odd);
-                }
-            } else if sel == "x" || sel == "draw" || sel == "х" {
-                if best_x.map_or(true, |b| odd.odds > b.odds) {
-                    best_x = Some(odd);
-                }
-            } else if sel == "2" || sel == "п2" || sel == "away" {
-                if best_2.map_or(true, |b| odd.odds > b.odds) {
-                    best_2 = Some(odd);
-                }
-            }
-        }
-
-        if let (Some(o1), Some(ox), Some(o2)) = (best_1, best_x, best_2) {
-            if let Some(profit) = calculate_surebet_profit(&[o1.odds, ox.odds, o2.odds]) {
-                if profit >= self.min_profit {
-                    let stakes = calculate_stakes(&[o1.odds, ox.odds, o2.odds], self.default_stake);
-                    let payout = stakes[0] * o1.odds;
-                    return Some(Surebet {
-                        id: Uuid::new_v4(),
-                        sport: event.sport.clone(),
-                        league: event.league.clone(),
-                        home_team: event.home_team.clone(),
-                        away_team: event.away_team.clone(),
-                        start_time: event.start_time,
-                        is_live: event.is_live,
-                        profit_percent: profit,
-                        total_stake: self.default_stake,
-                        legs: vec![
-                            SurebetLeg { bookmaker: o1.bookmaker_slug.clone(), market: o1.market.clone(), selection: o1.selection.clone(), odds: o1.odds, line: o1.line, stake: stakes[0], payout, url: None },
-                            SurebetLeg { bookmaker: ox.bookmaker_slug.clone(), market: ox.market.clone(), selection: ox.selection.clone(), odds: ox.odds, line: ox.line, stake: stakes[1], payout, url: None },
-                            SurebetLeg { bookmaker: o2.bookmaker_slug.clone(), market: o2.market.clone(), selection: o2.selection.clone(), odds: o2.odds, line: o2.line, stake: stakes[2], payout, url: None },
-                        ],
-                        detected_at: Utc::now(),
-                        verified: false,
-                        mirror: false,
-                    });
-                }
-            }
-        }
-        None
-    }
-
     fn surebet_key(&self, surebet: &Surebet) -> Vec<u8> {
         let bks: Vec<String> = surebet.legs.iter().map(|l| l.bookmaker.clone()).collect();
-        let odds_str: Vec<String> = surebet.legs.iter().map(|l| format!("{}:{}", l.selection, l.odds)).collect();
+        let odds_str: Vec<String> = surebet
+            .legs
+            .iter()
+            .map(|l| format!("{}:{}", l.selection, l.odds))
+            .collect();
         let key = format!(
             "{}|{}|{}|{}",
             surebet.home_team,
@@ -599,7 +624,18 @@ mod tests {
     use std::collections::HashMap;
 
     fn make_event(id: &str) -> Event {
-        Event { id: id.to_string(), sport: Sport::Football, league: "Test League".into(), home_team: "Team A".into(), away_team: "Team B".into(), start_time: None, is_live: false, bookmaker_slug: "test".into(), raw_url: None, extra: HashMap::new() }
+        Event {
+            id: id.to_string(),
+            sport: Sport::Football,
+            league: "Test League".into(),
+            home_team: "Team A".into(),
+            away_team: "Team B".into(),
+            start_time: None,
+            is_live: false,
+            bookmaker_slug: "test".into(),
+            raw_url: None,
+            extra: HashMap::new(),
+        }
     }
     fn make_odd(event_id: &str, bookmaker: &str, selection: &str, odds: f64) -> Odd {
         let odds_type = match selection {
@@ -612,7 +648,17 @@ mod tests {
             "No" => OddsType::BothTeamsScoreNo,
             _ => OddsType::Home,
         };
-        Odd { id: format!("{}-{}-{}", event_id, bookmaker, selection), event_id: event_id.to_string(), bookmaker_slug: bookmaker.to_string(), market: "1X2".into(), selection: selection.to_string(), odds, odds_type, line: None, timestamp: Utc::now() }
+        Odd {
+            id: format!("{}-{}-{}", event_id, bookmaker, selection),
+            event_id: event_id.to_string(),
+            bookmaker_slug: bookmaker.to_string(),
+            market: "1X2".into(),
+            selection: selection.to_string(),
+            odds,
+            odds_type,
+            line: None,
+            timestamp: Utc::now(),
+        }
     }
 
     #[test]
@@ -621,8 +667,28 @@ mod tests {
         let event = make_event("evt1");
         // Используем тоталы — правильный 2-way рынок
         let odds = vec![
-            Odd { id: "evt1-bk1-over".into(), event_id: "evt1".into(), bookmaker_slug: "bk1".into(), market: "Total".into(), selection: "Over".into(), odds: 2.10, odds_type: OddsType::Over, line: Some(2.5), timestamp: Utc::now() },
-            Odd { id: "evt1-bk2-under".into(), event_id: "evt1".into(), bookmaker_slug: "bk2".into(), market: "Total".into(), selection: "Under".into(), odds: 2.10, odds_type: OddsType::Under, line: Some(2.5), timestamp: Utc::now() },
+            Odd {
+                id: "evt1-bk1-over".into(),
+                event_id: "evt1".into(),
+                bookmaker_slug: "bk1".into(),
+                market: "Total".into(),
+                selection: "Over".into(),
+                odds: 2.10,
+                odds_type: OddsType::Over,
+                line: Some(2.5),
+                timestamp: Utc::now(),
+            },
+            Odd {
+                id: "evt1-bk2-under".into(),
+                event_id: "evt1".into(),
+                bookmaker_slug: "bk2".into(),
+                market: "Total".into(),
+                selection: "Under".into(),
+                odds: 2.10,
+                odds_type: OddsType::Under,
+                line: Some(2.5),
+                timestamp: Utc::now(),
+            },
         ];
         let surebets = calc.find_surebets(&[event], &odds);
         assert!(!surebets.is_empty());
@@ -634,8 +700,28 @@ mod tests {
         let calc = SurebetCalculator::new(1.0, 30.0, 1000.0, 10000, 0.01);
         let event = make_event("evt2");
         let odds = vec![
-            Odd { id: "evt2-bk1-over".into(), event_id: "evt2".into(), bookmaker_slug: "bk1".into(), market: "Total".into(), selection: "Over".into(), odds: 1.50, odds_type: OddsType::Over, line: Some(2.5), timestamp: Utc::now() },
-            Odd { id: "evt2-bk2-under".into(), event_id: "evt2".into(), bookmaker_slug: "bk2".into(), market: "Total".into(), selection: "Under".into(), odds: 1.50, odds_type: OddsType::Under, line: Some(2.5), timestamp: Utc::now() },
+            Odd {
+                id: "evt2-bk1-over".into(),
+                event_id: "evt2".into(),
+                bookmaker_slug: "bk1".into(),
+                market: "Total".into(),
+                selection: "Over".into(),
+                odds: 1.50,
+                odds_type: OddsType::Over,
+                line: Some(2.5),
+                timestamp: Utc::now(),
+            },
+            Odd {
+                id: "evt2-bk2-under".into(),
+                event_id: "evt2".into(),
+                bookmaker_slug: "bk2".into(),
+                market: "Total".into(),
+                selection: "Under".into(),
+                odds: 1.50,
+                odds_type: OddsType::Under,
+                line: Some(2.5),
+                timestamp: Utc::now(),
+            },
         ];
         let surebets = calc.find_surebets(&[event], &odds);
         assert!(surebets.is_empty());
@@ -654,8 +740,28 @@ mod tests {
         let calc = SurebetCalculator::new(1.0, 30.0, 1000.0, 10000, 0.01);
         let event = make_event("evt3");
         let odds = vec![
-            Odd { id: "evt3-bk1-over".into(), event_id: "evt3".into(), bookmaker_slug: "bk1".into(), market: "Total".into(), selection: "Over".into(), odds: 2.10, odds_type: OddsType::Over, line: Some(2.5), timestamp: Utc::now() },
-            Odd { id: "evt3-bk2-under".into(), event_id: "evt3".into(), bookmaker_slug: "bk2".into(), market: "Total".into(), selection: "Under".into(), odds: 2.10, odds_type: OddsType::Under, line: Some(2.5), timestamp: Utc::now() },
+            Odd {
+                id: "evt3-bk1-over".into(),
+                event_id: "evt3".into(),
+                bookmaker_slug: "bk1".into(),
+                market: "Total".into(),
+                selection: "Over".into(),
+                odds: 2.10,
+                odds_type: OddsType::Over,
+                line: Some(2.5),
+                timestamp: Utc::now(),
+            },
+            Odd {
+                id: "evt3-bk2-under".into(),
+                event_id: "evt3".into(),
+                bookmaker_slug: "bk2".into(),
+                market: "Total".into(),
+                selection: "Under".into(),
+                odds: 2.10,
+                odds_type: OddsType::Under,
+                line: Some(2.5),
+                timestamp: Utc::now(),
+            },
         ];
         let surebets = calc.find_surebets(&[event.clone()], &odds);
         assert_eq!(surebets.len(), 1);
@@ -673,11 +779,11 @@ mod tests {
             make_odd("evt4", "bk2", "X", 4.00),
             make_odd("evt4", "bk3", "2", 3.80),
         ];
-        
+
         // Проверяем что 3-way profit положительный
         let profit = calculate_surebet_profit(&[3.50, 4.00, 3.80]);
         assert!(profit.is_some(), "3-way should have positive profit");
-        
+
         let surebets = calc.find_surebets(&[event], &odds);
         assert!(!surebets.is_empty(), "Should find 3-way surebet");
         assert_eq!(surebets[0].legs.len(), 3);
@@ -689,8 +795,28 @@ mod tests {
         let event = make_event("evt5");
         // Тотал Over 2.5 у bk1 и Under 2.5 у bk2
         let odds = vec![
-            Odd { id: "evt5-bk1-to".into(), event_id: "evt5".into(), bookmaker_slug: "bk1".into(), market: "Total".into(), selection: "Over".into(), odds: 2.05, odds_type: OddsType::Over, line: Some(2.5), timestamp: Utc::now() },
-            Odd { id: "evt5-bk2-tu".into(), event_id: "evt5".into(), bookmaker_slug: "bk2".into(), market: "Total".into(), selection: "Under".into(), odds: 2.05, odds_type: OddsType::Under, line: Some(2.5), timestamp: Utc::now() },
+            Odd {
+                id: "evt5-bk1-to".into(),
+                event_id: "evt5".into(),
+                bookmaker_slug: "bk1".into(),
+                market: "Total".into(),
+                selection: "Over".into(),
+                odds: 2.05,
+                odds_type: OddsType::Over,
+                line: Some(2.5),
+                timestamp: Utc::now(),
+            },
+            Odd {
+                id: "evt5-bk2-tu".into(),
+                event_id: "evt5".into(),
+                bookmaker_slug: "bk2".into(),
+                market: "Total".into(),
+                selection: "Under".into(),
+                odds: 2.05,
+                odds_type: OddsType::Under,
+                line: Some(2.5),
+                timestamp: Utc::now(),
+            },
         ];
         let surebets = calc.find_surebets(&[event], &odds);
         assert!(!surebets.is_empty());
@@ -704,8 +830,28 @@ mod tests {
         let event = make_event("evt6");
         // ОЗ Да у bk1 и ОЗ Нет у bk2
         let odds = vec![
-            Odd { id: "evt6-bk1-btts-yes".into(), event_id: "evt6".into(), bookmaker_slug: "bk1".into(), market: "BothTeamsScore".into(), selection: "Yes".into(), odds: 2.10, odds_type: OddsType::BothTeamsScoreYes, line: None, timestamp: Utc::now() },
-            Odd { id: "evt6-bk2-btts-no".into(), event_id: "evt6".into(), bookmaker_slug: "bk2".into(), market: "BothTeamsScore".into(), selection: "No".into(), odds: 2.00, odds_type: OddsType::BothTeamsScoreNo, line: None, timestamp: Utc::now() },
+            Odd {
+                id: "evt6-bk1-btts-yes".into(),
+                event_id: "evt6".into(),
+                bookmaker_slug: "bk1".into(),
+                market: "BothTeamsScore".into(),
+                selection: "Yes".into(),
+                odds: 2.10,
+                odds_type: OddsType::BothTeamsScoreYes,
+                line: None,
+                timestamp: Utc::now(),
+            },
+            Odd {
+                id: "evt6-bk2-btts-no".into(),
+                event_id: "evt6".into(),
+                bookmaker_slug: "bk2".into(),
+                market: "BothTeamsScore".into(),
+                selection: "No".into(),
+                odds: 2.00,
+                odds_type: OddsType::BothTeamsScoreNo,
+                line: None,
+                timestamp: Utc::now(),
+            },
         ];
         let surebets = calc.find_surebets(&[event], &odds);
         assert!(!surebets.is_empty());
@@ -718,12 +864,38 @@ mod tests {
         let event = make_event("evt7");
         // Over 2.5 у bk1 и Under 3.5 у bk2 — разные линии, НЕ вилка
         let odds = vec![
-            Odd { id: "evt7-bk1-to25".into(), event_id: "evt7".into(), bookmaker_slug: "bk1".into(), market: "Total".into(), selection: "Over".into(), odds: 2.05, odds_type: OddsType::Over, line: Some(2.5), timestamp: Utc::now() },
-            Odd { id: "evt7-bk2-tu35".into(), event_id: "evt7".into(), bookmaker_slug: "bk2".into(), market: "Total".into(), selection: "Under".into(), odds: 2.05, odds_type: OddsType::Under, line: Some(3.5), timestamp: Utc::now() },
+            Odd {
+                id: "evt7-bk1-to25".into(),
+                event_id: "evt7".into(),
+                bookmaker_slug: "bk1".into(),
+                market: "Total".into(),
+                selection: "Over".into(),
+                odds: 2.05,
+                odds_type: OddsType::Over,
+                line: Some(2.5),
+                timestamp: Utc::now(),
+            },
+            Odd {
+                id: "evt7-bk2-tu35".into(),
+                event_id: "evt7".into(),
+                bookmaker_slug: "bk2".into(),
+                market: "Total".into(),
+                selection: "Under".into(),
+                odds: 2.05,
+                odds_type: OddsType::Under,
+                line: Some(3.5),
+                timestamp: Utc::now(),
+            },
         ];
         // Это НЕ 2-way вилка (разные линии), но может быть коридор — не задача калькулятора вилок
         let surebets = calc.find_surebets(&[event], &odds);
         // Не должно найти — линии разные
-        assert!(surebets.is_empty() || surebets[0].legs.iter().all(|l| l.line == Some(2.5) || l.line == Some(3.5)));
+        assert!(
+            surebets.is_empty()
+                || surebets[0]
+                    .legs
+                    .iter()
+                    .all(|l| l.line == Some(2.5) || l.line == Some(3.5))
+        );
     }
 }

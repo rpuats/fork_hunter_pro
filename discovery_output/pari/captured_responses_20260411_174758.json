@@ -1,0 +1,1511 @@
+[
+  {
+    "url": "https://origin.pb06e2-resources.com/webStaticPB/website/2.3.147/config-dbdb59b422584e1f0927b13d5085b1ea.json",
+    "method": "GET",
+    "content_type": "application/json",
+    "size": 580347,
+    "data_sample": {
+      "common": "<dict>",
+      "couponSettings": "<dict>",
+      "profileSettings": "<dict>",
+      "betHistorySettings": "<dict>",
+      "objectModel": "<dict>",
+      "sportSetting": "<dict>",
+      "bonusesSettings": "<dict>",
+      "helpCenterSetting": "<dict>",
+      "clientSupportSetting": "<dict>",
+      "paymentsSettings": "<dict>"
+    },
+    "structure": {
+      "type": "object",
+      "keys": [
+        "common",
+        "couponSettings",
+        "profileSettings",
+        "betHistorySettings",
+        "objectModel",
+        "sportSetting",
+        "bonusesSettings",
+        "helpCenterSetting",
+        "clientSupportSetting",
+        "paymentsSettings",
+        "accountSettings",
+        "identSettings",
+        "pwa",
+        "betRadarSettings",
+        "prohibitionSetting",
+        "chatSettings",
+        "application",
+        "registrationSettings",
+        "smsCodeHelpSettings"
+      ],
+      "nested": {
+        "common": {
+          "type": "object",
+          "keys": [
+            "siteAlias",
+            "scopeMarket",
+            "languages",
+            "authMode",
+            "restorePasswordMode",
+            "numberFormat",
+            "currencyFormat",
+            "dateDescription",
+            "emptyBalanceThreshold",
+            "highMargin",
+            "haveSport",
+            "showLastLoginInfo",
+            "factorValueType"
+          ],
+          "nested": {
+            "languages": {
+              "type": "array",
+              "item_keys": [
+                "isoCode",
+                "isoCode3",
+                "fileName",
+                "caption",
+                "iconResourceName",
+                "rendertron"
+              ]
+            },
+            "authMode": {
+              "type": "array",
+              "length": 3
+            },
+            "restorePasswordMode": {
+              "type": "array",
+              "length": 2
+            }
+          }
+        },
+        "couponSettings": {
+          "type": "object",
+          "keys": [
+            "couponSumMaxValue",
+            "minSumForSingleCoupon",
+            "minSumForCoupon",
+            "defaultBetSum"
+          ],
+          "nested": {}
+        },
+        "profileSettings": {
+          "type": "object",
+          "keys": [
+            "profileSystemSettingsVersion",
+            "settingsConfigs"
+          ],
+          "nested": {
+            "settingsConfigs": {
+              "type": "array",
+              "item_keys": [
+                "kind",
+                "versionOfAppearanceInProfileSystemSettings",
+                "priority"
+              ]
+            }
+          }
+        },
+        "betHistorySettings": {
+          "type": "object",
+          "keys": [
+            "couponHistoryBetTypeNames"
+          ],
+          "nested": {
+            "couponHistoryBetTypeNames": {
+              "type": "array",
+              "length": 2
+            }
+          }
+        },
+        "objectModel": {
+          "type": "object",
+          "keys": [
+            "sports",
+            "factors",
+            "eventKinds",
+            "translations",
+            "sportStats",
+            "frameStats"
+          ],
+          "nested": {
+            "sports": {
+              "type": "array",
+              "item_keys": [
+                "id",
+                "color",
+                "colorDesktop",
+                "competitionColor",
+                "iconColor",
+                "alias",
+                "iconAlias"
+              ]
+            },
+            "factors": {
+              "type": "object",
+              "keys": [
+                "win1FactorsId",
+                "drawFactorsId",
+                "win2FactorsId",
+                "mainFactorsId",
+                "totalMoreFactorsId",
+                "totalLessFactorsId",
+                "handicapMoreFactorsId",
+                "handicapLessFactorsId"
+              ],
+              "nested": {
+                "win1FactorsId": {
+                  "type": "array",
+                  "length": 3
+                },
+                "drawFactorsId": {
+                  "type": "array",
+                  "length": 2
+                },
+                "win2FactorsId": {
+                  "type": "array",
+                  "length": 3
+                },
+                "mainFactorsId": {
+                  "type": "array",
+                  "length": 6
+                },
+                "totalMoreFactorsId": {
+                  "type": "array",
+                  "length": 3
+                }
+              }
+            },
+            "eventKinds": {
+              "type": "object",
+              "keys": [
+                "extraTime",
+                "penalty",
+                "overtime",
+                "shootout",
+                "corners",
+                "yellowCards",
+                "hockeyShots",
+                "threePoints",
+                "aces",
+                "doubleFaults",
+                "tours",
+                "overtimePeriods"
+              ],
+              "nested": {}
+            },
+            "translations": {
+              "type": "object",
+              "keys": [
+                "channelsId",
+                "fullScreenBannedChannels"
+              ],
+              "nested": {
+                "channelsId": {
+                  "type": "object",
+                  "keys": [
+                    "audioChannelId",
+                    "matchCenterId"
+                  ],
+                  "nested": {}
+                },
+                "fullScreenBannedChannels": {
+                  "type": "array",
+                  "length": 3
+                }
+              }
+            },
+            "sportStats": {
+              "type": "object",
+              "keys": [
+                "use",
+                "sports"
+              ],
+              "nested": {
+                "sports": {
+                  "type": "array",
+                  "length": 17
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "page_type": "general",
+    "timestamp": "2026-04-11T17:47:49.389270"
+  },
+  {
+    "url": "https://origin.pb06e2-resources.com/webStaticPB/website/2.3.147/locale/site/locale.pb.ru.json",
+    "method": "GET",
+    "content_type": "application/json",
+    "size": 264991,
+    "data_sample": {
+      "code": "ru",
+      "name": "Русский",
+      "key": "rus",
+      "currencyShort": "<dict>",
+      "main": "<dict>",
+      "loginAuthorizing": "Авторизация...",
+      "loginButtonLogin": "Вход",
+      "loginButtonLogout": "Выйти",
+      "loginError": "<dict>",
+      "loginLabelForgotPassword": "Забыли пароль?"
+    },
+    "structure": {
+      "type": "object",
+      "keys": [
+        "code",
+        "name",
+        "key",
+        "currencyShort",
+        "main",
+        "loginAuthorizing",
+        "loginButtonLogin",
+        "loginButtonLogout",
+        "loginError",
+        "loginLabelForgotPassword",
+        "loginLabelHideBalance",
+        "loginLabelPhone",
+        "loginLabelLogin",
+        "loginLabelPassword",
+        "loginLabelRegistration",
+        "loginLabelShowBalance",
+        "loginUserNameBefore",
+        "loginUserStackBefore",
+        "loginMyAccount",
+        "comingSoon",
+        "serverTemporarilyUnavailable",
+        "appPage",
+        "line",
+        "tote",
+        "infoService",
+        "coupon",
+        "stats",
+        "results",
+        "settings",
+        "errors",
+        "footer",
+        "months",
+        "months2",
+        "week",
+        "home",
+        "notFound",
+        "confirm",
+        "registration",
+        "registrationCyprus",
+        "restorePassword",
+        "accountErrors",
+        "changePassword",
+        "controls",
+        "time",
+        "account",
+        "articles",
+        "serviceUnavailable",
+        "accessToSite",
+        "phoneNumber",
+        "accountNumber",
+        "email",
+        "paymentsTitle",
+        "statisticsPage",
+        "switchToMobileWebsite",
+        "sessionDialog",
+        "loginDeposit",
+        "how2play",
+        "registrationPhotoInstruction",
+        "registrationCupis",
+        "registrationRV",
+        "registrationBk",
+        "registrationQiwi",
+        "cupisRegistrationTypePage",
+        "how2register",
+        "registrationBK",
+        "rulesAgree",
+        "accessDenied",
+        "needVerification",
+        "faqPage",
+        "loginForm",
+        "registrationV4",
+        "eventView",
+        "confirmCookiePolicyDialog",
+        "championship",
+        "iso",
+        "daysOfWeek",
+        "identification",
+        "autoComplete",
+        "calculator",
+        "registrationKZ",
+        "registrationGreece",
+        "currency",
+        "loyalty",
+        "translations",
+        "how2play_2",
+        "forecasts",
+        "ti",
+        "loginByPhone",
+        "loginById",
+        "loginByEmail",
+        "loginLabelEmail",
+        "date",
+        "siteNotAvailableInContry",
+        "loginEnterAuthCode",
+        "login2faInfo",
+        "inAppMessages",
+        "eventViewSwitcher",
+        "loginAuthCode",
+        "fallbacks",
+        "inAppMessage",
+        "loginUserBonuses",
+        "losingLimits",
+        "sports",
+        "header",
+        "stakemat",
+        "uxControls",
+        "map",
+        "helpCenter",
+        "menu",
+        "breadCrumbs",
+        "NewMainPage",
+        "Casino",
+        "WelcomeBanner",
+        "registrationUzBet",
+        "deposit",
+        "hello",
+        "canadaState",
+        "registrationFonDotBet",
+        "navigator",
+        "limitsPeriod",
+        "clubs",
+        "install",
+        "mobile",
+        "alreadyHaveAnAccount",
+        "iHaveAPromoCode",
+        "language",
+        "routeNotFound",
+        "serverError",
+        "widgetError",
+        "apps",
+        "welcomeBanner",
+        "b2b",
+        "sportResults",
+        "siteNotAvailableInCountry",
+        "siteNotAvailableInCountryDescription",
+        "emptyList",
+        "monthsShort",
+        "inApp",
+        "aboutUs",
+        "videoIdent",
+        "bonusesAndActions",
+        "blockAvoidance",
+        "quickGames",
+        "paymentQI",
+        "meta",
+        "languageSettings",
+        "lottery",
+        "docs",
+        "comboBox",
+        "pushActions",
+        "notificationTurnAppeal",
+        "twa",
+        "abc",
+        "statistics",
+        "LocaleInterface",
+        "cookie",
+        "media",
+        "tournaments",
+        "enterValidPhone",
+        "smsConfirmation",
+        "noticeSessionData",
+        "bookmakerPromo",
+        "locale",
+        "spellNumber",
+        "mc",
+        "recentHistoryPage",
+        "mobileStakemat",
+        "aiAssistant",
+        "promos"
+      ],
+      "nested": {
+        "currencyShort": {
+          "type": "object",
+          "keys": [
+            "RUB",
+            "USD"
+          ],
+          "nested": {}
+        },
+        "main": {
+          "type": "object",
+          "keys": [
+            "emptyList",
+            "yes",
+            "no",
+            "save",
+            "time",
+            "inputText",
+            "back",
+            "changed",
+            "until",
+            "rules3",
+            "helpCenter3",
+            "sorting",
+            "tryAgainSpread",
+            "fillThisField",
+            "description",
+            "inFormat",
+            "collapse",
+            "promoSingle",
+            "notChosen",
+            "hidePassword",
+            "showPassword",
+            "clear",
+            "more",
+            "close",
+            "expand",
+            "otherAmount",
+            "or",
+            "continue",
+            "and",
+            "update",
+            "updateAvailable",
+            "ok",
+            "min",
+            "coupon",
+            "cancel",
+            "ok2",
+            "updateOffer",
+            "updateOfferDescription",
+            "open",
+            "install",
+            "later",
+            "toAccessNewFeatures",
+            "gotIt",
+            "comeBack",
+            "forFreeMonthNumber",
+            "forSixMonthNumber",
+            "tryLater",
+            "didYouMeant",
+            "apply",
+            "setupLater"
+          ],
+          "nested": {
+            "time": {
+              "type": "object",
+              "keys": [
+                "today",
+                "forWeek",
+                "forMonth",
+                "forThreeMonth",
+                "forAllTime",
+                "forSixMonth",
+                "forFreeMonthNumber",
+                "forSixMonthNumber",
+                "forThreeMonthNumber"
+              ],
+              "nested": {}
+            }
+          }
+        }
+      }
+    },
+    "page_type": "general",
+    "timestamp": "2026-04-11T17:47:49.869606"
+  },
+  {
+    "url": "https://line-lb01-w.pb06e2-resources.com/getApiState",
+    "method": "POST",
+    "content_type": "application/json; charset=utf-8",
+    "size": 119,
+    "data_sample": {
+      "result": "apiState",
+      "stateTime": "2026-04-11 14:47:50",
+      "state": "<dict>"
+    },
+    "structure": {
+      "type": "object",
+      "keys": [
+        "result",
+        "stateTime",
+        "state"
+      ],
+      "nested": {
+        "state": {
+          "type": "object",
+          "keys": [
+            "line"
+          ],
+          "nested": {
+            "line": {
+              "type": "object",
+              "keys": [
+                "ready",
+                "delay",
+                "commandList"
+              ],
+              "nested": {
+                "commandList": {
+                  "type": "array",
+                  "length": 1
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "page_type": "general",
+    "timestamp": "2026-04-11T17:47:50.059085"
+  },
+  {
+    "url": "https://line-lb51-w.pb06e2-resources.com/getApiState",
+    "method": "POST",
+    "content_type": "application/json; charset=utf-8",
+    "size": 119,
+    "data_sample": {
+      "result": "apiState",
+      "stateTime": "2026-04-11 14:47:50",
+      "state": "<dict>"
+    },
+    "structure": {
+      "type": "object",
+      "keys": [
+        "result",
+        "stateTime",
+        "state"
+      ],
+      "nested": {
+        "state": {
+          "type": "object",
+          "keys": [
+            "line"
+          ],
+          "nested": {
+            "line": {
+              "type": "object",
+              "keys": [
+                "ready",
+                "delay",
+                "commandList"
+              ],
+              "nested": {
+                "commandList": {
+                  "type": "array",
+                  "length": 1
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "page_type": "general",
+    "timestamp": "2026-04-11T17:47:50.079110"
+  },
+  {
+    "url": "https://clientsapi-lb51-w.pb06e2-resources.com/getApiState",
+    "method": "POST",
+    "content_type": "application/json; charset=utf-8",
+    "size": 1628,
+    "data_sample": {
+      "result": "apiState",
+      "stateTime": "2026-04-11 14:47:49",
+      "state": "<dict>"
+    },
+    "structure": {
+      "type": "object",
+      "keys": [
+        "result",
+        "stateTime",
+        "state"
+      ],
+      "nested": {
+        "state": {
+          "type": "object",
+          "keys": [
+            "selfApi",
+            "client",
+            "clientOperations",
+            "content",
+            "couponBet",
+            "couponBetSlipInfo",
+            "couponGetMinMax",
+            "totoGetMinMax",
+            "couponInfo",
+            "couponList",
+            "couponSell",
+            "betsHistory",
+            "totoBet",
+            "createProcessWithCaptcha",
+            "fonTV",
+            "freebetList",
+            "getDictionaries",
+            "getVersions",
+            "jsAgent",
+            "litotaAccount",
+            "loyalty",
+            "bonusManager",
+            "clientSupport",
+            "analytics",
+            "segment",
+            "geoIp",
+            "totoGetDraw",
+            "seo",
+            "inAppMessage",
+            "extSysInt",
+            "helpCenter",
+            "bonus",
+            "widget",
+            "favorites",
+            "QuickGames",
+            "mailing",
+            "nl",
+            "shortLinks",
+            "media",
+            "captcha",
+            "results"
+          ],
+          "nested": {
+            "selfApi": {
+              "type": "object",
+              "keys": [
+                "ready",
+                "delay"
+              ],
+              "nested": {}
+            },
+            "client": {
+              "type": "object",
+              "keys": [
+                "ready",
+                "delay"
+              ],
+              "nested": {}
+            },
+            "clientOperations": {
+              "type": "object",
+              "keys": [
+                "ready",
+                "delay"
+              ],
+              "nested": {}
+            },
+            "content": {
+              "type": "object",
+              "keys": [
+                "ready",
+                "delay"
+              ],
+              "nested": {}
+            },
+            "couponBet": {
+              "type": "object",
+              "keys": [
+                "ready",
+                "delay"
+              ],
+              "nested": {}
+            }
+          }
+        }
+      }
+    },
+    "page_type": "general",
+    "timestamp": "2026-04-11T17:47:50.180396"
+  },
+  {
+    "url": "https://clientsapi-lb51-w.pb06e2-resources.com/client/defaultProfile",
+    "method": "POST",
+    "content_type": "application/json; charset=utf-8",
+    "size": 1772,
+    "data_sample": {
+      "result": "defaultProfile",
+      "defaultProfile": "<dict>"
+    },
+    "structure": {
+      "type": "object",
+      "keys": [
+        "result",
+        "defaultProfile"
+      ],
+      "nested": {
+        "defaultProfile": {
+          "type": "object",
+          "keys": [
+            "version",
+            "commonSettings",
+            "systemSettings"
+          ],
+          "nested": {
+            "commonSettings": {
+              "type": "object",
+              "keys": [
+                "oneClickBet",
+                "oneClickBetSum",
+                "newBetSumByPrev",
+                "flexOptions",
+                "favoriteBetsSumKind",
+                "favoriteBetsSumPercent",
+                "favoriteBetsSumAbsolute",
+                "autoConfirm",
+                "sessionLifetime",
+                "hideBalance",
+                "loyaltyHiddenNoticeIds",
+                "favoriteDepositSum",
+                "favoriteWithdrawSum",
+                "oneClickDeposit",
+                "oneClickDepositSum",
+                "oneClickDepositPsId",
+                "hideBetsProfit",
+                "lastDepositSum",
+                "lastDepositSums",
+                "lastWithdrawalSum",
+                "sportCustomOrders",
+                "lastDepositPS",
+                "lastWithdrawalPS",
+                "preferredAccent",
+                "factorValueType",
+                "favoriteSports",
+                "hideBetSell",
+                "casinoProMode",
+                "promoOnBoardingViewed",
+                "hidePromoValuesInSport",
+                "educationViewed",
+                "storiesViewed",
+                "sportRecentHistory"
+              ],
+              "nested": {}
+            },
+            "systemSettings": {
+              "type": "object",
+              "keys": [
+                "showEventNums",
+                "sellOnAnyTab",
+                "compactBetView",
+                "coloredBetResult",
+                "compactFooter",
+                "accountMenuCompactView",
+                "eventFilterViewKind",
+                "autoCollapseInEventList",
+                "autoCollapseCoupons",
+                "hideAcceptedCouponsOnTabRecent",
+                "hiddenBanners",
+                "loyaltySliderCollapsed",
+                "newEventView",
+                "autoExpandInEventList",
+                "sportTableCompact",
+                "sportAutoCollapseNodes",
+                "sportAllEventsCollapsedByDefault",
+                "sportSortCompetitionsByCaption",
+                "sportOnBoarding",
+                "couponOnBoarding",
+                "blockAvoidanceVisited",
+                "themeOptionOld",
+                "sportOnBoardingViewed",
+                "sportTipViewed",
+                "unfixFavBetSumPanel",
+                "viewedSettingsVersion",
+                "showCouponAtFirstBet",
+                "showCouponEventStartTime",
+                "showCouponEventLiveTimer",
+                "sortCouponBetsByEventStartTime",
+                "couponCompactMode",
+                "themeOption",
+                "showScrollUpButton"
+              ],
+              "nested": {}
+            }
+          }
+        }
+      }
+    },
+    "page_type": "general",
+    "timestamp": "2026-04-11T17:47:52.299698"
+  },
+  {
+    "url": "https://clientsapi-lb51-w.pb06e2-resources.com/getScopeSettings",
+    "method": "POST",
+    "content_type": "application/json; charset=utf-8",
+    "size": 251,
+    "data_sample": {
+      "result": "scopeSettings",
+      "settings": "<dict>"
+    },
+    "structure": {
+      "type": "object",
+      "keys": [
+        "result",
+        "settings"
+      ],
+      "nested": {
+        "settings": {
+          "type": "object",
+          "keys": [
+            "fullAuthInterval",
+            "inactivityTimeout",
+            "showLastLoginPopup",
+            "oauthKinds",
+            "passKeyEnabled",
+            "videoIdentOffDemand",
+            "selfExclusionCancelByClient",
+            "selfExclusionCancelByClientCooldown"
+          ],
+          "nested": {
+            "oauthKinds": {
+              "type": "array",
+              "length": 0
+            }
+          }
+        }
+      }
+    },
+    "page_type": "general",
+    "timestamp": "2026-04-11T17:47:53.619050"
+  },
+  {
+    "url": "https://clientsapi-lb51-w.pb06e2-resources.com/content/getActualContent",
+    "method": "POST",
+    "content_type": "application/json; charset=utf-8",
+    "size": 12139,
+    "data_sample": {
+      "result": "contents",
+      "contents": "<list>",
+      "scopeMarketId": "2300"
+    },
+    "structure": {
+      "type": "object",
+      "keys": [
+        "result",
+        "contents",
+        "scopeMarketId"
+      ],
+      "nested": {
+        "contents": {
+          "type": "array",
+          "item_keys": [
+            "items",
+            "version",
+            "hasMoreData",
+            "initialPacket"
+          ]
+        }
+      }
+    },
+    "page_type": "general",
+    "timestamp": "2026-04-11T17:47:53.914275"
+  },
+  {
+    "url": "https://clientsapi-lb51-w.pb06e2-resources.com/content/getActualContent",
+    "method": "POST",
+    "content_type": "application/json; charset=utf-8",
+    "size": 132,
+    "data_sample": {
+      "result": "contents",
+      "contents": "<list>",
+      "scopeMarketId": "2300"
+    },
+    "structure": {
+      "type": "object",
+      "keys": [
+        "result",
+        "contents",
+        "scopeMarketId"
+      ],
+      "nested": {
+        "contents": {
+          "type": "array",
+          "item_keys": [
+            "items",
+            "version",
+            "hasMoreData",
+            "initialPacket"
+          ]
+        }
+      }
+    },
+    "page_type": "general",
+    "timestamp": "2026-04-11T17:47:53.915709"
+  },
+  {
+    "url": "https://clientsapi-lb51-w.pb06e2-resources.com/content/getActualContent",
+    "method": "POST",
+    "content_type": "application/json; charset=utf-8",
+    "size": 657,
+    "data_sample": {
+      "result": "contents",
+      "contents": "<list>",
+      "scopeMarketId": "2300"
+    },
+    "structure": {
+      "type": "object",
+      "keys": [
+        "result",
+        "contents",
+        "scopeMarketId"
+      ],
+      "nested": {
+        "contents": {
+          "type": "array",
+          "item_keys": [
+            "items",
+            "version",
+            "hasMoreData",
+            "initialPacket"
+          ]
+        }
+      }
+    },
+    "page_type": "general",
+    "timestamp": "2026-04-11T17:47:53.916681"
+  },
+  {
+    "url": "https://clientsapi-lb51-w.pb06e2-resources.com/content/getContentFromVersion",
+    "method": "POST",
+    "content_type": "application/json; charset=utf-8",
+    "size": 289,
+    "data_sample": {
+      "result": "contents",
+      "contents": "<list>",
+      "scopeMarketId": "2300"
+    },
+    "structure": {
+      "type": "object",
+      "keys": [
+        "result",
+        "contents",
+        "scopeMarketId"
+      ],
+      "nested": {
+        "contents": {
+          "type": "array",
+          "item_keys": [
+            "items",
+            "version",
+            "hasMoreData",
+            "initialPacket"
+          ]
+        }
+      }
+    },
+    "page_type": "general",
+    "timestamp": "2026-04-11T17:47:54.302324"
+  },
+  {
+    "url": "https://clientsapi-lb51-w.pb06e2-resources.com/media/getSettings",
+    "method": "POST",
+    "content_type": "application/json; charset=utf-8",
+    "size": 20298,
+    "data_sample": {
+      "result": "mediaSettings",
+      "settings": "<dict>"
+    },
+    "structure": {
+      "type": "object",
+      "keys": [
+        "result",
+        "settings"
+      ],
+      "nested": {
+        "settings": {
+          "type": "object",
+          "keys": [
+            "rootCaption",
+            "rootCategories",
+            "forecasts",
+            "articles"
+          ],
+          "nested": {
+            "rootCategories": {
+              "type": "array",
+              "item_keys": [
+                "id",
+                "caption",
+                "alias",
+                "seoNoIndex",
+                "seoMetaTitle",
+                "seoMetaDescription",
+                "seoText",
+                "h1",
+                "sortOrder"
+              ]
+            },
+            "forecasts": {
+              "type": "object",
+              "keys": [
+                "categories",
+                "tags"
+              ],
+              "nested": {
+                "categories": {
+                  "type": "array",
+                  "item_keys": [
+                    "id",
+                    "caption",
+                    "alias",
+                    "seoNoIndex",
+                    "seoMetaTitle",
+                    "seoMetaDescription",
+                    "seoText",
+                    "h1",
+                    "color",
+                    "today",
+                    "tomorrow",
+                    "sportId",
+                    "sortOrder"
+                  ]
+                },
+                "tags": {
+                  "type": "array",
+                  "item_keys": [
+                    "id",
+                    "caption",
+                    "shortCaption",
+                    "alias",
+                    "seoNoIndex",
+                    "seoMetaTitle",
+                    "seoMetaDescription",
+                    "seoText",
+                    "h1",
+                    "sortOrder",
+                    "showForMainPage"
+                  ]
+                }
+              }
+            },
+            "articles": {
+              "type": "object",
+              "keys": [
+                "categories",
+                "tags"
+              ],
+              "nested": {
+                "categories": {
+                  "type": "array",
+                  "item_keys": [
+                    "id",
+                    "caption",
+                    "alias",
+                    "seoNoIndex",
+                    "seoMetaTitle",
+                    "seoMetaDescription",
+                    "seoText",
+                    "h1",
+                    "color",
+                    "sportId",
+                    "sortOrder"
+                  ]
+                },
+                "tags": {
+                  "type": "array",
+                  "item_keys": [
+                    "id",
+                    "caption",
+                    "shortCaption",
+                    "alias",
+                    "seoNoIndex",
+                    "seoMetaTitle",
+                    "seoMetaDescription",
+                    "seoText",
+                    "h1",
+                    "sortOrder",
+                    "showForMainPage"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "page_type": "general",
+    "timestamp": "2026-04-11T17:47:54.459786"
+  },
+  {
+    "url": "https://line-lb51-w.pb06e2-resources.com/line/factorsCatalog/specialTables?version=0&lang=ru&sysId=21",
+    "method": "GET",
+    "content_type": "application/json; charset=utf-8",
+    "size": 58921,
+    "data_sample": {
+      "request": "factorsCatalog/specialTables",
+      "result": "specialTables",
+      "lang": "ru",
+      "version": "1569312722",
+      "specialTables": "<list>"
+    },
+    "structure": {
+      "type": "object",
+      "keys": [
+        "request",
+        "result",
+        "lang",
+        "version",
+        "specialTables"
+      ],
+      "nested": {
+        "specialTables": {
+          "type": "array",
+          "item_keys": [
+            "id",
+            "gridType",
+            "lineCaptionType",
+            "eventColumnCaption",
+            "caption",
+            "lineEventKinds",
+            "columns",
+            "groupByEventKind"
+          ]
+        }
+      }
+    },
+    "page_type": "general",
+    "timestamp": "2026-04-11T17:47:54.573382"
+  },
+  {
+    "url": "https://clientsapi-lb51-w.pb06e2-resources.com/media/getMedia",
+    "method": "POST",
+    "content_type": "application/json; charset=utf-8",
+    "size": 13280,
+    "data_sample": {
+      "result": "mediaResponse",
+      "mediaResponse": "<dict>"
+    },
+    "structure": {
+      "type": "object",
+      "keys": [
+        "result",
+        "mediaResponse"
+      ],
+      "nested": {
+        "mediaResponse": {
+          "type": "object",
+          "keys": [
+            "forecasts",
+            "articles"
+          ],
+          "nested": {
+            "forecasts": {
+              "type": "object",
+              "keys": [
+                "popularPosts",
+                "recentPosts"
+              ],
+              "nested": {
+                "popularPosts": {
+                  "type": "array",
+                  "item_keys": [
+                    "id",
+                    "caption",
+                    "alias",
+                    "announce",
+                    "categoryAlias",
+                    "tag",
+                    "date",
+                    "seoNoIndex",
+                    "picture",
+                    "eventId",
+                    "team1Name",
+                    "team2Name",
+                    "team1Logo",
+                    "team2Logo",
+                    "useFlags"
+                  ]
+                },
+                "recentPosts": {
+                  "type": "array",
+                  "length": 0
+                }
+              }
+            },
+            "articles": {
+              "type": "object",
+              "keys": [
+                "posts"
+              ],
+              "nested": {
+                "posts": {
+                  "type": "array",
+                  "item_keys": [
+                    "id",
+                    "caption",
+                    "alias",
+                    "announce",
+                    "categoryAlias",
+                    "date",
+                    "seoNoIndex",
+                    "picture",
+                    "announcePicture"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "page_type": "general",
+    "timestamp": "2026-04-11T17:47:54.669645"
+  },
+  {
+    "url": "https://clientsapi-lb51-w.pb06e2-resources.com/content/getActualContent",
+    "method": "POST",
+    "content_type": "application/json; charset=utf-8",
+    "size": 12720,
+    "data_sample": {
+      "result": "contents",
+      "contents": "<list>",
+      "scopeMarketId": "2300"
+    },
+    "structure": {
+      "type": "object",
+      "keys": [
+        "result",
+        "contents",
+        "scopeMarketId"
+      ],
+      "nested": {
+        "contents": {
+          "type": "array",
+          "item_keys": [
+            "items",
+            "version",
+            "hasMoreData",
+            "initialPacket"
+          ]
+        }
+      }
+    },
+    "page_type": "general",
+    "timestamp": "2026-04-11T17:47:54.671081"
+  },
+  {
+    "url": "https://clientsapi-lb51-w.pb06e2-resources.com/loyalty/getNoAuthAvailableActions",
+    "method": "POST",
+    "content_type": "application/json; charset=utf-8",
+    "size": 49356,
+    "data_sample": {
+      "result": "actionInfoList",
+      "list": "<list>",
+      "currencies": "<list>"
+    },
+    "structure": {
+      "type": "object",
+      "keys": [
+        "result",
+        "list",
+        "currencies"
+      ],
+      "nested": {
+        "list": {
+          "type": "array",
+          "item_keys": [
+            "actionId",
+            "action",
+            "welcomeBannerKeys",
+            "welcomeBannerFrames"
+          ]
+        },
+        "currencies": {
+          "type": "array",
+          "item_keys": [
+            "id",
+            "sign"
+          ]
+        }
+      }
+    },
+    "page_type": "general",
+    "timestamp": "2026-04-11T17:47:54.676229"
+  },
+  {
+    "url": "https://line-lb51-w.pb06e2-resources.com/sportEvent/geoCategories?version=0&lang=ru&scopeMarket=2300",
+    "method": "GET",
+    "content_type": "application/json; charset=utf-8",
+    "size": 22478,
+    "data_sample": {
+      "request": "sportEvent/geoCategories",
+      "result": "geoCategories",
+      "lang": "ru",
+      "version": "209450362200",
+      "geoCategoryGroups": "<list>",
+      "geoCategories": "<list>"
+    },
+    "structure": {
+      "type": "object",
+      "keys": [
+        "request",
+        "result",
+        "lang",
+        "version",
+        "geoCategoryGroups",
+        "geoCategories"
+      ],
+      "nested": {
+        "geoCategoryGroups": {
+          "type": "array",
+          "item_keys": [
+            "id",
+            "caption"
+          ]
+        }
+      }
+    },
+    "page_type": "general",
+    "timestamp": "2026-04-11T17:47:54.683039"
+  },
+  {
+    "url": "https://line-lb51-w.pb06e2-resources.com/line/factorsCatalog/sportBasicFactors?version=0&lang=ru&systemType=desktop",
+    "method": "GET",
+    "content_type": "application/json; charset=utf-8",
+    "size": 72343,
+    "data_sample": {
+      "request": "factorsCatalog/sportBasicFactors",
+      "result": "sportBasicFactors",
+      "lang": "ru",
+      "version": "1578468574",
+      "configs": "<list>"
+    },
+    "structure": {
+      "type": "object",
+      "keys": [
+        "request",
+        "result",
+        "lang",
+        "version",
+        "configs"
+      ],
+      "nested": {
+        "configs": {
+          "type": "array",
+          "item_keys": [
+            "id",
+            "systemType",
+            "sports",
+            "markets"
+          ]
+        }
+      }
+    },
+    "page_type": "general",
+    "timestamp": "2026-04-11T17:47:54.687665"
+  },
+  {
+    "url": "https://line-lb51-w.pb06e2-resources.com/sportEvent/sportCategories?version=0&lang=ru&scopeMarket=2300",
+    "method": "GET",
+    "content_type": "application/json; charset=utf-8",
+    "size": 90581,
+    "data_sample": {
+      "request": "sportEvent/sportCategories",
+      "result": "sportCategories",
+      "lang": "ru",
+      "version": "118599020371",
+      "sportCategories": "<list>"
+    },
+    "structure": {
+      "type": "object",
+      "keys": [
+        "request",
+        "result",
+        "lang",
+        "version",
+        "sportCategories"
+      ],
+      "nested": {
+        "sportCategories": {
+          "type": "array",
+          "item_keys": [
+            "id",
+            "caption",
+            "sport",
+            "routeAlias",
+            "sortOrder",
+            "icon"
+          ]
+        }
+      }
+    },
+    "page_type": "general",
+    "timestamp": "2026-04-11T17:47:54.779509"
+  },
+  {
+    "url": "https://line-lb01-w.pb06e2-resources.com/events/listLight?lang=ru&place=topnew&scopeMarket=2300",
+    "method": "GET",
+    "content_type": "application/json; charset=utf-8",
+    "size": 1271727,
+    "data_sample": {
+      "packetVersion": "74300506490",
+      "fromVersion": "0",
+      "catalogTablesVersion": "1579089321",
+      "catalogSpecialTablesVersion": "1569312722",
+      "catalogEventViewVersion": "1576096360",
+      "sportBasicMarketsVersion": "834446873",
+      "sportBasicFactorsVersion": "1578468574",
+      "independentFactorsVersion": "1536370191",
+      "factorsVersion": "73624423327",
+      "comboFactorsVersion": "0"
+    },
+    "structure": {
+      "type": "object",
+      "keys": [
+        "packetVersion",
+        "fromVersion",
+        "catalogTablesVersion",
+        "catalogSpecialTablesVersion",
+        "catalogEventViewVersion",
+        "sportBasicMarketsVersion",
+        "sportBasicFactorsVersion",
+        "independentFactorsVersion",
+        "factorsVersion",
+        "comboFactorsVersion",
+        "sportKindsVersion",
+        "topCompetitionsVersion",
+        "eventSmartFiltersVersion",
+        "geoCategoriesVersion",
+        "sportCategoriesVersion",
+        "publicPromos",
+        "topParameters",
+        "tournamentInfos",
+        "sports",
+        "events",
+        "topEvents",
+        "eventBlocks",
+        "eventMiscs",
+        "liveEventInfos",
+        "customFactors"
+      ],
+      "nested": {}
+    },
+    "page_type": "general",
+    "timestamp": "2026-04-11T17:47:54.954101"
+  },
+  {
+    "url": "https://clientsapi-lb51-w.pb06e2-resources.com/content/getContentFromVersion",
+    "method": "POST",
+    "content_type": "application/json; charset=utf-8",
+    "size": 133,
+    "data_sample": {
+      "result": "contents",
+      "contents": "<list>",
+      "scopeMarketId": "2300"
+    },
+    "structure": {
+      "type": "object",
+      "keys": [
+        "result",
+        "contents",
+        "scopeMarketId"
+      ],
+      "nested": {
+        "contents": {
+          "type": "array",
+          "item_keys": [
+            "items",
+            "version",
+            "hasMoreData",
+            "initialPacket"
+          ]
+        }
+      }
+    },
+    "page_type": "general",
+    "timestamp": "2026-04-11T17:47:55.311792"
+  }
+]

@@ -7,8 +7,8 @@ pub mod mirror;
 pub mod momentum;
 pub mod normalizer;
 pub mod odds_errors;
-pub mod verifier;
 pub mod value;
+pub mod verifier;
 
 pub use calculator::SurebetCalculator;
 pub use corridor::CorridorFinder;
@@ -19,5 +19,5 @@ pub use mirror::MirrorDetector;
 pub use momentum::MomentumScanner;
 pub use normalizer::Normalizer;
 pub use odds_errors::OddsErrorDetector;
-pub use verifier::OddsVerifier;
 pub use value::ValueDetector;
+pub use verifier::OddsVerifier;

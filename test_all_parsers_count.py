@@ -80,8 +80,8 @@ async def test_all():
     
     # Baltbet
     try:
-        from scanner.parsers.baltbet_playwright import BaltbetPlaywrightParser
-        p = BaltbetPlaywrightParser()
+        from scanner.parsers.baltbet_playwright import BaltbetRegexParser
+        p = BaltbetRegexParser()
         events = await p.get_events()
         results['Baltbet'] = len(events)
         print(f"Baltbet: {len(events)} events")

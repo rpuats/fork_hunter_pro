@@ -31,9 +31,15 @@ impl SportbetParser {
 
 #[async_trait]
 impl BookmakerParser for SportbetParser {
-    fn name(&self) -> &str { "Sportbet" }
-    fn slug(&self) -> &str { "sportbet" }
-    fn is_enabled(&self) -> bool { true }
+    fn name(&self) -> &str {
+        "Sportbet"
+    }
+    fn slug(&self) -> &str {
+        "sportbet"
+    }
+    fn is_enabled(&self) -> bool {
+        true
+    }
 
     async fn fetch_events(&self) -> Result<Vec<Event>, Box<dyn std::error::Error + Send + Sync>> {
         let mut all_events = Vec::new();
@@ -47,7 +53,10 @@ impl BookmakerParser for SportbetParser {
         Ok(all_events)
     }
 
-    async fn fetch_odds(&self, _event_id: &str) -> Result<Vec<Odd>, Box<dyn std::error::Error + Send + Sync>> {
+    async fn fetch_odds(
+        &self,
+        _event_id: &str,
+    ) -> Result<Vec<Odd>, Box<dyn std::error::Error + Send + Sync>> {
         let mut all_odds = Vec::new();
         for (url, is_live) in [(&self.live_url, true), (&self.prematch_url, false)] {
             match self.fetch_api(url, is_live).await {
@@ -74,16 +83,29 @@ impl BookmakerParser for SportbetParser {
         }
 
         let elapsed = start.elapsed().as_millis() as u64;
-        info!(events = all_events.len(), odds = all_odds.len(), time_ms = elapsed, "Sportbet fetch complete");
+        info!(
+            events = all_events.len(),
+            odds = all_odds.len(),
+            time_ms = elapsed,
+            "Sportbet fetch complete"
+        );
         Ok(ParserResult::new("sportbet", all_events, all_odds, elapsed))
     }
 
-    fn base_url(&self) -> &str { "https://sportbet.ru" }
-    fn user_agent(&self) -> &str { "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36" }
+    fn base_url(&self) -> &str {
+        "https://sportbet.ru"
+    }
+    fn user_agent(&self) -> &str {
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    }
 }
 
 impl SportbetParser {
-    async fn fetch_api(&self, url: &str, is_live: bool) -> Result<(Vec<Event>, Vec<Odd>), Box<dyn std::error::Error + Send + Sync>> {
+    async fn fetch_api(
+        &self,
+        url: &str,
+        is_live: bool,
+    ) -> Result<(Vec<Event>, Vec<Odd>), Box<dyn std::error::Error + Send + Sync>> {
         debug!(url = url, "Sportbet: fetching");
 
         let resp = self.client.get(url)
@@ -104,7 +126,10 @@ impl SportbetParser {
         Self::parse_api_response(&json, is_live)
     }
 
-    fn parse_api_response(json: &serde_json::Value, is_live: bool) -> Result<(Vec<Event>, Vec<Odd>), Box<dyn std::error::Error + Send + Sync>> {
+    fn parse_api_response(
+        json: &serde_json::Value,
+        is_live: bool,
+    ) -> Result<(Vec<Event>, Vec<Odd>), Box<dyn std::error::Error + Send + Sync>> {
         let mut events = Vec::new();
         let mut all_odds = Vec::new();
         let now = Utc::now();
@@ -123,13 +148,18 @@ impl SportbetParser {
         };
 
         let matches = json.get("m").and_then(|m| m.as_object());
-        let leagues: HashMap<String, String> = json.get("l")
+        let leagues: HashMap<String, String> = json
+            .get("l")
             .and_then(|l| l.as_array())
             .map(|arr| {
                 arr.iter()
                     .filter_map(|item| {
                         let id = item.get("i").and_then(|v| v.as_u64())?;
-                        let name = item.get("l").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                        let name = item
+                            .get("l")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .to_string();
                         Some((id.to_string(), name))
                     })
                     .collect()
@@ -137,16 +167,18 @@ impl SportbetParser {
             .unwrap_or_default();
 
         for (event_id, fixture_data) in fixtures {
-            let (home, away, league_id, sport_id, league_name_from_fixture) = match Self::extract_event_info(fixture_data) {
-                Some(info) => info,
-                None => continue,
-            };
+            let (home, away, league_id, sport_id, league_name_from_fixture) =
+                match Self::extract_event_info(fixture_data) {
+                    Some(info) => info,
+                    None => continue,
+                };
 
             // Use league name from fixture if available, otherwise lookup in leagues array
             let league_name = if !league_name_from_fixture.is_empty() {
                 league_name_from_fixture
             } else {
-                leagues.get(&league_id.to_string())
+                leagues
+                    .get(&league_id.to_string())
                     .cloned()
                     .unwrap_or_else(|| if is_live { "Live" } else { "Prematch" }.to_string())
             };
@@ -169,9 +201,15 @@ impl SportbetParser {
             events.push(event);
 
             // Parse markets from "m" section
-            if let Some(event_markets) = matches.and_then(|m| m.get(event_id)).and_then(|m| m.as_array()) {
+            if let Some(event_markets) = matches
+                .and_then(|m| m.get(event_id))
+                .and_then(|m| m.as_array())
+            {
                 for market in event_markets {
-                    let market_name = market.get("n").and_then(|v| v.as_str()).unwrap_or("unknown");
+                    let market_name = market
+                        .get("n")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("unknown");
 
                     if let Some(market_items) = market.get("m").and_then(|m| m.as_array()) {
                         for item in market_items {
@@ -182,9 +220,15 @@ impl SportbetParser {
                                         sel.get("o").and_then(|v| v.as_f64()),
                                     ) {
                                         if odds_val > 1.0 {
-                                            let odds_type = Self::selection_to_odds_type(selection_name, market_name);
+                                            let odds_type = Self::selection_to_odds_type(
+                                                selection_name,
+                                                market_name,
+                                            );
                                             all_odds.push(Odd {
-                                                id: format!("{}-{}-{}", event_key, market_name, selection_name),
+                                                id: format!(
+                                                    "{}-{}-{}",
+                                                    event_key, market_name, selection_name
+                                                ),
                                                 event_id: event_key.clone(),
                                                 bookmaker_slug: "sportbet".to_string(),
                                                 market: market_name.to_string(),
@@ -204,7 +248,11 @@ impl SportbetParser {
             }
         }
 
-        debug!(events = events.len(), odds = all_odds.len(), "Sportbet: parsed");
+        debug!(
+            events = events.len(),
+            odds = all_odds.len(),
+            "Sportbet: parsed"
+        );
         Ok((events, all_odds))
     }
 
@@ -214,21 +262,29 @@ impl SportbetParser {
             return None;
         }
 
-        let home = competitors.get(0)
+        let home = competitors
+            .get(0)
             .and_then(|c| c.get("n"))
             .and_then(|v| v.as_str())?
             .to_string();
 
-        let away = competitors.get(1)
+        let away = competitors
+            .get(1)
             .and_then(|c| c.get("n"))
             .and_then(|v| v.as_str())?
             .to_string();
 
         // CRITICAL: `s` is now match status ("NOT_STARTED"/"LIVE"), real sport ID is in `sid`
-        let league_id = data.get("tid").or_else(|| data.get("l")).and_then(|v| v.as_u64()).unwrap_or(0);
+        let league_id = data
+            .get("tid")
+            .or_else(|| data.get("l"))
+            .and_then(|v| v.as_u64())
+            .unwrap_or(0);
         let sport_id = data.get("sid").and_then(|v| v.as_u64()).unwrap_or(1);
         // Tournament name is directly in the fixture
-        let league_name = data.get("tn").or_else(|| data.get("l"))
+        let league_name = data
+            .get("tn")
+            .or_else(|| data.get("l"))
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
@@ -243,7 +299,8 @@ impl SportbetParser {
         if market_lower.contains("total") || market_lower.contains("тотал") {
             if lower.contains("over") || lower.contains("больше") || lower.contains("tb") {
                 return OddsType::Over;
-            } else if lower.contains("under") || lower.contains("меньше") || lower.contains("tm") {
+            } else if lower.contains("under") || lower.contains("меньше") || lower.contains("tm")
+            {
                 return OddsType::Under;
             }
         }
@@ -271,14 +328,14 @@ impl SportbetParser {
             15 => Sport::Volleyball,
             24 => Sport::Badminton,
             30 => Sport::Baseball,
-            46 => Sport::WaterPolo,     // Water Polo
+            46 => Sport::WaterPolo, // Water Polo
             49 => Sport::Handball,
-            63 => Sport::Darts,         // Darts
-            72 => Sport::Cricket,       // Cricket
-            89 => Sport::TableTennis,   // Table Tennis
-            107 => Sport::Rugby,        // Rugby League
-            134 => Sport::Futsal,       // Futsal
-            31118 => Sport::Tennis,     // Padel -> Tennis
+            63 => Sport::Darts,       // Darts
+            72 => Sport::Cricket,     // Cricket
+            89 => Sport::TableTennis, // Table Tennis
+            107 => Sport::Rugby,      // Rugby League
+            134 => Sport::Futsal,     // Futsal
+            31118 => Sport::Tennis,   // Padel -> Tennis
             _ => Sport::Other,
         }
     }
