@@ -121,6 +121,6 @@ Write-Host ("  - Rust workspace: {0}" -f ((Test-Path 'Cargo.toml') -and (-not $S
 Write-Host ("  - Legacy Python: {0}" -f (((Test-Path 'requirements.txt') -or (Test-Path 'pyproject.toml')) -and (-not $SkipPython)))
 Write-Host 'Next steps:'
 Write-Host '  1) Review .env and fill secrets only if needed'
-Write-Host '  2) .\worktrees.ps1'
+Write-Host '  2) . .\worktrees.ps1'
 Write-Host '  3) New-AgentWorktree -Name rust-core -Bootstrap'
-Write-Host '  4) Read DEV_SETUP.md and OPENCLAW_WORKFLOW.md'
+Write-Host '  4) Read DEV_SETUP.md, docs\onboarding\AUTONOMOUS_SWARM.md, and OPENCLAW_WORKFLOW.md'

@@ -233,6 +233,22 @@ class TestSurebetDetection:
         assert 'performance' in stats
 
     @patch('scanner.engine.ALL_PARSERS', [])
+    def test_get_corridors_uses_cached_runtime_results(self):
+        db = MockDatabase()
+        config = ScannerConfig(min_profit=0.1, enabled_sources=set())
+        with patch('scanner.engine.ALL_PARSERS', []):
+            scanner = GhostScanner(db, config)
+
+        scanner.corridors = [
+            {'id': 'c1', 'sport': 'football', 'expected_roi': 2.5},
+            {'id': 'c2', 'sport': 'hockey', 'expected_roi': 0.8},
+        ]
+
+        filtered = scanner.get_corridors(min_ev=1.0, sport='football')
+
+        assert filtered == [{'id': 'c1', 'sport': 'football', 'expected_roi': 2.5}]
+
+    @patch('scanner.engine.ALL_PARSERS', [])
     def test_get_bookmaker_stats(self):
         db = MockDatabase()
         config = ScannerConfig(min_profit=0.1, enabled_sources=set())

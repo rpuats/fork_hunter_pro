@@ -26,6 +26,51 @@ class BankrollUpdateRequest(BaseModel):
     initial_balance: Optional[float] = None
 
 
+@router.get("/api/v1/scanner/status")
+async def get_scanner_status():
+    if not scanner:
+        return ApiResponse(success=False, error="Scanner not initialized")
+
+    stats = scanner.get_stats()
+    parsers = stats.get('parsers', {})
+
+    return ApiResponse(success=True, data={
+        'running': stats.get('is_running', False),
+        'cycle_count': stats.get('total_cycles', 0),
+        'active_parsers': sum(1 for parser in parsers.values() if parser.get('events', 0) > 0),
+        'last_metrics': {
+            'cycle_time_ms': stats.get('last_cycle_time_ms', 0),
+            'events_parsed': stats.get('total_events', 0),
+            'surebets_found': stats.get('total_surebets', 0),
+            'active_bookmakers': sum(1 for parser in parsers.values() if parser.get('events', 0) > 0),
+            'failed_bookmakers': sum(1 for parser in parsers.values() if parser.get('error')),
+            'cache_hit_rate': stats.get('cache_stats', {}).get('hit_rate', 0),
+            'memory_mb': stats.get('performance', {}).get('memory', {}).get('current_mb', 0),
+            'timestamp': None,
+        }
+    })
+
+
+@router.get("/api/v1/metrics")
+async def get_metrics():
+    if not scanner:
+        return ApiResponse(success=False, error="Scanner not initialized")
+
+    stats = scanner.get_stats()
+    parsers = stats.get('parsers', {})
+
+    return ApiResponse(success=True, data={
+        'cycle_time_ms': stats.get('last_cycle_time_ms', 0),
+        'events_parsed': stats.get('total_events', 0),
+        'surebets_found': stats.get('total_surebets', 0),
+        'active_bookmakers': sum(1 for parser in parsers.values() if parser.get('events', 0) > 0),
+        'failed_bookmakers': sum(1 for parser in parsers.values() if parser.get('error')),
+        'cache_hit_rate': stats.get('cache_stats', {}).get('hit_rate', 0),
+        'memory_mb': stats.get('performance', {}).get('memory', {}).get('current_mb', 0),
+        'timestamp': None,
+    })
+
+
 @router.get("/api/v1/analytics/summary")
 async def get_analytics_summary():
     from services.analytics import analytics_engine
@@ -423,11 +468,7 @@ async def get_corridors(
     if not scanner:
         return ApiResponse(success=False, error="Scanner not initialized")
     
-    corridors = scanner.corridor_finder.find_corridors(
-        events=scanner.get_events(),
-        min_ev=min_ev,
-        sport=sport,
-    )
+    corridors = scanner.get_corridors(min_ev=min_ev, sport=sport)
     
     return ApiResponse(
         success=True,

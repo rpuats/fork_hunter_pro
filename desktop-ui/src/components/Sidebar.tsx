@@ -1,6 +1,6 @@
 import { motion } from 'framer-motion'
 import { 
-  LayoutDashboard, Zap, GitBranch, Layers, History, Settings, 
+  LayoutDashboard, Zap, GitBranch, Layers, History, Settings, Radar, Landmark,
   ChevronLeft, ChevronRight, Circle 
 } from 'lucide-react'
 import type { TabType } from '../types'
@@ -19,8 +19,10 @@ const tabs: { id: TabType; label: string; shortcut: string; icon: any; badge?: {
   { id: 'surebets', label: 'Вилки', shortcut: '⌘2', icon: Zap, badge: { text: 'LIVE', color: 'success' } },
   { id: 'corridors', label: 'Коридоры', shortcut: '⌘3', icon: GitBranch },
   { id: 'express', label: 'Экспрессы', shortcut: '⌘4', icon: Layers },
-  { id: 'history', label: 'История', shortcut: '⌘5', icon: History },
-  { id: 'settings', label: 'Настройки', shortcut: '⌘6', icon: Settings },
+  { id: 'operator', label: 'Execution', shortcut: '⌘5', icon: Radar },
+  { id: 'accounts', label: 'Accounts', shortcut: '⌘6', icon: Landmark },
+  { id: 'history', label: 'История', shortcut: '⌘7', icon: History },
+  { id: 'settings', label: 'Настройки', shortcut: '⌘8', icon: Settings },
 ]
 
 export function Sidebar({ activeTab, onTabChange, collapsed, onToggle, wsConnected, scannerRunning }: SidebarProps) {

@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Search, Filter, ArrowUpDown, ExternalLink, Clock, Zap, Target, X, Calculator, ChevronDown, ChevronUp } from 'lucide-react'
+import { Search, Filter, ArrowUpDown, ExternalLink, Clock, Zap, Target, X, Calculator, ShieldCheck, Radio } from 'lucide-react'
 import { toast } from 'sonner'
 import type { Surebet } from '../types'
 
@@ -13,8 +13,35 @@ export function SurebetsPage({ surebets }: SurebetsPageProps) {
   const [minProfit, setMinProfit] = useState(0)
   const [marketFilter, setMarketFilter] = useState('all')
   const [sortBy, setSortBy] = useState<'profit' | 'time'>('profit')
-  const [expandedId, setExpandedId] = useState<string | null>(null)
   const [showDetails, setShowDetails] = useState<Surebet | null>(null)
+
+  const formatTime = (value: string) => {
+    const date = new Date(value)
+    return Number.isNaN(date.getTime()) ? '—' : date.toLocaleTimeString('ru-RU')
+  }
+
+  const formatDateTime = (value: string | null) => {
+    if (!value) return '—'
+
+    const date = new Date(value)
+    return Number.isNaN(date.getTime())
+      ? '—'
+      : date.toLocaleString('ru-RU', {
+        day: '2-digit',
+        month: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+      })
+  }
+
+  const openLegUrl = (url: string | null, bookmaker: string) => {
+    if (!url) {
+      toast.info(`Ссылка ${bookmaker} пока не пришла от backend`)
+      return
+    }
+
+    window.open(url, '_blank', 'noopener,noreferrer')
+  }
 
   const filtered = useMemo(() => {
     let result = [...surebets]
@@ -161,14 +188,26 @@ export function SurebetsPage({ surebets }: SurebetsPageProps) {
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: 20 }}
                   transition={{ delay: index * 0.02 }}
-                  onClick={() => setExpandedId(expandedId === sb.id ? null : sb.id)}
-                >
-                  <td className="table-cell">
-                    <div>
-                      <p className="font-medium">{sb.home_team}</p>
-                      <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>{sb.away_team}</p>
-                    </div>
-                  </td>
+                   onClick={() => setShowDetails(sb)}
+                 >
+                   <td className="table-cell">
+                     <div>
+                       <div className="flex flex-wrap items-center gap-2">
+                         <p className="font-medium">{sb.home_team}</p>
+                         {sb.verified && (
+                           <span className="badge" style={{ background: 'rgba(34,197,94,0.15)', color: 'var(--accent-green)' }}>
+                             <ShieldCheck size={12} /> verified
+                           </span>
+                         )}
+                         {sb.is_live && (
+                           <span className="badge" style={{ background: 'rgba(6,182,212,0.16)', color: 'var(--accent-cyan)' }}>
+                             <Radio size={12} /> live
+                           </span>
+                         )}
+                       </div>
+                       <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>{sb.away_team}</p>
+                     </div>
+                   </td>
                   <td className="table-cell">
                     <span className="badge badge-info">{sb.legs[0]?.market || '—'}</span>
                   </td>
@@ -195,11 +234,11 @@ export function SurebetsPage({ surebets }: SurebetsPageProps) {
                     <span className="text-sm font-mono">{sb.total_stake.toLocaleString()}₽</span>
                   </td>
                   <td className="table-cell">
-                    <div className="flex items-center gap-1" style={{ color: 'var(--text-muted)' }}>
-                      <Clock size={12} />
-                      <span className="text-xs">{new Date(sb.detected_at).toLocaleTimeString('ru-RU')}</span>
-                    </div>
-                  </td>
+                       <div className="flex items-center gap-1" style={{ color: 'var(--text-muted)' }}>
+                         <Clock size={12} />
+                       <span className="text-xs">{formatTime(sb.detected_at)}</span>
+                       </div>
+                     </td>
                   <td className="table-cell">
                     <div className="flex items-center gap-1">
                       <button
@@ -258,6 +297,15 @@ export function SurebetsPage({ surebets }: SurebetsPageProps) {
               <h3 className="text-lg font-bold mb-1">{showDetails.home_team} — {showDetails.away_team}</h3>
               <p className="text-sm mb-4" style={{ color: 'var(--text-secondary)' }}>{showDetails.league}</p>
 
+              <div className="flex flex-wrap items-center gap-2 mb-4">
+                <span className="badge badge-info">{showDetails.is_live ? 'Live' : 'Prematch'}</span>
+                <span className="badge">{showDetails.verified ? 'verified' : 'draft'}</span>
+                {showDetails.mirror && <span className="badge">mirror</span>}
+                <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                  Старт: {formatDateTime(showDetails.start_time)}
+                </span>
+              </div>
+
               <div className="flex items-center justify-between p-4 rounded-xl mb-4" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
                 <div>
                   <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Прибыль</p>
@@ -275,13 +323,22 @@ export function SurebetsPage({ surebets }: SurebetsPageProps) {
                     <div>
                       <p className="text-sm font-medium capitalize">{leg.bookmaker}</p>
                       <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
-                        {leg.selection} @ <span className="font-mono">{leg.odds.toFixed(2)}</span>
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-sm font-mono">{leg.stake.toFixed(0)}₽</p>
-                      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>→ {leg.payout.toFixed(0)}₽</p>
-                    </div>
+                         {leg.market} / {leg.selection} @ <span className="font-mono">{leg.odds.toFixed(2)}</span>
+                       </p>
+                       <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                         {leg.url ? 'URL from backend available' : 'URL not provided'}
+                       </p>
+                     </div>
+                     <div className="text-right flex flex-col items-end gap-2">
+                       <button
+                         onClick={() => openLegUrl(leg.url, leg.bookmaker)}
+                         className="btn btn-ghost !px-2 !py-1"
+                       >
+                         <ExternalLink size={14} />
+                       </button>
+                       <p className="text-sm font-mono">{leg.stake.toFixed(0)}₽</p>
+                       <p className="text-xs" style={{ color: 'var(--text-muted)' }}>→ {leg.payout.toFixed(0)}₽</p>
+                     </div>
                   </div>
                 ))}
               </div>
@@ -295,8 +352,8 @@ export function SurebetsPage({ surebets }: SurebetsPageProps) {
                   Копировать ставки
                 </button>
                 <button 
-                  onClick={() => { toast.info('Переход на БК...'); setShowDetails(null) }}
-                  className="btn btn-ghost"
+                   onClick={() => openLegUrl(showDetails.legs.find((leg) => leg.url)?.url ?? null, showDetails.legs.find((leg) => leg.url)?.bookmaker ?? 'bookmaker')}
+                   className="btn btn-ghost"
                 >
                   <ExternalLink size={16} />
                 </button>

@@ -243,10 +243,7 @@ impl FreebetHunter {
                             continue;
                         }
 
-                        let conversion_rate = self.calculate_conversion(
-                            freebet,
-                            freebet_odd.odds,
-                        );
+                        let conversion_rate = self.calculate_conversion(freebet, freebet_odd.odds);
                         if conversion_rate < config.min_conversion_rate {
                             continue;
                         }
@@ -365,13 +362,8 @@ impl FreebetHunter {
             0.0
         };
 
-        let kelly_stake = KellyCalculator::optimal_stake(
-            br,
-            edge,
-            back_odds,
-            self.kelly_fraction,
-            5.0,
-        );
+        let kelly_stake =
+            KellyCalculator::optimal_stake(br, edge, back_odds, self.kelly_fraction, 5.0);
 
         // Для фрибетов: stake не может превышать freebet_amount
         kelly_stake.min(freebet_amount)
@@ -459,8 +451,7 @@ mod tests {
             min_conversion_rate: 50.0,
             max_hedge_liability: 10000.0,
         };
-        let hunter = FreebetHunter::new(vec![1000.0], 0.0, 60)
-            .with_matching_config(config);
+        let hunter = FreebetHunter::new(vec![1000.0], 0.0, 60).with_matching_config(config);
 
         let event = make_event("evt1");
         let odds = vec![

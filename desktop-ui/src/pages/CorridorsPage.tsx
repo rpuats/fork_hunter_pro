@@ -1,5 +1,6 @@
+import { useMemo } from 'react'
 import { motion } from 'framer-motion'
-import { GitBranch, Target, TrendingUp, ArrowRight } from 'lucide-react'
+import { GitBranch, TrendingUp, ArrowRight, Percent, Scale } from 'lucide-react'
 import type { CorridorOpportunity } from '../types'
 
 interface CorridorsPageProps {
@@ -7,6 +8,27 @@ interface CorridorsPageProps {
 }
 
 export function CorridorsPage({ corridors }: CorridorsPageProps) {
+  const stats = useMemo(() => {
+    if (corridors.length === 0) {
+      return {
+        count: 0,
+        avgRoi: 0,
+        bestRoi: 0,
+        avgProbability: 0,
+      }
+    }
+
+    const totalRoi = corridors.reduce((sum, corridor) => sum + corridor.expected_roi, 0)
+    const totalProbability = corridors.reduce((sum, corridor) => sum + corridor.double_win_probability, 0)
+
+    return {
+      count: corridors.length,
+      avgRoi: totalRoi / corridors.length,
+      bestRoi: Math.max(...corridors.map((corridor) => corridor.expected_roi)),
+      avgProbability: (totalProbability / corridors.length) * 100,
+    }
+  }, [corridors])
+
   return (
     <motion.div 
       className="space-y-6"
@@ -18,6 +40,35 @@ export function CorridorsPage({ corridors }: CorridorsPageProps) {
         <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
           Коридоры тоталов и фор — выигрыш при попадании в диапазон
         </p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="glass-card p-4">
+          <div className="flex items-center gap-3 mb-2">
+            <GitBranch size={18} style={{ color: 'var(--accent-blue)' }} />
+            <span className="text-sm font-medium">Найдено</span>
+          </div>
+          <p className="text-2xl font-bold">{stats.count}</p>
+          <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>по данным `/api/v1/corridors`</p>
+        </div>
+
+        <div className="glass-card p-4">
+          <div className="flex items-center gap-3 mb-2">
+            <Percent size={18} style={{ color: 'var(--accent-green)' }} />
+            <span className="text-sm font-medium">Средний ROI</span>
+          </div>
+          <p className="text-2xl font-bold">{stats.avgRoi.toFixed(2)}%</p>
+          <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>лучший {stats.bestRoi.toFixed(2)}%</p>
+        </div>
+
+        <div className="glass-card p-4">
+          <div className="flex items-center gap-3 mb-2">
+            <Scale size={18} style={{ color: 'var(--accent-yellow)' }} />
+            <span className="text-sm font-medium">Double win</span>
+          </div>
+          <p className="text-2xl font-bold">{stats.avgProbability.toFixed(1)}%</p>
+          <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>средняя вероятность диапазона</p>
+        </div>
       </div>
 
       {corridors.length > 0 ? (
@@ -41,7 +92,7 @@ export function CorridorsPage({ corridors }: CorridorsPageProps) {
                     <span className="profit profit-positive text-lg">ROI {cor.expected_roi.toFixed(1)}%</span>
                   </div>
                   <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                    Вероятность {cor.double_win_probability * 100}%
+                    Вероятность {((cor.double_win_probability ?? 0) * 100).toFixed(1)}%
                   </p>
                 </div>
               </div>
@@ -82,9 +133,9 @@ export function CorridorsPage({ corridors }: CorridorsPageProps) {
           >
             <GitBranch size={64} className="mx-auto mb-4 opacity-30" style={{ color: 'var(--accent-purple)' }} />
           </motion.div>
-          <h3 className="text-xl font-bold mb-2">Коридоры в разработке</h3>
+          <h3 className="text-xl font-bold mb-2">Коридоры пока не найдены</h3>
           <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-            Скоро будет доступен поиск коридоров тоталов и фор
+            Экран подключен к backend-контракту и покажет сделки сразу после появления данных
           </p>
         </div>
       )}

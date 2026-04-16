@@ -5,6 +5,8 @@ import { Dashboard } from './pages/Dashboard'
 import { SurebetsPage } from './pages/SurebetsPage'
 import { CorridorsPage } from './pages/CorridorsPage'
 import { ExpressPage } from './pages/ExpressPage'
+import { OperatorPage } from './pages/OperatorPage'
+import { AccountsPage } from './pages/AccountsPage'
 import { HistoryPage } from './pages/HistoryPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { useScanner } from './hooks/useScanner'
@@ -13,7 +15,13 @@ import type { TabType } from './types'
 function App() {
   const [activeTab, setActiveTab] = useState<TabType>('dashboard')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
-  const { connected, surebets, metrics, bookmakers, corridors, expressForks } = useScanner()
+  const [accountFocus, setAccountFocus] = useState<string | null>(null)
+  const { connected, scannerStatus, surebets, metrics, bookmakers, corridors, expressForks, valueBets, generosityIndices, executionOverview, executionLedger, executionState, parserCoverage, parserHealth, accounts, accountsSummary, bankrollState, bankrollRecommendations } = useScanner()
+
+  const openAccountsFocus = (bookmaker: string) => {
+    setAccountFocus(bookmaker)
+    setActiveTab('accounts')
+  }
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -24,8 +32,10 @@ function App() {
           case '2': e.preventDefault(); setActiveTab('surebets'); break
           case '3': e.preventDefault(); setActiveTab('corridors'); break
           case '4': e.preventDefault(); setActiveTab('express'); break
-          case '5': e.preventDefault(); setActiveTab('history'); break
-          case '6': e.preventDefault(); setActiveTab('settings'); break
+          case '5': e.preventDefault(); setActiveTab('operator'); break
+          case '6': e.preventDefault(); setActiveTab('accounts'); break
+          case '7': e.preventDefault(); setActiveTab('history'); break
+          case '8': e.preventDefault(); setActiveTab('settings'); break
         }
       }
     }
@@ -36,19 +46,23 @@ function App() {
   const renderPage = () => {
     switch(activeTab) {
       case 'dashboard':
-        return <Dashboard metrics={metrics} surebets={surebets} bookmakers={bookmakers} />
+        return <Dashboard metrics={metrics} surebets={surebets} bookmakers={bookmakers} valueBets={valueBets} generosityIndices={generosityIndices} executionOverview={executionOverview} parserCoverage={parserCoverage} parserHealth={parserHealth} />
       case 'surebets':
         return <SurebetsPage surebets={surebets} />
       case 'corridors':
         return <CorridorsPage corridors={corridors} />
       case 'express':
         return <ExpressPage expressForks={expressForks} />
+      case 'operator':
+        return <OperatorPage executionOverview={executionOverview} executionLedger={executionLedger} executionState={executionState} parserCoverage={parserCoverage} parserHealth={parserHealth} bookmakers={bookmakers} accountStates={accounts} onOpenAccount={openAccountsFocus} />
+      case 'accounts':
+        return <AccountsPage accounts={accounts} accountsSummary={accountsSummary} bankrollState={bankrollState} bankrollRecommendations={bankrollRecommendations} focusedBookmaker={accountFocus} />
       case 'history':
-        return <HistoryPage />
+        return <HistoryPage surebets={surebets} corridors={corridors} expressForks={expressForks} valueBets={valueBets} executionLedger={executionLedger} />
       case 'settings':
         return <SettingsPage />
       default:
-        return <Dashboard metrics={metrics} surebets={surebets} bookmakers={bookmakers} />
+        return <Dashboard metrics={metrics} surebets={surebets} bookmakers={bookmakers} valueBets={valueBets} generosityIndices={generosityIndices} executionOverview={executionOverview} parserCoverage={parserCoverage} parserHealth={parserHealth} />
     }
   }
 
@@ -60,7 +74,7 @@ function App() {
         collapsed={sidebarCollapsed}
         onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
         wsConnected={connected}
-        scannerRunning={metrics !== null}
+        scannerRunning={scannerStatus?.running ?? metrics !== null}
       />
 
       <main className="flex-1 overflow-auto">

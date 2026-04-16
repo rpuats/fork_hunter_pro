@@ -1,3 +1,4 @@
+use crate::normalizer::Normalizer;
 use chrono::Utc;
 use shared::odds::decimal_to_implied_probability;
 use shared::{Event, Odd, ValueBet};
@@ -70,17 +71,13 @@ impl ValueDetector {
     /// Основной метод: детекция value ставок
     pub fn detect_values(&self, events: &[Event], all_odds: &[Odd]) -> Vec<ValueBet> {
         let mut values = Vec::new();
-        let market_averages = self.calculate_market_averages(all_odds);
+        let event_fingerprints = self.build_event_fingerprints(events);
+        let market_averages = self.calculate_market_averages(all_odds, &event_fingerprints);
 
         for odd in all_odds {
-            let key = format!(
-                "{}|{}|{}",
-                odd.market,
-                odd.selection,
-                odd.line
-                    .map(|l| l.to_string())
-                    .unwrap_or_else(|| "none".into())
-            );
+            let Some(key) = self.market_scope_key(odd, &event_fingerprints) else {
+                continue;
+            };
 
             if let Some(&avg_odds) = market_averages.get(&key) {
                 let analysis = self.analyze_fair_probability(odd.odds, avg_odds);
@@ -205,11 +202,7 @@ impl ValueDetector {
         let margin_percent = ((avg_odds - target_odds).abs() / avg_odds) * 100.0;
 
         let kelly = if edge > 0.0 {
-            KellyCalculator::fractional_kelly(
-                fair_prob,
-                target_odds,
-                self.config.kelly_fraction,
-            )
+            KellyCalculator::fractional_kelly(fair_prob, target_odds, self.config.kelly_fraction)
         } else {
             0.0
         };
@@ -250,18 +243,14 @@ impl ValueDetector {
         events: &[Event],
         all_odds: &[Odd],
     ) -> Vec<(ValueBet, FairProbabilityAnalysis)> {
-        let market_averages = self.calculate_market_averages(all_odds);
+        let event_fingerprints = self.build_event_fingerprints(events);
+        let market_averages = self.calculate_market_averages(all_odds, &event_fingerprints);
         let mut results = Vec::new();
 
         for odd in all_odds {
-            let key = format!(
-                "{}|{}|{}",
-                odd.market,
-                odd.selection,
-                odd.line
-                    .map(|l| l.to_string())
-                    .unwrap_or_else(|| "none".into())
-            );
+            let Some(key) = self.market_scope_key(odd, &event_fingerprints) else {
+                continue;
+            };
 
             if let Some(&avg_odds) = market_averages.get(&key) {
                 let analysis = self.analyze_fair_probability(odd.odds, avg_odds);
@@ -287,26 +276,21 @@ impl ValueDetector {
             }
         }
 
-        results.sort_by(|a, b| {
-            b.0.edge_percent
-                .partial_cmp(&a.0.edge_percent)
-                .unwrap()
-        });
+        results.sort_by(|a, b| b.0.edge_percent.partial_cmp(&a.0.edge_percent).unwrap());
         results
     }
 
-    fn calculate_market_averages(&self, all_odds: &[Odd]) -> HashMap<String, f64> {
+    fn calculate_market_averages(
+        &self,
+        all_odds: &[Odd],
+        event_fingerprints: &HashMap<String, String>,
+    ) -> HashMap<String, f64> {
         let mut groups: HashMap<String, Vec<f64>> = HashMap::new();
 
         for odd in all_odds {
-            let key = format!(
-                "{}|{}|{}",
-                odd.market,
-                odd.selection,
-                odd.line
-                    .map(|l| l.to_string())
-                    .unwrap_or_else(|| "none".into())
-            );
+            let Some(key) = self.market_scope_key(odd, event_fingerprints) else {
+                continue;
+            };
             groups.entry(key).or_default().push(odd.odds);
         }
 
@@ -318,6 +302,64 @@ impl ValueDetector {
             })
             .collect()
     }
+
+    fn build_event_fingerprints(&self, events: &[Event]) -> HashMap<String, String> {
+        events
+            .iter()
+            .map(|event| (event.id.clone(), Self::event_fingerprint(event)))
+            .collect()
+    }
+
+    fn market_scope_key(
+        &self,
+        odd: &Odd,
+        event_fingerprints: &HashMap<String, String>,
+    ) -> Option<String> {
+        let event_fingerprint = event_fingerprints.get(&odd.event_id)?;
+        Some(format!(
+            "{}|{}|{}|{}",
+            event_fingerprint,
+            odd.market,
+            odd.selection,
+            odd.line
+                .map(|line| line.to_string())
+                .unwrap_or_else(|| "none".into())
+        ))
+    }
+
+    fn event_fingerprint(event: &Event) -> String {
+        let norm = Normalizer::new();
+        let norm_event = norm.normalize_event(event.clone());
+        let home = Self::normalize_team_name(&norm_event.home_team);
+        let away = Self::normalize_team_name(&norm_event.away_team);
+        let league = norm_event.league.to_lowercase().replace(' ', "");
+
+        let (first, second) = if home < away {
+            (home, away)
+        } else {
+            (away, home)
+        };
+
+        format!("{:?}|{}|{}|{}", event.sport, league, first, second)
+    }
+
+    fn normalize_team_name(name: &str) -> String {
+        name.to_lowercase()
+            .replace("фк ", "")
+            .replace("ск ", "")
+            .replace("пк ", "")
+            .replace("фк", "")
+            .replace("ск", "")
+            .replace("пк", "")
+            .replace("хк ", "")
+            .replace("хк", "")
+            .replace(" москва", "")
+            .replace(" спб", "")
+            .replace(" санкт-петербург", "")
+            .replace(" с.-петербург", "")
+            .replace(' ', "")
+            .replace('-', "")
+    }
 }
 
 #[cfg(test)]
@@ -328,15 +370,25 @@ mod tests {
     use std::collections::HashMap;
 
     fn make_event(id: &str) -> Event {
+        make_event_with_details(id, "test", "Test", "A", "B")
+    }
+
+    fn make_event_with_details(
+        id: &str,
+        bookmaker_slug: &str,
+        league: &str,
+        home_team: &str,
+        away_team: &str,
+    ) -> Event {
         Event {
             id: id.into(),
             sport: Sport::Football,
-            league: "Test".into(),
-            home_team: "A".into(),
-            away_team: "B".into(),
+            league: league.into(),
+            home_team: home_team.into(),
+            away_team: away_team.into(),
             start_time: None,
             is_live: false,
-            bookmaker_slug: "test".into(),
+            bookmaker_slug: bookmaker_slug.into(),
             raw_url: None,
             extra: HashMap::new(),
         }
@@ -372,6 +424,68 @@ mod tests {
     }
 
     #[test]
+    fn test_detect_value_bet_uses_event_fingerprint_scope() {
+        let detector = ValueDetector::new(10.0);
+        let events = vec![
+            make_event_with_details("pari-evt", "pari", "Premier League", "Arsenal", "Chelsea"),
+            make_event_with_details(
+                "fonbet-evt",
+                "fonbet",
+                "Premier League",
+                "Chelsea",
+                "Arsenal",
+            ),
+            make_event_with_details("other-1", "bk3", "La Liga", "Real Madrid", "Sevilla"),
+            make_event_with_details("other-2", "bk4", "La Liga", "Real Madrid", "Sevilla"),
+            make_event_with_details("other-3", "bk5", "La Liga", "Real Madrid", "Sevilla"),
+        ];
+        let odds = vec![
+            make_odd("pari-evt", "pari", "1", 2.10),
+            make_odd("fonbet-evt", "fonbet", "1", 2.00),
+            make_odd("other-1", "bk3", "1", 1.20),
+            make_odd("other-2", "bk4", "1", 1.20),
+            make_odd("other-3", "bk5", "1", 1.20),
+        ];
+
+        let values = detector.detect_values(&events, &odds);
+
+        assert!(values.is_empty());
+    }
+
+    #[test]
+    fn test_detect_value_bet_groups_same_match_across_event_ids() {
+        let detector = ValueDetector::new(5.0);
+        let events = vec![
+            make_event_with_details("pari-evt", "pari", "Premier League", "Arsenal", "Chelsea"),
+            make_event_with_details(
+                "fonbet-evt",
+                "fonbet",
+                "Premier League",
+                "Chelsea",
+                "Arsenal",
+            ),
+            make_event_with_details(
+                "marathon-evt",
+                "marathon",
+                "Premier League",
+                "Arsenal",
+                "Chelsea",
+            ),
+        ];
+        let odds = vec![
+            make_odd("pari-evt", "pari", "1", 2.50),
+            make_odd("fonbet-evt", "fonbet", "1", 2.00),
+            make_odd("marathon-evt", "marathon", "1", 2.00),
+        ];
+
+        let values = detector.detect_values(&events, &odds);
+
+        assert!(!values.is_empty());
+        assert_eq!(values[0].bookmaker, "pari");
+        assert_eq!(values[0].event.id, "pari-evt");
+    }
+
+    #[test]
     fn test_fair_probability_calculation() {
         let detector = ValueDetector::new(5.0);
 
@@ -398,7 +512,7 @@ mod tests {
 
         let event = make_event("evt1");
         let odds = vec![
-            make_odd("evt1", "bk1", "1", 3.0),  // value
+            make_odd("evt1", "bk1", "1", 3.0), // value
             make_odd("evt1", "bk2", "1", 2.0),
             make_odd("evt1", "bk3", "1", 2.0),
         ];

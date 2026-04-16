@@ -1,0 +1,58 @@
+name: Rust Mainline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  rust:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install stable Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Cargo check
+        run: cargo check --workspace
+
+      - name: Cargo test
+        run: cargo test --workspace --quiet
+
+      - name: Cargo fmt
+        run: cargo fmt --all -- --check
+
+      - name: Cargo clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+  desktop-ui:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: desktop-ui
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: desktop-ui/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build UI
+        run: npm run build
+

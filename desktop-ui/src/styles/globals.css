@@ -308,6 +308,54 @@
     border: 1px solid var(--border-color);
   }
 
+  .compact-overlay {
+    position: relative;
+    border-radius: 16px;
+    overflow: hidden;
+  }
+
+  .compact-overlay__glow {
+    position: absolute;
+    inset: 0;
+    border-radius: 16px;
+    background:
+      radial-gradient(circle at top left, rgba(88, 166, 255, 0.2), transparent 48%),
+      radial-gradient(circle at right center, rgba(57, 210, 192, 0.12), transparent 38%),
+      linear-gradient(135deg, rgba(88, 166, 255, 0.08), rgba(188, 140, 255, 0.05));
+    opacity: 0.95;
+    pointer-events: none;
+  }
+
+  .compact-overlay__body {
+    position: relative;
+    padding: 14px 16px;
+    border: 1px solid rgba(88, 166, 255, 0.18);
+    background: rgba(9, 14, 24, 0.86);
+    backdrop-filter: blur(18px);
+    box-shadow: 0 14px 30px rgba(0, 0, 0, 0.24);
+  }
+
+  .compact-overlay__pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+  }
+
+  .compact-overlay__action {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    min-width: 0;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
   /* Tab content */
   .tab-content {
     @apply animate-in fade-in duration-300;

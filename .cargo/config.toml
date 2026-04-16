@@ -1,0 +1,12 @@
+[build]
+target-dir = "target"
+
+[term]
+color = "always"
+
+[alias]
+xtest = "test --workspace"
+xcheck = "check --workspace"
+xclippy = "clippy --workspace --all-targets -- -D warnings"
+xfmt = "fmt --all -- --check"
+

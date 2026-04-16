@@ -2,78 +2,1150 @@ use crate::base::{BookmakerParser, ParserResult};
 use async_trait::async_trait;
 use chrono::{DateTime, TimeZone, Utc};
 use rand::Rng;
+use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use reqwest::Client;
-use serde::Serialize;
+use reqwest::Url;
+use serde_json::{json, Value};
 use shared::odds::OddsType;
 use shared::{DiagnosticSeverity, ParserDiagnosticCheck, ParserReadiness, ParserReadinessStage};
 use shared::{Event, Odd, Sport};
 use std::collections::HashMap;
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::{debug, info, warn};
 
 const USER_AGENT: &str =
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 const EVENTS_LIST_URL: &str = "https://lds-api-sites.ligastavok.ru/rest/events/v8/eventsList";
+const FILTER_URL: &str = "https://lds-api-sites.ligastavok.ru/rest/events/v2/filter";
+const TOURNAMENT_TREE_URL: &str =
+    "https://lds-api-sites.ligastavok.ru/rest/events/v8/tournamentTree";
 const BASE_URL: &str = "https://www.ligastavok.ru";
+const ROOT_REFERER: &str = "https://www.ligastavok.ru/";
 const BOOKMAKER_SLUG: &str = "ligastavok";
+const PAGE_LIMIT: u32 = 200;
+const REQUEST_TIMEOUT_SECS: u64 = 20;
+const COOKIE_ENV_VAR: &str = "LIGASTAVOK_COOKIE_FILE";
+const COOKIE_HEADER_ENV_VAR: &str = "LIGASTAVOK_COOKIE_HEADER";
+const STORAGE_STATE_ENV_VAR: &str = "LIGASTAVOK_STORAGE_STATE_FILE";
+const HEADER_PROFILE_ENV_VAR: &str = "LIGASTAVOK_HEADER_PROFILE_FILE";
+const ACCEPT_LANGUAGE_ENV_VAR: &str = "LIGASTAVOK_ACCEPT_LANGUAGE";
+const DEFAULT_ACCEPT_LANGUAGE: &str = "ru-RU,ru;q=0.9,en;q=0.8";
 
 /// Liga Stavok HTTP-first scaffold.
-/// Uses the discovered POST `eventsList` flow, but remains disabled by default
-/// until QRATOR/session bootstrap is stable enough for production traffic.
+/// Uses the discovered POST `eventsList` + `tournamentTree` flow, but remains disabled by default
+/// until QRATOR/session bootstrap is stable enough for unattended production traffic.
 #[derive(Debug, Clone)]
 pub struct LigaStavokParser {
     client: Arc<Client>,
     endpoints: Vec<Endpoint>,
+    bootstrap: SessionBootstrap,
 }
 
 #[derive(Debug, Clone, Copy)]
 struct Endpoint {
     referer: &'static str,
     route_hint: &'static str,
+    namespace: &'static str,
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct EventsListPayload {
-    game_id: Vec<u32>,
-    limit: u32,
-    skip: u32,
-    top_events: bool,
-    ts: i64,
-    view: &'static str,
-    widget_video: bool,
-    proposed_types: Vec<&'static str>,
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SportCatalogEntry {
+    sport_id: u32,
+    sport_name: String,
+    total: usize,
+    total_live: usize,
+    filter_live_total: Option<usize>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct FilterCatalogEntry {
+    sport_id: u32,
+    sport_name: Option<String>,
+    total: usize,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SessionBootstrap {
+    cookie_jar: Vec<BootstrapCookie>,
+    cookie_header: Option<String>,
+    accept_language: String,
+    origin: String,
+    referer: String,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct StorageStateBootstrap {
+    cookies: Vec<BootstrapCookie>,
+    cookie_header: Option<String>,
+    accept_language: Option<String>,
+    origin: Option<String>,
+    referer: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct HeaderProfile {
+    accept_language: Option<String>,
+    origin: Option<String>,
+    referer: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct BootstrapCookie {
+    name: String,
+    value: String,
+    domain: String,
+    path: String,
+    expires: Option<i64>,
+    secure: bool,
+    host_only: bool,
 }
 
 impl LigaStavokParser {
     pub fn new(client: Arc<Client>) -> Self {
+        let bootstrap = Self::load_session_bootstrap();
         Self {
             client,
             endpoints: vec![
                 Endpoint {
                     referer: "https://www.ligastavok.ru/line/football",
                     route_hint: "line",
+                    namespace: "prematch",
                 },
                 Endpoint {
                     referer: "https://www.ligastavok.ru/live/football",
                     route_hint: "live",
+                    namespace: "live",
                 },
             ],
+            bootstrap,
         }
     }
 
-    fn build_payload(&self) -> EventsListPayload {
-        EventsListPayload {
-            game_id: Vec::new(),
-            limit: 200,
-            skip: 0,
-            top_events: false,
-            ts: Utc::now().timestamp_millis(),
-            view: "priority",
-            widget_video: false,
-            proposed_types: vec!["MAINOFFER"],
+    fn load_session_bootstrap() -> SessionBootstrap {
+        let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let header_profile = Self::load_header_profile(&manifest_dir).unwrap_or_default();
+        let storage_state = Self::load_storage_state(&manifest_dir).unwrap_or_default();
+        let cookie_header = Self::merge_cookie_headers(
+            std::env::var(COOKIE_HEADER_ENV_VAR)
+                .ok()
+                .and_then(|value| Self::normalize_cookie_header(&value)),
+            storage_state.cookie_header.clone(),
+        );
+
+        let accept_language = std::env::var(ACCEPT_LANGUAGE_ENV_VAR)
+            .ok()
+            .and_then(|value| Self::normalize_header_value(&value))
+            .or(header_profile.accept_language)
+            .or(storage_state.accept_language)
+            .unwrap_or_else(|| DEFAULT_ACCEPT_LANGUAGE.to_string());
+        let origin = header_profile
+            .origin
+            .or(storage_state.origin)
+            .unwrap_or_else(|| BASE_URL.to_string());
+        let referer = header_profile
+            .referer
+            .or(storage_state.referer)
+            .unwrap_or_else(|| ROOT_REFERER.to_string());
+
+        SessionBootstrap {
+            cookie_jar: storage_state.cookies,
+            cookie_header,
+            accept_language,
+            origin,
+            referer,
         }
+    }
+
+    fn load_header_profile(manifest_dir: &Path) -> Option<HeaderProfile> {
+        let mut candidates = Vec::new();
+
+        if let Ok(path) = std::env::var(HEADER_PROFILE_ENV_VAR) {
+            candidates.push(PathBuf::from(path));
+        }
+
+        candidates.push(manifest_dir.join("../../ligastavok_header_profile.json"));
+        candidates.push(PathBuf::from("ligastavok_header_profile.json"));
+
+        candidates.into_iter().find_map(|path| {
+            let contents = fs::read_to_string(path).ok()?;
+            let value: Value = serde_json::from_str(&contents).ok()?;
+            Self::extract_header_profile(&value)
+        })
+    }
+
+    fn load_storage_state(manifest_dir: &Path) -> Option<StorageStateBootstrap> {
+        let mut candidates = Vec::new();
+
+        if let Ok(path) = std::env::var(STORAGE_STATE_ENV_VAR) {
+            candidates.push(PathBuf::from(path));
+        }
+        if let Ok(path) = std::env::var(COOKIE_ENV_VAR) {
+            candidates.push(PathBuf::from(path));
+        }
+
+        candidates.push(manifest_dir.join("../../ligastavok_storage_state.json"));
+        candidates.push(manifest_dir.join("../../ligastavok_cookies.json"));
+        candidates.push(PathBuf::from("ligastavok_storage_state.json"));
+        candidates.push(PathBuf::from("ligastavok_cookies.json"));
+
+        candidates.into_iter().find_map(|path| {
+            let contents = fs::read_to_string(path).ok()?;
+            let value: Value = serde_json::from_str(&contents).ok()?;
+            Self::extract_storage_state_bootstrap(&value)
+        })
+    }
+
+    fn normalize_header_value(value: &str) -> Option<String> {
+        let normalized = value.split_whitespace().collect::<Vec<_>>().join(" ");
+        if normalized.is_empty() {
+            None
+        } else {
+            Some(normalized)
+        }
+    }
+
+    fn normalize_cookie_header(value: &str) -> Option<String> {
+        let normalized = value
+            .split(';')
+            .map(str::trim)
+            .filter(|part| !part.is_empty() && part.contains('='))
+            .collect::<Vec<_>>()
+            .join("; ");
+
+        if normalized.is_empty() {
+            None
+        } else {
+            Some(normalized)
+        }
+    }
+
+    fn merge_cookie_headers(primary: Option<String>, secondary: Option<String>) -> Option<String> {
+        let mut pairs = Vec::new();
+        let mut seen = std::collections::HashSet::new();
+
+        for header in [primary, secondary].into_iter().flatten() {
+            for part in header
+                .split(';')
+                .map(str::trim)
+                .filter(|part| !part.is_empty())
+            {
+                let Some((name, value)) = part.split_once('=') else {
+                    continue;
+                };
+                let name = name.trim();
+                let value = value.trim();
+                if name.is_empty() || value.is_empty() || !seen.insert(name.to_ascii_lowercase()) {
+                    continue;
+                }
+                pairs.push(format!("{name}={value}"));
+            }
+        }
+
+        if pairs.is_empty() {
+            None
+        } else {
+            Some(pairs.join("; "))
+        }
+    }
+
+    fn normalize_origin(value: &str) -> Option<String> {
+        let normalized = value.trim().trim_end_matches('/');
+        if normalized.is_empty() {
+            return None;
+        }
+
+        let host = normalized.to_ascii_lowercase();
+        if host == "https://ligastavok.ru"
+            || host == "https://www.ligastavok.ru"
+            || host.ends_with(".ligastavok.ru")
+        {
+            Some(normalized.to_string())
+        } else {
+            None
+        }
+    }
+
+    fn normalize_referer(value: &str) -> Option<String> {
+        let normalized = value.trim();
+        if normalized.is_empty() {
+            return None;
+        }
+
+        let url = Url::parse(normalized).ok()?;
+        let origin = format!("{}://{}", url.scheme(), url.host_str()?);
+        if Self::normalize_origin(&origin).is_none() {
+            return None;
+        }
+
+        Some(normalized.to_string())
+    }
+
+    fn cookie_header_from_path(path: &Path) -> Option<String> {
+        let contents = fs::read_to_string(path).ok()?;
+        let value: Value = serde_json::from_str(&contents).ok()?;
+        let cookies = Self::extract_cookie_values(&value)?;
+
+        Self::build_cookie_header(&cookies)
+    }
+
+    fn build_cookie_header(cookies: &[Value]) -> Option<String> {
+        let jar = Self::parse_bootstrap_cookies(cookies);
+        Self::build_cookie_header_for_url(&jar, ROOT_REFERER)
+    }
+
+    fn extract_cookie_values(value: &Value) -> Option<Vec<Value>> {
+        match value {
+            Value::Array(items) => Some(items.clone()),
+            Value::Object(map) => map
+                .get("cookies")
+                .and_then(|cookies| cookies.as_array())
+                .cloned()
+                .or_else(|| {
+                    map.get("storageState")
+                        .and_then(|state| state.get("cookies"))
+                        .and_then(|cookies| cookies.as_array())
+                        .cloned()
+                }),
+            _ => None,
+        }
+    }
+
+    fn extract_storage_state_bootstrap(value: &Value) -> Option<StorageStateBootstrap> {
+        let cookies = Self::extract_cookie_values(value).unwrap_or_default();
+        let parsed_cookies = Self::parse_bootstrap_cookies(&cookies);
+        let cookie_header = Self::build_cookie_header_for_url(&parsed_cookies, ROOT_REFERER);
+        let origin = Self::extract_storage_origin(value);
+        let accept_language = Self::extract_storage_accept_language(value);
+        let referer = origin
+            .as_deref()
+            .and_then(|origin| Self::normalize_referer(&format!("{origin}/")));
+
+        if cookie_header.is_none() && origin.is_none() && accept_language.is_none() {
+            None
+        } else {
+            Some(StorageStateBootstrap {
+                cookies: parsed_cookies,
+                cookie_header,
+                accept_language,
+                origin,
+                referer,
+            })
+        }
+    }
+
+    fn extract_storage_origin(value: &Value) -> Option<String> {
+        let origins = value
+            .get("origins")
+            .or_else(|| {
+                value
+                    .get("storageState")
+                    .and_then(|state| state.get("origins"))
+            })
+            .and_then(|origins| origins.as_array())?;
+
+        origins
+            .iter()
+            .filter_map(|origin| origin.get("origin").and_then(|value| value.as_str()))
+            .find_map(Self::normalize_origin)
+    }
+
+    fn extract_storage_accept_language(value: &Value) -> Option<String> {
+        let origins = value
+            .get("origins")
+            .or_else(|| {
+                value
+                    .get("storageState")
+                    .and_then(|state| state.get("origins"))
+            })
+            .and_then(|origins| origins.as_array())?;
+
+        for origin in origins {
+            let Some(origin_url) = origin.get("origin").and_then(|value| value.as_str()) else {
+                continue;
+            };
+            if Self::normalize_origin(origin_url).is_none() {
+                continue;
+            }
+
+            let Some(local_storage) = origin
+                .get("localStorage")
+                .and_then(|value| value.as_array())
+            else {
+                continue;
+            };
+
+            for item in local_storage {
+                let Some(name) = item.get("name").and_then(|value| value.as_str()) else {
+                    continue;
+                };
+                if !matches!(
+                    name,
+                    "i18nextLng"
+                        | "locale"
+                        | "lang"
+                        | "language"
+                        | "accept-language"
+                        | "acceptLanguage"
+                ) {
+                    continue;
+                }
+
+                let Some(raw_value) = item.get("value").and_then(|value| value.as_str()) else {
+                    continue;
+                };
+                let normalized = raw_value.trim().trim_matches('"').replace('_', "-");
+                if normalized.is_empty() {
+                    continue;
+                }
+                if normalized.contains(',') || normalized.contains(';') {
+                    return Self::normalize_header_value(&normalized);
+                }
+
+                let primary = normalized
+                    .split('-')
+                    .next()
+                    .unwrap_or("ru")
+                    .to_ascii_lowercase();
+                return Some(format!("{normalized},{primary};q=0.9,en;q=0.8"));
+            }
+        }
+
+        None
+    }
+
+    fn extract_header_profile(value: &Value) -> Option<HeaderProfile> {
+        let headers = value.get("headers").unwrap_or(value);
+        let extra_headers = value.get("extraHTTPHeaders").unwrap_or(headers);
+
+        let accept_language = extra_headers
+            .get("accept-language")
+            .or_else(|| extra_headers.get("Accept-Language"))
+            .or_else(|| headers.get("acceptLanguage"))
+            .or_else(|| headers.get("locale"))
+            .and_then(|value| value.as_str())
+            .and_then(Self::normalize_header_value);
+        let origin = extra_headers
+            .get("origin")
+            .or_else(|| extra_headers.get("Origin"))
+            .or_else(|| headers.get("origin"))
+            .or_else(|| headers.get("baseUrl"))
+            .and_then(|value| value.as_str())
+            .and_then(Self::normalize_origin);
+        let referer = extra_headers
+            .get("referer")
+            .or_else(|| extra_headers.get("Referer"))
+            .or_else(|| headers.get("referer"))
+            .or_else(|| headers.get("referrer"))
+            .and_then(|value| value.as_str())
+            .and_then(Self::normalize_referer);
+
+        if accept_language.is_none() && origin.is_none() && referer.is_none() {
+            None
+        } else {
+            Some(HeaderProfile {
+                accept_language,
+                origin,
+                referer,
+            })
+        }
+    }
+
+    fn parse_bootstrap_cookies(cookies: &[Value]) -> Vec<BootstrapCookie> {
+        cookies
+            .iter()
+            .filter_map(Self::parse_bootstrap_cookie)
+            .collect()
+    }
+
+    fn parse_bootstrap_cookie(cookie: &Value) -> Option<BootstrapCookie> {
+        let name = cookie.get("name")?.as_str()?.trim();
+        let value = cookie.get("value")?.as_str()?.trim();
+        let domain = cookie
+            .get("domain")
+            .and_then(|value| value.as_str())
+            .unwrap_or("www.ligastavok.ru")
+            .trim()
+            .to_ascii_lowercase();
+        let path = cookie
+            .get("path")
+            .and_then(|value| value.as_str())
+            .unwrap_or("/")
+            .trim();
+        let expires = cookie
+            .get("expires")
+            .and_then(|value| value.as_i64().or_else(|| value.as_str()?.parse().ok()));
+        let secure = cookie
+            .get("secure")
+            .and_then(|value| value.as_bool())
+            .unwrap_or(true);
+        let host_only = cookie
+            .get("hostOnly")
+            .and_then(|value| value.as_bool())
+            .unwrap_or_else(|| cookie.get("domain").is_none());
+
+        if name.is_empty() || value.is_empty() || !Self::cookie_matches_target(&domain, path) {
+            return None;
+        }
+        if expires.is_some_and(|value| value > 0 && value <= Utc::now().timestamp()) {
+            return None;
+        }
+
+        Some(BootstrapCookie {
+            name: name.to_string(),
+            value: value.to_string(),
+            domain,
+            path: if path.is_empty() {
+                "/".to_string()
+            } else {
+                path.to_string()
+            },
+            expires,
+            secure,
+            host_only,
+        })
+    }
+
+    fn build_cookie_header_for_url(cookies: &[BootstrapCookie], url: &str) -> Option<String> {
+        let url = Url::parse(url).ok()?;
+        let host = url.host_str()?.to_ascii_lowercase();
+        let path = if url.path().is_empty() {
+            "/"
+        } else {
+            url.path()
+        };
+        let is_https = url.scheme() == "https";
+
+        let mut matched = cookies
+            .iter()
+            .filter(|cookie| Self::cookie_matches_url(cookie, &host, path, is_https))
+            .collect::<Vec<_>>();
+        matched.sort_by(|left, right| {
+            right
+                .path
+                .len()
+                .cmp(&left.path.len())
+                .then_with(|| left.name.cmp(&right.name))
+        });
+
+        let mut seen = std::collections::HashSet::new();
+        let joined = matched
+            .into_iter()
+            .filter(|cookie| seen.insert(cookie.name.to_ascii_lowercase()))
+            .map(|cookie| format!("{}={}", cookie.name, cookie.value))
+            .collect::<Vec<_>>()
+            .join("; ");
+
+        if joined.is_empty() {
+            None
+        } else {
+            Some(joined)
+        }
+    }
+
+    fn cookie_matches_url(
+        cookie: &BootstrapCookie,
+        host: &str,
+        path: &str,
+        is_https: bool,
+    ) -> bool {
+        let domain = cookie.domain.trim().trim_start_matches('.');
+        let domain_matches = if cookie.host_only {
+            host == domain
+        } else {
+            host == domain || host.ends_with(&format!(".{domain}"))
+        };
+        let cookie_path = if cookie.path.is_empty() {
+            "/"
+        } else {
+            &cookie.path
+        };
+        let path_matches = path == cookie_path
+            || path.starts_with(cookie_path)
+            || (cookie_path.ends_with('/') && path.starts_with(cookie_path.trim_end_matches('/')));
+
+        domain_matches && path_matches && (!cookie.secure || is_https)
+    }
+
+    fn cookie_matches_target(domain: &str, path: &str) -> bool {
+        let normalized_domain = domain.trim().trim_start_matches('.').to_ascii_lowercase();
+        let normalized_path = path.trim();
+
+        (normalized_domain.is_empty()
+            || normalized_domain == "ligastavok.ru"
+            || normalized_domain.ends_with(".ligastavok.ru"))
+            && (normalized_path.is_empty()
+                || normalized_path == "/"
+                || normalized_path.starts_with('/'))
+    }
+
+    fn browser_headers(
+        &self,
+        endpoint: Endpoint,
+        is_document: bool,
+        target_url: &str,
+    ) -> HeaderMap {
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            HeaderName::from_static("accept-language"),
+            HeaderValue::from_str(&self.bootstrap.accept_language)
+                .unwrap_or_else(|_| HeaderValue::from_static(DEFAULT_ACCEPT_LANGUAGE)),
+        );
+        let referer = if is_document {
+            endpoint.referer
+        } else {
+            &self.bootstrap.referer
+        };
+        headers.insert(
+            HeaderName::from_static("referer"),
+            HeaderValue::from_str(referer)
+                .unwrap_or_else(|_| HeaderValue::from_static(ROOT_REFERER)),
+        );
+        if let Ok(value) = HeaderValue::from_str(&self.bootstrap.origin) {
+            headers.insert(HeaderName::from_static("origin"), value);
+        }
+        headers.insert(
+            HeaderName::from_static("sec-ch-ua"),
+            HeaderValue::from_static("\"Chromium\";v=\"145\", \"Not:A-Brand\";v=\"99\""),
+        );
+        headers.insert(
+            HeaderName::from_static("sec-ch-ua-mobile"),
+            HeaderValue::from_static("?0"),
+        );
+        headers.insert(
+            HeaderName::from_static("sec-ch-ua-platform"),
+            HeaderValue::from_static("\"Windows\""),
+        );
+
+        if is_document {
+            headers.insert(
+                HeaderName::from_static("upgrade-insecure-requests"),
+                HeaderValue::from_static("1"),
+            );
+            headers.insert(
+                HeaderName::from_static("sec-fetch-dest"),
+                HeaderValue::from_static("document"),
+            );
+            headers.insert(
+                HeaderName::from_static("sec-fetch-mode"),
+                HeaderValue::from_static("navigate"),
+            );
+            headers.insert(
+                HeaderName::from_static("sec-fetch-site"),
+                HeaderValue::from_static("same-origin"),
+            );
+            headers.insert(
+                HeaderName::from_static("sec-fetch-user"),
+                HeaderValue::from_static("?1"),
+            );
+        } else {
+            headers.insert(
+                HeaderName::from_static("sec-fetch-dest"),
+                HeaderValue::from_static("empty"),
+            );
+            headers.insert(
+                HeaderName::from_static("sec-fetch-mode"),
+                HeaderValue::from_static("cors"),
+            );
+            headers.insert(
+                HeaderName::from_static("sec-fetch-site"),
+                HeaderValue::from_static("same-site"),
+            );
+            headers.insert(
+                HeaderName::from_static("x-application-name"),
+                HeaderValue::from_static("mobile"),
+            );
+        }
+
+        let cookie_header = Self::merge_cookie_headers(
+            self.bootstrap.cookie_header.clone(),
+            Self::build_cookie_header_for_url(&self.bootstrap.cookie_jar, target_url),
+        );
+        if let Some(cookie_header) = cookie_header {
+            if let Ok(value) = HeaderValue::from_str(&cookie_header) {
+                headers.insert(HeaderName::from_static("cookie"), value);
+            }
+        }
+
+        headers
+    }
+
+    fn has_cookie_bootstrap(&self) -> bool {
+        self.bootstrap.cookie_header.is_some() || !self.bootstrap.cookie_jar.is_empty()
+    }
+
+    fn has_validated_session_bootstrap(&self) -> bool {
+        self.bootstrap_cookie_names()
+            .iter()
+            .any(|name| !Self::is_protection_cookie_name(name))
+    }
+
+    fn bootstrap_cookie_names(&self) -> Vec<String> {
+        let mut names = self
+            .bootstrap
+            .cookie_jar
+            .iter()
+            .map(|cookie| cookie.name.clone())
+            .collect::<Vec<_>>();
+
+        if let Some(header) = &self.bootstrap.cookie_header {
+            for part in header
+                .split(';')
+                .map(str::trim)
+                .filter(|part| !part.is_empty())
+            {
+                let Some((name, _)) = part.split_once('=') else {
+                    continue;
+                };
+                let trimmed = name.trim();
+                if !trimmed.is_empty() {
+                    names.push(trimmed.to_string());
+                }
+            }
+        }
+
+        names.sort_by_key(|name| name.to_ascii_lowercase());
+        names.dedup_by(|left, right| left.eq_ignore_ascii_case(right));
+        names
+    }
+
+    fn is_protection_cookie_name(name: &str) -> bool {
+        let lower = name.trim().to_ascii_lowercase();
+        lower.starts_with("qrator_")
+            || lower.starts_with("__qrator")
+            || lower.starts_with("qauth_")
+            || lower.starts_with("qab")
+    }
+
+    fn session_bootstrap_summary(&self) -> String {
+        let cookie_names = self.bootstrap_cookie_names();
+        let non_protection_cookie_count = cookie_names
+            .iter()
+            .filter(|name| !Self::is_protection_cookie_name(name))
+            .count();
+        let protection_only = !cookie_names.is_empty() && non_protection_cookie_count == 0;
+
+        format!(
+            "cookie_names={}; cookie_count={}; non_protection_cookie_count={}; protection_only={}; has_manual_cookie_header={}; accept_language={}; origin={}; referer={}",
+            if cookie_names.is_empty() {
+                "-".to_string()
+            } else {
+                cookie_names.join("|")
+            },
+            cookie_names.len(),
+            non_protection_cookie_count,
+            protection_only,
+            self.bootstrap.cookie_header.is_some(),
+            self.bootstrap.accept_language,
+            self.bootstrap.origin,
+            self.bootstrap.referer,
+        )
+    }
+
+    fn build_events_payload(&self, sport_id: u32, namespace: &str, skip: u32) -> Value {
+        json!({
+            "gameId": [sport_id],
+            "sportId": sport_id,
+            "limit": PAGE_LIMIT,
+            "skip": skip,
+            "topEvents": false,
+            "ts": Utc::now().timestamp_millis(),
+            "widgetVideo": false,
+            "filters": {},
+            "lineType": "home",
+            "method": "standard",
+            "ns": [namespace],
+            "proposedType": "MAINOFFER",
+            "proposedTypes": ["MAINOFFER"],
+        })
+    }
+
+    fn namespace_payload_candidates(namespace: &str) -> Vec<&str> {
+        match namespace {
+            "prematch" => vec!["prematch", "line"],
+            "live" => vec!["live"],
+            _ => vec![namespace],
+        }
+    }
+
+    fn endpoint_for_namespace(&self, namespace: &str) -> Endpoint {
+        self.endpoints
+            .iter()
+            .copied()
+            .find(|endpoint| endpoint.namespace == namespace)
+            .unwrap_or(self.endpoints[0])
+    }
+
+    async fn warm_up_session(
+        &self,
+        endpoint: Endpoint,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        for url in [BASE_URL, endpoint.referer] {
+            let response = self
+                .client
+                .get(url)
+                .header("User-Agent", USER_AGENT)
+                .header(
+                    "Accept",
+                    "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+                )
+                .headers(self.browser_headers(endpoint, true, url))
+                .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
+                .send()
+                .await?;
+            let body = response.text().await?;
+            if !Self::looks_like_protection_page(&body) {
+                return Ok(());
+            }
+        }
+
+        Err(Self::boxed_error(format!(
+            "QRATOR blocked warm-up navigation for {}",
+            endpoint.referer
+        )))
+    }
+
+    async fn fetch_json(
+        &self,
+        url: &str,
+        endpoint: Endpoint,
+        payload: &Value,
+    ) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+        let req_id = Self::request_id();
+        debug!(url, referer = endpoint.referer, route_hint = endpoint.route_hint, request_id = req_id, payload = %payload, "Liga Stavok: sending JSON probe");
+
+        let request = self
+            .client
+            .post(url)
+            .header("User-Agent", USER_AGENT)
+            .header("Accept", "application/json")
+            .header("Content-Type", "application/json")
+            .headers(self.browser_headers(endpoint, false, url))
+            .header("x-req-id", req_id)
+            .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS));
+
+        let request = match payload {
+            Value::Object(map) if map.is_empty() => request,
+            _ => request.json(payload),
+        };
+
+        let response = request.send().await?;
+        if !response.status().is_success() {
+            return Err(Self::boxed_error(format!(
+                "{} returned status {} for {} ({})",
+                url,
+                response.status(),
+                endpoint.route_hint,
+                self.session_bootstrap_summary()
+            )));
+        }
+
+        let body = response.text().await?;
+        if Self::looks_like_protection_page(&body) {
+            return Err(Self::boxed_error(format!(
+                "QRATOR blocked {} for {} ({})",
+                url,
+                endpoint.route_hint,
+                self.session_bootstrap_summary()
+            )));
+        }
+
+        serde_json::from_str(&body).map_err(|error| {
+            Self::boxed_error(format!("failed to parse {} response JSON: {}", url, error))
+        })
+    }
+
+    fn looks_like_protection_page(body: &str) -> bool {
+        let lower = body.to_lowercase();
+        lower.contains("qauth_show_captcha")
+            || lower.contains("доступ заблокирован системой защиты")
+            || lower.contains("please, complete the captcha")
+            || lower.contains("__qrator")
+            || lower.contains("tag: qab")
+    }
+
+    fn boxed_error(message: impl Into<String>) -> Box<dyn std::error::Error + Send + Sync> {
+        Box::new(std::io::Error::other(message.into()))
+    }
+
+    fn branch_error(
+        branch: &str,
+        detail: impl Into<String>,
+    ) -> Box<dyn std::error::Error + Send + Sync> {
+        Self::boxed_error(format!("Liga Stavok {branch} branch: {}", detail.into()))
+    }
+
+    fn describe_filter_payload(json: &Value) -> String {
+        match json.get("result") {
+            Some(Value::Array(items)) if items.is_empty() => "result array is empty".to_string(),
+            Some(Value::Array(items)) => format!(
+                "result array has {} entries but none with positive totals",
+                items.len()
+            ),
+            Some(other) => format!("result is {} instead of an array", Self::json_type(other)),
+            None => {
+                format!(
+                    "result key is missing; top-level keys: {}",
+                    Self::top_level_keys(json)
+                )
+            }
+        }
+    }
+
+    fn describe_tournament_tree_payload(json: &Value) -> String {
+        match json.get("result") {
+            Some(Value::Array(items)) if items.is_empty() => "result array is empty".to_string(),
+            Some(Value::Array(items)) => format!(
+                "result array has {} entries but none with non-zero sport totals",
+                items.len()
+            ),
+            Some(other) => format!("result is {} instead of an array", Self::json_type(other)),
+            None => {
+                format!(
+                    "result key is missing; top-level keys: {}",
+                    Self::top_level_keys(json)
+                )
+            }
+        }
+    }
+
+    fn describe_events_list_payload(json: &Value) -> String {
+        if let Some(items) = json
+            .get("result")
+            .and_then(|value| value.get("data"))
+            .and_then(|value| value.as_array())
+        {
+            let namespaces = items
+                .iter()
+                .filter_map(|item| item.get("ns").and_then(|value| value.as_str()))
+                .take(3)
+                .map(str::to_string)
+                .collect::<Vec<_>>();
+
+            return if items.is_empty() {
+                "result.data is present but empty".to_string()
+            } else if namespaces.is_empty() {
+                format!("result.data has {} entries", items.len())
+            } else {
+                format!(
+                    "result.data has {} entries with namespaces {}",
+                    items.len(),
+                    namespaces.join(",")
+                )
+            };
+        }
+
+        if let Some(items) = json.get("data").and_then(|value| value.as_array()) {
+            return if items.is_empty() {
+                "data is present but empty".to_string()
+            } else {
+                format!("data has {} entries", items.len())
+            };
+        }
+
+        let result_shape = json.get("result").map(Self::json_type).unwrap_or("missing");
+        format!(
+            "schema does not expose result.data or data arrays (result={result_shape}; top-level keys: {})",
+            Self::top_level_keys(json)
+        )
+    }
+
+    fn json_type(value: &Value) -> &'static str {
+        match value {
+            Value::Null => "null",
+            Value::Bool(_) => "bool",
+            Value::Number(_) => "number",
+            Value::String(_) => "string",
+            Value::Array(_) => "array",
+            Value::Object(_) => "object",
+        }
+    }
+
+    fn top_level_keys(json: &Value) -> String {
+        json.as_object()
+            .map(|map| {
+                let mut keys = map.keys().cloned().collect::<Vec<_>>();
+                keys.sort();
+                if keys.is_empty() {
+                    "<none>".to_string()
+                } else {
+                    keys.join(",")
+                }
+            })
+            .unwrap_or_else(|| Self::json_type(json).to_string())
+    }
+
+    async fn fetch_sport_catalog(
+        &self,
+    ) -> Result<Vec<SportCatalogEntry>, Box<dyn std::error::Error + Send + Sync>> {
+        let endpoint = self.endpoint_for_namespace("prematch");
+        if let Err(error) = self.warm_up_session(endpoint).await {
+            if self.has_validated_session_bootstrap() {
+                warn!(
+                    %error,
+                    session = %self.session_bootstrap_summary(),
+                    "Liga Stavok warm-up blocked, continuing with validated session bootstrap"
+                );
+            } else if self.has_cookie_bootstrap() {
+                return Err(Self::branch_error(
+                    "preflight",
+                    format!(
+                        "warm-up navigation refused before API bootstrap: {error}; bootstrap cookies are protection-only or session-incomplete ({})",
+                        self.session_bootstrap_summary()
+                    ),
+                ));
+            } else {
+                return Err(Self::branch_error(
+                    "preflight",
+                    format!(
+                        "warm-up navigation refused before API bootstrap: {error}; cookie/storage bootstrap unavailable ({})",
+                        self.session_bootstrap_summary()
+                    ),
+                ));
+            }
+        }
+
+        let filter_catalog = match self.fetch_filter_catalog(endpoint).await {
+            Ok(entries) => entries,
+            Err(error) => {
+                warn!(%error, "Liga Stavok filter preflight failed, continuing with tournament tree only");
+                Vec::new()
+            }
+        };
+        let json = self
+            .fetch_json(TOURNAMENT_TREE_URL, endpoint, &json!({}))
+            .await?;
+        let sports =
+            Self::merge_filter_catalog(Self::parse_tournament_tree(&json), &filter_catalog);
+        if sports.is_empty() {
+            let filter_note = if filter_catalog.is_empty() {
+                "filter preflight yielded no live-sport hints".to_string()
+            } else {
+                format!(
+                    "filter preflight yielded {} live-sport hints",
+                    filter_catalog.len()
+                )
+            };
+            return Err(Self::branch_error(
+                "tournamentTree",
+                format!(
+                    "{}; {filter_note}",
+                    Self::describe_tournament_tree_payload(&json)
+                ),
+            ));
+        }
+        Ok(sports)
+    }
+
+    async fn fetch_filter_catalog(
+        &self,
+        endpoint: Endpoint,
+    ) -> Result<Vec<FilterCatalogEntry>, Box<dyn std::error::Error + Send + Sync>> {
+        let json = self.fetch_json(FILTER_URL, endpoint, &json!({})).await?;
+        let entries = Self::parse_filter_catalog(&json);
+        if entries.is_empty() {
+            return Err(Self::branch_error(
+                "filter",
+                format!(
+                    "preflight returned no usable sport totals: {}",
+                    Self::describe_filter_payload(&json)
+                ),
+            ));
+        }
+        Ok(entries)
+    }
+
+    async fn fetch_sport_namespace(
+        &self,
+        sport: &SportCatalogEntry,
+        namespace: &str,
+    ) -> Result<(Vec<Event>, Vec<Odd>), Box<dyn std::error::Error + Send + Sync>> {
+        let expected_total = match namespace {
+            "live" => sport.filter_live_total.unwrap_or(sport.total_live),
+            _ => sport.total.saturating_sub(sport.total_live),
+        };
+
+        if expected_total == 0 {
+            return Ok((Vec::new(), Vec::new()));
+        }
+
+        let endpoint = self.endpoint_for_namespace(namespace);
+        let mut last_error = None;
+
+        for payload_namespace in Self::namespace_payload_candidates(namespace) {
+            let mut events = Vec::new();
+            let mut odds = Vec::new();
+            let mut candidate_error = None;
+
+            for skip in (0..expected_total).step_by(PAGE_LIMIT as usize) {
+                let payload =
+                    self.build_events_payload(sport.sport_id, payload_namespace, skip as u32);
+                let json = match self.fetch_json(EVENTS_LIST_URL, endpoint, &payload).await {
+                    Ok(json) => json,
+                    Err(error) => {
+                        candidate_error = Some(error);
+                        break;
+                    }
+                };
+                let (batch_events, batch_odds) = Self::parse_response(&json, endpoint.route_hint);
+
+                if batch_events.is_empty() {
+                    if skip == 0 {
+                        candidate_error = Some(Self::branch_error(
+                            "eventsList",
+                            format!(
+                                "sport {} ({}) namespace {} via payload ns {} returned no parsable events: {}",
+                                sport.sport_name,
+                                sport.sport_id,
+                                namespace,
+                                payload_namespace,
+                                Self::describe_events_list_payload(&json)
+                            ),
+                        ));
+                    }
+                    break;
+                }
+
+                let batch_len = batch_events.len();
+                events.extend(batch_events);
+                odds.extend(batch_odds);
+
+                if batch_len < PAGE_LIMIT as usize {
+                    break;
+                }
+            }
+
+            if !events.is_empty() {
+                if payload_namespace != namespace {
+                    info!(
+                        sport_id = sport.sport_id,
+                        sport_name = %sport.sport_name,
+                        namespace,
+                        payload_namespace,
+                        events = events.len(),
+                        "Liga Stavok namespace fallback succeeded"
+                    );
+                }
+                return Ok((events, odds));
+            }
+
+            last_error = candidate_error;
+        }
+
+        Err(last_error.unwrap_or_else(|| {
+            Self::branch_error(
+                "eventsList",
+                format!(
+                    "sport {} ({}) namespace {} produced no events across payload namespaces {}",
+                    sport.sport_name,
+                    sport.sport_id,
+                    namespace,
+                    Self::namespace_payload_candidates(namespace).join(",")
+                ),
+            )
+        }))
     }
 
     pub(crate) async fn fetch_runtime_data(
@@ -81,22 +1153,51 @@ impl LigaStavokParser {
     ) -> Result<(Vec<Event>, Vec<Odd>), Box<dyn std::error::Error + Send + Sync>> {
         let mut events_by_id = HashMap::new();
         let mut odds_by_id = HashMap::new();
+        let mut errors = Vec::new();
 
-        for endpoint in &self.endpoints {
-            match self.fetch_endpoint(*endpoint).await {
-                Ok((endpoint_events, endpoint_odds)) => {
-                    for event in endpoint_events {
-                        events_by_id.entry(event.id.clone()).or_insert(event);
-                    }
+        let sports = self.fetch_sport_catalog().await.map_err(|error| {
+            Self::branch_error("runtime", format!("catalog bootstrap failed: {error}"))
+        })?;
+        for sport in &sports {
+            for namespace in ["prematch", "live"] {
+                match self.fetch_sport_namespace(sport, namespace).await {
+                    Ok((endpoint_events, endpoint_odds)) => {
+                        for event in endpoint_events {
+                            events_by_id.entry(event.id.clone()).or_insert(event);
+                        }
 
-                    for odd in endpoint_odds {
-                        odds_by_id.entry(odd.id.clone()).or_insert(odd);
+                        for odd in endpoint_odds {
+                            odds_by_id.entry(odd.id.clone()).or_insert(odd);
+                        }
                     }
-                }
-                Err(error) => {
-                    warn!(referer = endpoint.referer, route_hint = endpoint.route_hint, %error, "Liga Stavok endpoint fetch failed");
+                    Err(error) => {
+                        warn!(sport_id = sport.sport_id, sport_name = %sport.sport_name, namespace, %error, "Liga Stavok sport fetch failed");
+                        errors.push(format!(
+                            "sport={} id={} namespace={} reason={}",
+                            sport.sport_name, sport.sport_id, namespace, error
+                        ));
+                    }
                 }
             }
+        }
+
+        if events_by_id.is_empty() {
+            if errors.is_empty() {
+                return Err(Self::branch_error(
+                    "runtime",
+                    format!(
+                        "all branches completed without parser-visible events after catalog bootstrap across {} sports",
+                        sports.len()
+                    ),
+                ));
+            }
+            return Err(Self::branch_error(
+                "runtime",
+                format!(
+                    "all sport branches refused runtime extraction after catalog bootstrap: {}",
+                    errors.join("; ")
+                ),
+            ));
         }
 
         Ok((
@@ -105,82 +1206,198 @@ impl LigaStavokParser {
         ))
     }
 
-    async fn fetch_endpoint(
-        &self,
-        endpoint: Endpoint,
-    ) -> Result<(Vec<Event>, Vec<Odd>), Box<dyn std::error::Error + Send + Sync>> {
-        let req_id = Self::request_id();
-        let payload = self.build_payload();
-
-        debug!(
-            url = EVENTS_LIST_URL,
-            referer = endpoint.referer,
-            route_hint = endpoint.route_hint,
-            request_id = req_id,
-            "Liga Stavok: probing eventsList endpoint"
-        );
-
-        let response = self
-            .client
-            .post(EVENTS_LIST_URL)
-            .header("User-Agent", USER_AGENT)
-            .header("Accept", "application/json")
-            .header("Accept-Language", "ru-RU,ru;q=0.9,en;q=0.8")
-            .header("Content-Type", "application/json")
-            .header("Referer", endpoint.referer)
-            .header("x-application-name", "mobile")
-            .header("x-req-id", req_id)
-            .timeout(Duration::from_secs(20))
-            .json(&payload)
-            .send()
-            .await?;
-
-        if !response.status().is_success() {
-            debug!(status = %response.status(), referer = endpoint.referer, route_hint = endpoint.route_hint, "Liga Stavok: non-success status from eventsList");
-            return Ok((Vec::new(), Vec::new()));
-        }
-
-        let json: serde_json::Value = response.json().await?;
-        Ok(Self::parse_response(&json, endpoint.route_hint))
-    }
-
     fn request_id() -> String {
         format!("ls-{:016x}", rand::thread_rng().gen::<u64>())
     }
 
     fn readiness_snapshot() -> ParserReadiness {
         ParserReadiness {
-            stage: ParserReadinessStage::RolloutReady,
+            stage: ParserReadinessStage::DiagnosticOnly,
             production_enabled: false,
             self_check_available: true,
             checks: vec![
                 ParserDiagnosticCheck {
-                    code: "events_list_endpoint_configured".to_string(),
+                    code: "events_list_pagination_configured".to_string(),
                     severity: DiagnosticSeverity::Pass,
-                    message: format!("POST probe configured for {EVENTS_LIST_URL}."),
+                    message: format!("Sport-scoped POST pagination is configured for {EVENTS_LIST_URL}."),
                 },
                 ParserDiagnosticCheck {
-                    code: "route_probes_seeded".to_string(),
+                    code: "filter_preflight_configured".to_string(),
+                    severity: DiagnosticSeverity::Info,
+                    message: format!("Lightweight live-sport preflight is configured via {FILTER_URL} before tournamentTree/eventsList.").to_string(),
+                },
+                ParserDiagnosticCheck {
+                    code: "preflight_branch_diagnostics_recorded".to_string(),
+                    severity: DiagnosticSeverity::Info,
+                    message: "Warm-up refusal paths explicitly report whether cookie/storage bootstrap is available before any API probe fallback is attempted.".to_string(),
+                },
+                ParserDiagnosticCheck {
+                    code: "filter_branch_diagnostics_recorded".to_string(),
+                    severity: DiagnosticSeverity::Info,
+                    message: "Filter preflight failures distinguish empty result sets, schema drift, and transport/protection errors without promoting the branch to a bypass mechanism.".to_string(),
+                },
+                ParserDiagnosticCheck {
+                    code: "tournament_tree_catalog_configured".to_string(),
                     severity: DiagnosticSeverity::Pass,
-                    message: "Prematch and live referer probes are configured for readiness diagnostics.".to_string(),
+                    message: format!("Sport discovery is configured via {TOURNAMENT_TREE_URL}.").to_string(),
+                },
+                ParserDiagnosticCheck {
+                    code: "tournament_tree_branch_diagnostics_recorded".to_string(),
+                    severity: DiagnosticSeverity::Info,
+                    message: "Tournament-tree failures now report payload-shape vs zero-total catalog outcomes and whether filter preflight contributed any live-sport hints.".to_string(),
                 },
                 ParserDiagnosticCheck {
                     code: "schema_parser_present".to_string(),
                     severity: DiagnosticSeverity::Pass,
-                    message: "eventsList payload parser extracts events, markets, and totals from the known scaffold shape.".to_string(),
+                    message: "eventsList payload parser extracts events, markets, and totals from the production schema.".to_string(),
                 },
                 ParserDiagnosticCheck {
-                    code: "session_bootstrap_pending".to_string(),
-                    severity: DiagnosticSeverity::Warn,
-                    message: "QRATOR/session bootstrap is not stable enough for production traffic yet, so the parser remains disabled by default.".to_string(),
+                    code: "events_list_branch_diagnostics_recorded".to_string(),
+                    severity: DiagnosticSeverity::Info,
+                    message: "eventsList refusal messages include payload namespace, requested namespace, and schema/empty-data hints for safer runtime validation.".to_string(),
+                },
+                ParserDiagnosticCheck {
+                    code: "cookie_bootstrap_supported".to_string(),
+                    severity: DiagnosticSeverity::Info,
+                    message: "Optional cookie bootstrap from LIGASTAVOK_COOKIE_HEADER, LIGASTAVOK_COOKIE_FILE, or ligastavok_cookies.json is supported for protected environments.".to_string(),
+                },
+                ParserDiagnosticCheck {
+                    code: "storage_state_bootstrap_supported".to_string(),
+                    severity: DiagnosticSeverity::Info,
+                    message: "Playwright-style storage state bootstrap is parsed from LIGASTAVOK_STORAGE_STATE_FILE or ligastavok_storage_state.json for cookies, locale, and origin alignment.".to_string(),
+                },
+                ParserDiagnosticCheck {
+                    code: "browser_header_bootstrap_supported".to_string(),
+                    severity: DiagnosticSeverity::Info,
+                    message: "Warm-up and API probes send stable navigation/CORS headers with origin and Accept-Language derived from env, header-profile, or storage-state bootstrap.".to_string(),
+                },
+                ParserDiagnosticCheck {
+                    code: "session_bootstrap_validation_recorded".to_string(),
+                    severity: DiagnosticSeverity::Info,
+                    message: "Warm-up fallback proceeds only when bootstrap carries at least one non-protection cookie; protection-only QRATOR cookies are surfaced as an explicit blocker instead of a silent bypass.".to_string(),
+                },
+                ParserDiagnosticCheck {
+                    code: "runtime_refusal_reasons_recorded".to_string(),
+                    severity: DiagnosticSeverity::Info,
+                    message: "Runtime failures aggregate branch-specific refusal reasons so diagnostics can distinguish catalog bootstrap issues from per-sport eventsList exhaustion.".to_string(),
+                },
+                ParserDiagnosticCheck {
+                    code: "qrator_unattended_bootstrap_unverified".to_string(),
+                    severity: DiagnosticSeverity::Fail,
+                    message: "Unattended QRATOR bypass is not verified on the current infra, so the parser remains out of production scan.".to_string(),
                 },
                 ParserDiagnosticCheck {
                     code: "production_guardrail".to_string(),
                     severity: DiagnosticSeverity::Info,
-                    message: "Factory registration is kept for diagnostics and explicit testing only; scanner enablement stays off.".to_string(),
+                    message: "Factory registration stays disabled until runtime diagnostics pass with stable protection bootstrap.".to_string(),
                 },
             ],
         }
+    }
+
+    fn parse_tournament_tree(json: &Value) -> Vec<SportCatalogEntry> {
+        json.get("result")
+            .and_then(|value| value.as_array())
+            .into_iter()
+            .flatten()
+            .filter_map(|item| {
+                let sport_id = item.get("gameId").and_then(|value| value.as_u64())? as u32;
+                let sport_name = item
+                    .get("gameTitle")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or("unknown")
+                    .trim()
+                    .to_string();
+                let total = item
+                    .get("total")
+                    .and_then(|value| value.as_u64())
+                    .unwrap_or(0) as usize;
+                let total_live = item
+                    .get("totalLive")
+                    .and_then(|value| value.as_u64())
+                    .unwrap_or(0) as usize;
+
+                if sport_name.is_empty() || total == 0 {
+                    return None;
+                }
+
+                Some(SportCatalogEntry {
+                    sport_id,
+                    sport_name,
+                    total,
+                    total_live,
+                    filter_live_total: None,
+                })
+            })
+            .collect()
+    }
+
+    fn parse_filter_catalog(json: &Value) -> Vec<FilterCatalogEntry> {
+        json.get("result")
+            .and_then(|value| value.as_array())
+            .into_iter()
+            .flatten()
+            .filter_map(|item| {
+                let sport_id = item.get("_id").and_then(|value| value.as_u64())? as u32;
+                let sport_name = item
+                    .get("title")
+                    .or_else(|| item.get("name"))
+                    .or_else(|| item.get("gameTitle"))
+                    .and_then(|value| value.as_str())
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_string);
+                let total = item
+                    .get("total")
+                    .and_then(|value| value.as_u64())
+                    .unwrap_or(0) as usize;
+
+                if total == 0 {
+                    return None;
+                }
+
+                Some(FilterCatalogEntry {
+                    sport_id,
+                    sport_name,
+                    total,
+                })
+            })
+            .collect()
+    }
+
+    fn merge_filter_catalog(
+        mut sports: Vec<SportCatalogEntry>,
+        filter_catalog: &[FilterCatalogEntry],
+    ) -> Vec<SportCatalogEntry> {
+        let filter_by_sport = filter_catalog
+            .iter()
+            .map(|entry| (entry.sport_id, entry))
+            .collect::<HashMap<_, _>>();
+
+        for sport in &mut sports {
+            sport.filter_live_total = filter_by_sport
+                .get(&sport.sport_id)
+                .map(|entry| entry.total);
+        }
+
+        for entry in filter_catalog {
+            if sports.iter().any(|sport| sport.sport_id == entry.sport_id) {
+                continue;
+            }
+
+            sports.push(SportCatalogEntry {
+                sport_id: entry.sport_id,
+                sport_name: entry
+                    .sport_name
+                    .clone()
+                    .unwrap_or_else(|| format!("sport-{}", entry.sport_id)),
+                total: entry.total,
+                total_live: entry.total,
+                filter_live_total: Some(entry.total),
+            });
+        }
+
+        sports
     }
 
     fn parse_response(json: &serde_json::Value, route_hint: &str) -> (Vec<Event>, Vec<Odd>) {
@@ -711,12 +1928,460 @@ mod tests {
     fn exposes_rollout_readiness_diagnostics() {
         let readiness = LigaStavokParser::readiness_snapshot();
 
-        assert_eq!(readiness.stage, shared::ParserReadinessStage::RolloutReady);
+        assert_eq!(
+            readiness.stage,
+            shared::ParserReadinessStage::DiagnosticOnly
+        );
         assert!(!readiness.production_enabled);
         assert!(readiness.self_check_available);
         assert!(readiness
             .checks
             .iter()
-            .any(|check| check.code == "session_bootstrap_pending"));
+            .any(|check| check.code == "qrator_unattended_bootstrap_unverified"));
+        assert!(readiness
+            .checks
+            .iter()
+            .any(|check| check.code == "preflight_branch_diagnostics_recorded"));
+        assert!(readiness
+            .checks
+            .iter()
+            .any(|check| check.code == "filter_branch_diagnostics_recorded"));
+        assert!(readiness
+            .checks
+            .iter()
+            .any(|check| check.code == "tournament_tree_branch_diagnostics_recorded"));
+        assert!(readiness
+            .checks
+            .iter()
+            .any(|check| check.code == "events_list_branch_diagnostics_recorded"));
+        assert!(readiness
+            .checks
+            .iter()
+            .any(|check| check.code == "session_bootstrap_validation_recorded"));
+        assert!(readiness
+            .checks
+            .iter()
+            .any(|check| check.code == "runtime_refusal_reasons_recorded"));
+    }
+
+    #[test]
+    fn describes_branch_payload_failures_explicitly() {
+        let filter_message = LigaStavokParser::describe_filter_payload(&serde_json::json!({
+            "result": []
+        }));
+        let tournament_message =
+            LigaStavokParser::describe_tournament_tree_payload(&serde_json::json!({
+                "result": [{ "gameId": 33, "gameTitle": "Футбол", "total": 0 }]
+            }));
+        let events_message = LigaStavokParser::describe_events_list_payload(&serde_json::json!({
+            "result": { "meta": { "skip": 0 } }
+        }));
+
+        assert_eq!(filter_message, "result array is empty");
+        assert_eq!(
+            tournament_message,
+            "result array has 1 entries but none with non-zero sport totals"
+        );
+        assert!(events_message.contains("schema does not expose result.data or data arrays"));
+        assert!(events_message.contains("result=object"));
+    }
+
+    #[test]
+    fn describes_events_list_namespaces_when_payload_is_present() {
+        let message = LigaStavokParser::describe_events_list_payload(&serde_json::json!({
+            "result": {
+                "data": [
+                    { "id": 1, "ns": "live" },
+                    { "id": 2, "ns": "live" },
+                    { "id": 3, "ns": "prematch" }
+                ]
+            }
+        }));
+
+        assert_eq!(
+            message,
+            "result.data has 3 entries with namespaces live,live,prematch"
+        );
+    }
+
+    #[test]
+    fn builds_sport_scoped_payload() {
+        let parser = LigaStavokParser::new(std::sync::Arc::new(reqwest::Client::new()));
+        let payload = parser.build_events_payload(33, "prematch", 400);
+
+        assert_eq!(payload["sportId"], 33);
+        assert_eq!(payload["gameId"][0], 33);
+        assert_eq!(payload["ns"][0], "prematch");
+        assert_eq!(payload["limit"], 200);
+        assert_eq!(payload["skip"], 400);
+        assert_eq!(payload["lineType"], "home");
+        assert_eq!(payload["method"], "standard");
+        assert_eq!(payload["proposedType"], "MAINOFFER");
+    }
+
+    #[test]
+    fn parses_tournament_tree_totals() {
+        let payload = serde_json::json!({
+            "result": [
+                {
+                    "gameId": 33,
+                    "gameTitle": "Футбол",
+                    "total": 1490,
+                    "totalLive": 29
+                },
+                {
+                    "gameId": 25,
+                    "gameTitle": "Баскетбол",
+                    "total": 170,
+                    "totalLive": 23
+                }
+            ]
+        });
+
+        let sports = LigaStavokParser::parse_tournament_tree(&payload);
+        assert_eq!(sports.len(), 2);
+        assert_eq!(sports[0].sport_id, 33);
+        assert_eq!(sports[0].sport_name, "Футбол");
+        assert_eq!(sports[0].total, 1490);
+        assert_eq!(sports[0].total_live, 29);
+        assert_eq!(sports[0].filter_live_total, None);
+        assert_eq!(sports[1].sport_id, 25);
+    }
+
+    #[test]
+    fn parses_filter_preflight_totals() {
+        let payload = serde_json::json!({
+            "result": [
+                { "_id": 33, "title": "Футбол", "total": 29, "lmt": 23 },
+                { "_id": 25, "total": 23, "lmt": 23 },
+                { "_id": 31, "total": 0, "lmt": 0 }
+            ]
+        });
+
+        let sports = LigaStavokParser::parse_filter_catalog(&payload);
+        assert_eq!(sports.len(), 2);
+        assert_eq!(sports[0].sport_id, 33);
+        assert_eq!(sports[0].sport_name.as_deref(), Some("Футбол"));
+        assert_eq!(sports[0].total, 29);
+        assert_eq!(sports[1].sport_id, 25);
+        assert_eq!(sports[1].sport_name, None);
+        assert_eq!(sports[1].total, 23);
+    }
+
+    #[test]
+    fn merges_filter_preflight_into_tournament_tree_catalog() {
+        let sports = vec![
+            super::SportCatalogEntry {
+                sport_id: 33,
+                sport_name: "Футбол".to_string(),
+                total: 1490,
+                total_live: 29,
+                filter_live_total: None,
+            },
+            super::SportCatalogEntry {
+                sport_id: 25,
+                sport_name: "Баскетбол".to_string(),
+                total: 170,
+                total_live: 23,
+                filter_live_total: None,
+            },
+        ];
+        let filter = vec![super::FilterCatalogEntry {
+            sport_id: 25,
+            sport_name: Some("Баскетбол".to_string()),
+            total: 21,
+        }];
+
+        let merged = LigaStavokParser::merge_filter_catalog(sports, &filter);
+
+        assert_eq!(merged[0].filter_live_total, None);
+        assert_eq!(merged[1].filter_live_total, Some(21));
+        assert_eq!(merged[1].total_live, 23);
+    }
+
+    #[test]
+    fn adds_live_only_sport_from_filter_catalog_when_tree_misses_it() {
+        let sports = vec![super::SportCatalogEntry {
+            sport_id: 33,
+            sport_name: "Футбол".to_string(),
+            total: 1490,
+            total_live: 29,
+            filter_live_total: None,
+        }];
+        let filter = vec![super::FilterCatalogEntry {
+            sport_id: 25,
+            sport_name: Some("Баскетбол".to_string()),
+            total: 21,
+        }];
+
+        let merged = LigaStavokParser::merge_filter_catalog(sports, &filter);
+
+        assert_eq!(merged.len(), 2);
+        assert_eq!(merged[1].sport_id, 25);
+        assert_eq!(merged[1].sport_name, "Баскетбол");
+        assert_eq!(merged[1].total, 21);
+        assert_eq!(merged[1].total_live, 21);
+        assert_eq!(merged[1].filter_live_total, Some(21));
+    }
+
+    #[test]
+    fn provides_safe_namespace_fallback_for_prematch_events_list() {
+        assert_eq!(
+            LigaStavokParser::namespace_payload_candidates("prematch"),
+            vec!["prematch", "line"]
+        );
+        assert_eq!(
+            LigaStavokParser::namespace_payload_candidates("live"),
+            vec!["live"]
+        );
+    }
+
+    #[test]
+    fn supports_storage_state_cookie_shape() {
+        let payload = serde_json::json!({
+            "cookies": [
+                {
+                    "name": "qrator_jsr",
+                    "value": "abc",
+                    "domain": ".ligastavok.ru",
+                    "path": "/"
+                }
+            ]
+        });
+
+        let cookies = LigaStavokParser::extract_cookie_values(&payload).expect("cookies");
+        assert_eq!(cookies.len(), 1);
+        assert_eq!(cookies[0]["name"], "qrator_jsr");
+    }
+
+    #[test]
+    fn supports_nested_storage_state_cookie_shape() {
+        let payload = serde_json::json!({
+            "storageState": {
+                "cookies": [
+                    {
+                        "name": "sessionid",
+                        "value": "safe",
+                        "domain": ".ligastavok.ru",
+                        "path": "/"
+                    }
+                ]
+            }
+        });
+
+        let cookies = LigaStavokParser::extract_cookie_values(&payload).expect("cookies");
+        assert_eq!(cookies.len(), 1);
+        assert_eq!(cookies[0]["name"], "sessionid");
+    }
+
+    #[test]
+    fn parses_storage_state_bootstrap_profile() {
+        let payload = serde_json::json!({
+            "cookies": [
+                {
+                    "name": "qrator_jsr",
+                    "value": "abc",
+                    "domain": ".ligastavok.ru",
+                    "path": "/"
+                },
+                {
+                    "name": "other",
+                    "value": "skip",
+                    "domain": ".example.com",
+                    "path": "/"
+                }
+            ],
+            "origins": [
+                {
+                    "origin": "https://www.ligastavok.ru",
+                    "localStorage": [
+                        { "name": "i18nextLng", "value": "ru-RU" }
+                    ]
+                }
+            ]
+        });
+
+        let bootstrap =
+            LigaStavokParser::extract_storage_state_bootstrap(&payload).expect("bootstrap");
+
+        assert_eq!(bootstrap.cookie_header.as_deref(), Some("qrator_jsr=abc"));
+        assert_eq!(
+            bootstrap.accept_language.as_deref(),
+            Some("ru-RU,ru;q=0.9,en;q=0.8")
+        );
+        assert_eq!(
+            bootstrap.origin.as_deref(),
+            Some("https://www.ligastavok.ru")
+        );
+        assert_eq!(
+            bootstrap.referer.as_deref(),
+            Some("https://www.ligastavok.ru/")
+        );
+    }
+
+    #[test]
+    fn extracts_safe_header_profile() {
+        let payload = serde_json::json!({
+            "extraHTTPHeaders": {
+                "Accept-Language": "ru-RU,ru;q=0.9,en;q=0.8",
+                "Origin": "https://www.ligastavok.ru/",
+                "Referer": "https://www.ligastavok.ru/live/football"
+            }
+        });
+
+        let profile = LigaStavokParser::extract_header_profile(&payload).expect("profile");
+        assert_eq!(
+            profile.accept_language.as_deref(),
+            Some("ru-RU,ru;q=0.9,en;q=0.8")
+        );
+        assert_eq!(profile.origin.as_deref(), Some("https://www.ligastavok.ru"));
+        assert_eq!(
+            profile.referer.as_deref(),
+            Some("https://www.ligastavok.ru/live/football")
+        );
+    }
+
+    #[test]
+    fn drops_expired_cookies_from_cookie_header() {
+        let payload = serde_json::json!([
+            {
+                "name": "expired",
+                "value": "1",
+                "domain": ".ligastavok.ru",
+                "path": "/",
+                "expires": 1
+            },
+            {
+                "name": "alive",
+                "value": "2",
+                "domain": ".ligastavok.ru",
+                "path": "/"
+            }
+        ]);
+
+        let cookies = LigaStavokParser::extract_cookie_values(&payload).expect("cookies");
+        let header = LigaStavokParser::build_cookie_header(&cookies).expect("header");
+        assert_eq!(header, "alive=2");
+    }
+
+    #[test]
+    fn filters_cookie_domains_to_ligastavok() {
+        assert!(LigaStavokParser::cookie_matches_target(
+            ".ligastavok.ru",
+            "/"
+        ));
+        assert!(LigaStavokParser::cookie_matches_target(
+            "lds-api-sites.ligastavok.ru",
+            "/rest"
+        ));
+        assert!(!LigaStavokParser::cookie_matches_target("example.com", "/"));
+    }
+
+    #[test]
+    fn builds_cookie_header_for_matching_url_only() {
+        let payload = serde_json::json!([
+            {
+                "name": "root",
+                "value": "1",
+                "domain": ".ligastavok.ru",
+                "path": "/"
+            },
+            {
+                "name": "api_only",
+                "value": "2",
+                "domain": "lds-api-sites.ligastavok.ru",
+                "path": "/rest"
+            },
+            {
+                "name": "host_only",
+                "value": "3",
+                "domain": "www.ligastavok.ru",
+                "path": "/",
+                "hostOnly": true
+            }
+        ]);
+
+        let cookies = LigaStavokParser::extract_cookie_values(&payload).expect("cookies");
+        let jar = LigaStavokParser::parse_bootstrap_cookies(&cookies);
+
+        let api_header = LigaStavokParser::build_cookie_header_for_url(
+            &jar,
+            "https://lds-api-sites.ligastavok.ru/rest/events/v8/eventsList",
+        )
+        .expect("api header");
+        let page_header = LigaStavokParser::build_cookie_header_for_url(
+            &jar,
+            "https://www.ligastavok.ru/live/football",
+        )
+        .expect("page header");
+
+        assert_eq!(api_header, "api_only=2; root=1");
+        assert_eq!(page_header, "host_only=3; root=1");
+    }
+
+    #[test]
+    fn merges_manual_cookie_header_without_overwriting_existing_names() {
+        let merged = LigaStavokParser::merge_cookie_headers(
+            Some("session=manual; locale=ru".to_string()),
+            Some("session=jar; qrator_jsr=abc".to_string()),
+        )
+        .expect("merged");
+
+        assert_eq!(merged, "session=manual; locale=ru; qrator_jsr=abc");
+    }
+
+    #[test]
+    fn session_bootstrap_validation_rejects_protection_only_cookies() {
+        let parser = LigaStavokParser {
+            client: std::sync::Arc::new(reqwest::Client::new()),
+            endpoints: vec![],
+            bootstrap: super::SessionBootstrap {
+                cookie_jar: vec![super::BootstrapCookie {
+                    name: "qrator_jsr".to_string(),
+                    value: "abc".to_string(),
+                    domain: ".ligastavok.ru".to_string(),
+                    path: "/".to_string(),
+                    expires: None,
+                    secure: true,
+                    host_only: false,
+                }],
+                cookie_header: Some("qrator_jsr=abc".to_string()),
+                accept_language: super::DEFAULT_ACCEPT_LANGUAGE.to_string(),
+                origin: super::BASE_URL.to_string(),
+                referer: super::ROOT_REFERER.to_string(),
+            },
+        };
+
+        assert!(parser.has_cookie_bootstrap());
+        assert!(!parser.has_validated_session_bootstrap());
+        assert!(parser
+            .session_bootstrap_summary()
+            .contains("protection_only=true"));
+        assert!(parser
+            .session_bootstrap_summary()
+            .contains("cookie_names=qrator_jsr"));
+    }
+
+    #[test]
+    fn session_bootstrap_validation_accepts_non_protection_cookie() {
+        let parser = LigaStavokParser {
+            client: std::sync::Arc::new(reqwest::Client::new()),
+            endpoints: vec![],
+            bootstrap: super::SessionBootstrap {
+                cookie_jar: vec![],
+                cookie_header: Some("qrator_jsr=abc; sessionid=live".to_string()),
+                accept_language: super::DEFAULT_ACCEPT_LANGUAGE.to_string(),
+                origin: super::BASE_URL.to_string(),
+                referer: super::ROOT_REFERER.to_string(),
+            },
+        };
+
+        assert!(parser.has_validated_session_bootstrap());
+        assert!(parser
+            .session_bootstrap_summary()
+            .contains("non_protection_cookie_count=1"));
+        assert!(parser
+            .session_bootstrap_summary()
+            .contains("cookie_names=qrator_jsr|sessionid"));
     }
 }

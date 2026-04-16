@@ -1,8 +1,11 @@
-use anyhow::{Error, Result};
-use shared::{Surebet, SurebetLeg};
-use sqlx::SqlitePool;
+use anyhow::{anyhow, Error, Result};
+use chrono::{TimeZone, Utc};
+use shared::{Sport, Surebet, SurebetLeg};
+use sqlx::{sqlite::SqliteConnectOptions, Row, SqlitePool};
+use std::str::FromStr;
 use std::sync::Arc;
 use tracing::{info, warn};
+use uuid::Uuid;
 
 pub struct SurebetHistory {
     pool: Option<Arc<SqlitePool>>,
@@ -21,7 +24,9 @@ impl SurebetHistory {
         }
 
         // Try to connect to SQLite
-        match SqlitePool::connect(database_url).await {
+        let connect_options = SqliteConnectOptions::from_str(database_url)?.create_if_missing(true);
+
+        match SqlitePool::connect_with(connect_options).await {
             Ok(pool) => {
                 info!(url = database_url, "Connected to SQLite");
                 let hist = Self {
@@ -97,6 +102,7 @@ impl SurebetHistory {
         if let Some(pool) = &self.pool {
             let start_time_ts = surebet.start_time.map(|t| t.timestamp());
             let detected_ts = surebet.detected_at.timestamp();
+            let mut tx = pool.begin().await?;
 
             sqlx::query(
                 r#"
@@ -116,7 +122,13 @@ impl SurebetHistory {
             .bind(detected_ts)
             .bind(if surebet.verified { 1 } else { 0 })
             .bind(if surebet.mirror { 1 } else { 0 })
-            .execute(pool.as_ref()).await?;
+            .execute(&mut *tx)
+            .await?;
+
+            sqlx::query("DELETE FROM surebet_legs WHERE surebet_id = ?")
+                .bind(surebet.id.to_string())
+                .execute(&mut *tx)
+                .await?;
 
             // Save legs
             for leg in &surebet.legs {
@@ -135,14 +147,105 @@ impl SurebetHistory {
                 .bind(leg.stake)
                 .bind(leg.payout)
                 .bind(&leg.url)
-                .execute(pool.as_ref()).await?;
+                .execute(&mut *tx)
+                .await?;
             }
+
+            tx.commit().await?;
         }
 
         Ok(())
     }
 
+    async fn get_legs_from_db(&self, surebet_id: &str) -> Result<Vec<SurebetLeg>, Error> {
+        let Some(pool) = &self.pool else {
+            return Ok(Vec::new());
+        };
+
+        let rows = sqlx::query(
+            r#"
+            SELECT bookmaker, market, selection, odds, line, stake, payout, url
+            FROM surebet_legs
+            WHERE surebet_id = ?
+            ORDER BY id ASC
+            "#,
+        )
+        .bind(surebet_id)
+        .fetch_all(pool.as_ref())
+        .await?;
+
+        Ok(rows
+            .into_iter()
+            .map(|row| SurebetLeg {
+                bookmaker: row.get("bookmaker"),
+                market: row.get("market"),
+                selection: row.get("selection"),
+                odds: row.get("odds"),
+                line: row.get("line"),
+                stake: row.get("stake"),
+                payout: row.get("payout"),
+                url: row.get("url"),
+            })
+            .collect())
+    }
+
+    async fn build_surebet_from_row(&self, row: sqlx::sqlite::SqliteRow) -> Result<Surebet, Error> {
+        let id: String = row.get("id");
+        let detected_at: i64 = row.get("detected_at");
+        let start_time: Option<i64> = row.get("start_time");
+
+        Ok(Surebet {
+            id: Uuid::parse_str(&id)?,
+            sport: Sport::from_str(&row.get::<String, _>("sport")),
+            league: row.get("league"),
+            home_team: row.get("home_team"),
+            away_team: row.get("away_team"),
+            start_time: start_time
+                .map(|ts| {
+                    Utc.timestamp_opt(ts, 0)
+                        .single()
+                        .ok_or_else(|| anyhow!("invalid surebet start_time timestamp: {ts}"))
+                })
+                .transpose()?,
+            is_live: row.get::<i64, _>("is_live") != 0,
+            profit_percent: row.get("profit_percent"),
+            total_stake: row.get("total_stake"),
+            legs: self.get_legs_from_db(&id).await?,
+            detected_at: Utc
+                .timestamp_opt(detected_at, 0)
+                .single()
+                .ok_or_else(|| anyhow!("invalid surebet detected_at timestamp: {detected_at}"))?,
+            verified: row.get::<i64, _>("verified") != 0,
+            mirror: row.get::<i64, _>("mirror") != 0,
+        })
+    }
+
     pub async fn get_recent(&self, limit: i32) -> Result<Vec<Surebet>, Error> {
+        if limit <= 0 {
+            return Ok(Vec::new());
+        }
+
+        if let Some(pool) = &self.pool {
+            let rows = sqlx::query(
+                r#"
+                SELECT id, sport, league, home_team, away_team, start_time, is_live, profit_percent,
+                       total_stake, detected_at, verified, mirror
+                FROM surebets
+                ORDER BY detected_at DESC, rowid DESC
+                LIMIT ?
+                "#,
+            )
+            .bind(limit)
+            .fetch_all(pool.as_ref())
+            .await?;
+
+            let mut surebets = Vec::with_capacity(rows.len());
+            for row in rows {
+                surebets.push(self.build_surebet_from_row(row).await?);
+            }
+            return Ok(surebets);
+        }
+
         // Return from in-memory (always available)
         let data = self.data.lock().await;
         let result: Vec<Surebet> = data.iter().rev().take(limit as usize).cloned().collect();
@@ -150,6 +253,38 @@ impl SurebetHistory {
     }
 
     pub async fn get_stats(&self) -> Result<SurebetStats, Error> {
+        if let Some(pool) = &self.pool {
+            let row = sqlx::query(
+                r#"
+                SELECT
+                    COUNT(*) AS total,
+                    COALESCE(SUM(profit_percent * total_stake / 100.0), 0.0) AS total_profit,
+                    COALESCE(MAX(profit_percent * total_stake / 100.0), 0.0) AS max_profit,
+                    COALESCE(SUM(total_stake), 0.0) AS total_stake
+                FROM surebets
+                "#,
+            )
+            .fetch_one(pool.as_ref())
+            .await?;
+
+            let total = row.get::<i64, _>("total") as usize;
+            let total_profit = row.get::<f64, _>("total_profit");
+            let max_profit = row.get::<f64, _>("max_profit");
+            let total_stake = row.get::<f64, _>("total_stake");
+
+            return Ok(SurebetStats {
+                total,
+                avg_profit: if total == 0 {
+                    0.0
+                } else {
+                    total_profit / total as f64
+                },
+                max_profit,
+                total_stake,
+                total_profit,
+            });
+        }
+
         let data = self.data.lock().await;
         let total = data.len();
 
@@ -184,6 +319,10 @@ impl SurebetHistory {
     }
 
     pub async fn get_legs(&self, surebet_id: &str) -> Result<Vec<SurebetLeg>, Error> {
+        if self.pool.is_some() {
+            return self.get_legs_from_db(surebet_id).await;
+        }
+
         let data = self.data.lock().await;
         let legs = data
             .iter()
@@ -194,6 +333,13 @@ impl SurebetHistory {
     }
 
     pub async fn count(&self) -> Result<usize, Error> {
+        if let Some(pool) = &self.pool {
+            let row = sqlx::query("SELECT COUNT(*) AS total FROM surebets")
+                .fetch_one(pool.as_ref())
+                .await?;
+            return Ok(row.get::<i64, _>("total") as usize);
+        }
+
         let data = self.data.lock().await;
         Ok(data.len())
     }
@@ -211,7 +357,7 @@ pub struct SurebetStats {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::Utc;
+    use chrono::{TimeZone, Utc};
     use shared::Sport;
     use uuid::Uuid;
 
@@ -291,5 +437,71 @@ mod tests {
 
         hist.save(&make_test_surebet()).await.unwrap();
         assert_eq!(hist.count().await.unwrap(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_sqlite_stats_are_backed_by_persisted_rows() {
+        let db_path = std::env::temp_dir().join(format!("surebet-history-{}.db", Uuid::new_v4()));
+        let db_url = format!("sqlite://{}", db_path.to_string_lossy().replace('\\', "/"));
+
+        let hist = SurebetHistory::new(&db_url).await.unwrap();
+
+        let mut first = make_test_surebet();
+        first.profit_percent = 2.0;
+        first.total_stake = 1000.0;
+        first.detected_at = Utc.timestamp_opt(1_700_000_000, 0).unwrap();
+        hist.save(&first).await.unwrap();
+
+        let mut second = make_test_surebet();
+        second.profit_percent = 4.0;
+        second.total_stake = 500.0;
+        second.detected_at = Utc.timestamp_opt(1_700_000_001, 0).unwrap();
+        hist.save(&second).await.unwrap();
+
+        drop(hist);
+
+        let reopened = SurebetHistory::new(&db_url).await.unwrap();
+        let stats = reopened.get_stats().await.unwrap();
+
+        assert_eq!(stats.total, 2);
+        assert_eq!(stats.total_stake, 1500.0);
+        assert!((stats.total_profit - 40.0).abs() < f64::EPSILON);
+        assert!((stats.avg_profit - 20.0).abs() < f64::EPSILON);
+        assert!((stats.max_profit - 20.0).abs() < f64::EPSILON);
+
+        let _ = std::fs::remove_file(db_path);
+    }
+
+    #[tokio::test]
+    async fn test_sqlite_recent_and_count_are_backed_by_persisted_rows() {
+        let db_path =
+            std::env::temp_dir().join(format!("surebet-history-recent-{}.db", Uuid::new_v4()));
+        let db_url = format!("sqlite://{}", db_path.to_string_lossy().replace('\\', "/"));
+
+        let hist = SurebetHistory::new(&db_url).await.unwrap();
+
+        let mut older = make_test_surebet();
+        older.detected_at = Utc.timestamp_opt(1_700_000_000, 0).unwrap();
+        older.legs[0].bookmaker = "older-bk".into();
+        hist.save(&older).await.unwrap();
+
+        let mut newer = make_test_surebet();
+        newer.detected_at = Utc.timestamp_opt(1_700_000_100, 0).unwrap();
+        newer.legs[0].bookmaker = "newer-bk".into();
+        hist.save(&newer).await.unwrap();
+
+        drop(hist);
+
+        let reopened = SurebetHistory::new(&db_url).await.unwrap();
+        let recent = reopened.get_recent(10).await.unwrap();
+
+        assert_eq!(reopened.count().await.unwrap(), 2);
+        assert_eq!(recent.len(), 2);
+        assert_eq!(recent[0].id, newer.id);
+        assert_eq!(recent[0].legs[0].bookmaker, "newer-bk");
+        assert_eq!(recent[1].id, older.id);
+        assert_eq!(recent[1].legs[0].bookmaker, "older-bk");
+
+        let _ = std::fs::remove_file(db_path);
     }
 }

@@ -3,11 +3,15 @@ name = "scanner"
 version.workspace = true
 edition.workspace = true
 
+[features]
+default = ["full"]
+full = ["dep:parsers"]
+
 [dependencies]
 shared = { path = "../shared" }
 engine = { path = "../engine" }
 persistence = { path = "../persistence" }
-parsers = { path = "../parsers" }
+parsers = { path = "../parsers", optional = true }
 corridor_scanner = { path = "../corridor_scanner" }
 express_forks = { path = "../express_forks" }
 bankroll_manager = { path = "../bankroll_manager" }
@@ -25,3 +29,6 @@ chrono.workspace = true
 moka.workspace = true
 uuid.workspace = true
 dashmap.workspace = true
+
+[dev-dependencies]
+async-trait.workspace = true

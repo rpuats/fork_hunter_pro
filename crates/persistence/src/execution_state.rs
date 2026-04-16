@@ -3,10 +3,14 @@ use std::sync::Arc;
 
 use anyhow::{Error, Result};
 use async_trait::async_trait;
-use auto_betting::{ExecutionRegistryPersistence, ExecutionRegistrySnapshot};
+use auto_betting::{
+    ExecutionRegistryPersistence, ExecutionRegistrySnapshot, ExecutionStatePersistence,
+    ExecutionStateSnapshot, ExecutionStateTransition,
+};
 use chrono::Utc;
 use shared::{BookmakerAccount, BookmakerBalanceSnapshot, BookmakerSession};
-use sqlx::{Row, SqlitePool};
+use sqlx::{sqlite::SqliteConnectOptions, Row, SqlitePool};
+use std::str::FromStr;
 use tokio::sync::Mutex;
 use tracing::{info, warn};
 
@@ -20,6 +24,8 @@ struct PersistedBookmakerState {
 pub struct ExecutionStateStore {
     pool: Option<Arc<SqlitePool>>,
     data: Arc<Mutex<HashMap<String, PersistedBookmakerState>>>,
+    snapshots: Arc<Mutex<HashMap<uuid::Uuid, ExecutionStateSnapshot>>>,
+    transitions: Arc<Mutex<Vec<ExecutionStateTransition>>>,
 }
 
 impl ExecutionStateStore {
@@ -29,10 +35,14 @@ impl ExecutionStateStore {
             return Ok(Self {
                 pool: None,
                 data: Arc::new(Mutex::new(HashMap::new())),
+                snapshots: Arc::new(Mutex::new(HashMap::new())),
+                transitions: Arc::new(Mutex::new(Vec::new())),
             });
         }
 
-        match SqlitePool::connect(database_url).await {
+        let connect_options = SqliteConnectOptions::from_str(database_url)?.create_if_missing(true);
+
+        match SqlitePool::connect_with(connect_options).await {
             Ok(pool) => {
                 info!(
                     url = database_url,
@@ -41,6 +51,8 @@ impl ExecutionStateStore {
                 let store = Self {
                     pool: Some(Arc::new(pool)),
                     data: Arc::new(Mutex::new(HashMap::new())),
+                    snapshots: Arc::new(Mutex::new(HashMap::new())),
+                    transitions: Arc::new(Mutex::new(Vec::new())),
                 };
                 store.migrate().await?;
                 store.preload().await?;
@@ -51,6 +63,8 @@ impl ExecutionStateStore {
                 Ok(Self {
                     pool: None,
                     data: Arc::new(Mutex::new(HashMap::new())),
+                    snapshots: Arc::new(Mutex::new(HashMap::new())),
+                    transitions: Arc::new(Mutex::new(Vec::new())),
                 })
             }
         }
@@ -66,6 +80,37 @@ impl ExecutionStateStore {
                     session_json TEXT,
                     balance_json TEXT,
                     updated_at INTEGER NOT NULL
+                )
+                "#,
+            )
+            .execute(pool.as_ref())
+            .await?;
+
+            sqlx::query(
+                r#"
+                CREATE TABLE IF NOT EXISTS execution_state_snapshots (
+                    placement_id TEXT PRIMARY KEY,
+                    bookmaker TEXT NOT NULL,
+                    phase TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    sequence INTEGER NOT NULL,
+                    updated_at INTEGER NOT NULL,
+                    payload_json TEXT NOT NULL
+                )
+                "#,
+            )
+            .execute(pool.as_ref())
+            .await?;
+
+            sqlx::query(
+                r#"
+                CREATE TABLE IF NOT EXISTS execution_state_transitions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    placement_id TEXT NOT NULL,
+                    bookmaker TEXT NOT NULL,
+                    sequence INTEGER NOT NULL,
+                    occurred_at INTEGER NOT NULL,
+                    payload_json TEXT NOT NULL
                 )
                 "#,
             )
@@ -112,6 +157,55 @@ impl ExecutionStateStore {
             );
         }
 
+        drop(data);
+
+        let snapshot_rows = sqlx::query(
+            r#"
+            SELECT payload_json
+            FROM execution_state_snapshots
+            "#,
+        )
+        .fetch_all(pool.as_ref())
+        .await?;
+
+        let mut snapshots = self.snapshots.lock().await;
+        snapshots.clear();
+
+        for row in snapshot_rows {
+            let payload: String = row.try_get("payload_json")?;
+            match serde_json::from_str::<ExecutionStateSnapshot>(&payload) {
+                Ok(snapshot) => {
+                    snapshots.insert(snapshot.placement_id, snapshot);
+                }
+                Err(error) => {
+                    warn!(error = %error, "Failed to deserialize execution state snapshot")
+                }
+            }
+        }
+
+        let transition_rows = sqlx::query(
+            r#"
+            SELECT payload_json
+            FROM execution_state_transitions
+            ORDER BY id ASC
+            "#,
+        )
+        .fetch_all(pool.as_ref())
+        .await?;
+
+        let mut transitions = self.transitions.lock().await;
+        transitions.clear();
+
+        for row in transition_rows {
+            let payload: String = row.try_get("payload_json")?;
+            match serde_json::from_str::<ExecutionStateTransition>(&payload) {
+                Ok(transition) => transitions.push(transition),
+                Err(error) => {
+                    warn!(error = %error, "Failed to deserialize execution state transition")
+                }
+            }
+        }
+
         Ok(())
     }
 
@@ -134,6 +228,110 @@ impl ExecutionStateStore {
             state.balance = Some(snapshot.clone());
         })
         .await
+    }
+
+    async fn save_execution_snapshot_inner(
+        &self,
+        snapshot: &ExecutionStateSnapshot,
+    ) -> Result<(), String> {
+        self.snapshots
+            .lock()
+            .await
+            .insert(snapshot.placement_id, snapshot.clone());
+
+        if let Some(pool) = &self.pool {
+            let payload_json =
+                serde_json::to_string(snapshot).map_err(|error| error.to_string())?;
+
+            sqlx::query(
+                r#"
+                INSERT INTO execution_state_snapshots (
+                    placement_id,
+                    bookmaker,
+                    phase,
+                    status,
+                    sequence,
+                    updated_at,
+                    payload_json
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                ON CONFLICT(placement_id) DO UPDATE SET
+                    bookmaker = excluded.bookmaker,
+                    phase = excluded.phase,
+                    status = excluded.status,
+                    sequence = excluded.sequence,
+                    updated_at = excluded.updated_at,
+                    payload_json = excluded.payload_json
+                "#,
+            )
+            .bind(snapshot.placement_id.to_string())
+            .bind(&snapshot.bookmaker)
+            .bind(format!("{:?}", snapshot.phase))
+            .bind(format!("{:?}", snapshot.placement_status))
+            .bind(snapshot.sequence as i64)
+            .bind(snapshot.updated_at.timestamp())
+            .bind(payload_json)
+            .execute(pool.as_ref())
+            .await
+            .map_err(|error| error.to_string())?;
+        }
+
+        Ok(())
+    }
+
+    async fn record_transition_inner(
+        &self,
+        transition: &ExecutionStateTransition,
+    ) -> Result<(), String> {
+        self.transitions.lock().await.push(transition.clone());
+
+        if let Some(pool) = &self.pool {
+            let payload_json =
+                serde_json::to_string(transition).map_err(|error| error.to_string())?;
+
+            sqlx::query(
+                r#"
+                INSERT INTO execution_state_transitions (
+                    placement_id,
+                    bookmaker,
+                    sequence,
+                    occurred_at,
+                    payload_json
+                )
+                VALUES (?, ?, ?, ?, ?)
+                "#,
+            )
+            .bind(transition.placement_id.to_string())
+            .bind(&transition.bookmaker)
+            .bind(transition.sequence as i64)
+            .bind(transition.occurred_at.timestamp())
+            .bind(payload_json)
+            .execute(pool.as_ref())
+            .await
+            .map_err(|error| error.to_string())?;
+        }
+
+        Ok(())
+    }
+
+    pub async fn transition_count(&self) -> usize {
+        self.transitions.lock().await.len()
+    }
+
+    pub async fn load_state_snapshots(&self) -> Vec<ExecutionStateSnapshot> {
+        let mut snapshots = self
+            .snapshots
+            .lock()
+            .await
+            .values()
+            .cloned()
+            .collect::<Vec<_>>();
+        snapshots.sort_by(|left, right| right.updated_at.cmp(&left.updated_at));
+        snapshots
+    }
+
+    pub async fn load_transitions(&self) -> Vec<ExecutionStateTransition> {
+        self.transitions.lock().await.clone()
     }
 
     async fn update_state<F>(&self, bookmaker: &str, update: F) -> Result<(), String>
@@ -220,6 +418,21 @@ impl ExecutionRegistryPersistence for ExecutionStateStore {
     }
 }
 
+#[async_trait]
+impl ExecutionStatePersistence for ExecutionStateStore {
+    async fn load_snapshots(&self) -> Result<Vec<ExecutionStateSnapshot>, String> {
+        Ok(self.snapshots.lock().await.values().cloned().collect())
+    }
+
+    async fn save_snapshot(&self, snapshot: &ExecutionStateSnapshot) -> Result<(), String> {
+        self.save_execution_snapshot_inner(snapshot).await
+    }
+
+    async fn record_transition(&self, transition: &ExecutionStateTransition) -> Result<(), String> {
+        self.record_transition_inner(transition).await
+    }
+}
+
 fn serialize_optional<T: serde::Serialize>(value: &Option<T>) -> Result<Option<String>, String> {
     value
         .as_ref()
@@ -244,7 +457,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use shared::{BookmakerExecutionMode, BookmakerSessionState};
+    use auto_betting::{ExecutionLedgerAction, ExecutionStatePhase};
+    use shared::{BetStatus, BookmakerExecutionMode, BookmakerSessionState};
     use uuid::Uuid;
 
     fn make_account(bookmaker: &str) -> BookmakerAccount {
@@ -292,5 +506,97 @@ mod tests {
         assert_eq!(snapshot.balances.len(), 1);
         assert_eq!(snapshot.accounts[0].bookmaker, "pari");
         assert_eq!(snapshot.balances[0].available_balance, 12_000.0);
+    }
+
+    #[tokio::test]
+    async fn stores_and_loads_execution_state_machine_snapshots() {
+        let store = ExecutionStateStore::new("memory").await.unwrap();
+        let placement_id = Uuid::new_v4();
+        let snapshot = ExecutionStateSnapshot {
+            placement_id,
+            bookmaker: "pari".into(),
+            phase: ExecutionStatePhase::PendingPlacement,
+            placement_status: BetStatus::Pending,
+            sequence: 1,
+            updated_at: Utc::now(),
+            last_action: ExecutionLedgerAction::Placed,
+            last_error: None,
+        };
+        let transition = ExecutionStateTransition {
+            placement_id,
+            bookmaker: "pari".into(),
+            from_phase: None,
+            to_phase: ExecutionStatePhase::PendingPlacement,
+            placement_status: BetStatus::Pending,
+            sequence: 1,
+            action: ExecutionLedgerAction::Placed,
+            occurred_at: Utc::now(),
+            error: None,
+        };
+
+        store.record_transition(&transition).await.unwrap();
+        store.save_snapshot(&snapshot).await.unwrap();
+
+        let snapshots = store.load_snapshots().await.unwrap();
+        assert_eq!(snapshots.len(), 1);
+        assert_eq!(snapshots[0].placement_id, placement_id);
+        assert_eq!(store.transition_count().await, 1);
+    }
+
+    #[tokio::test]
+    async fn state_snapshot_helpers_return_recent_first() {
+        let store = ExecutionStateStore::new("memory").await.unwrap();
+        let first_id = Uuid::new_v4();
+        let second_id = Uuid::new_v4();
+
+        store
+            .save_snapshot(&ExecutionStateSnapshot {
+                placement_id: first_id,
+                bookmaker: "pari".into(),
+                phase: ExecutionStatePhase::PendingPlacement,
+                placement_status: BetStatus::Pending,
+                sequence: 1,
+                updated_at: Utc::now(),
+                last_action: ExecutionLedgerAction::Placed,
+                last_error: None,
+            })
+            .await
+            .unwrap();
+        store
+            .record_transition(&ExecutionStateTransition {
+                placement_id: first_id,
+                bookmaker: "pari".into(),
+                from_phase: None,
+                to_phase: ExecutionStatePhase::PendingPlacement,
+                placement_status: BetStatus::Pending,
+                sequence: 1,
+                action: ExecutionLedgerAction::Placed,
+                occurred_at: Utc::now(),
+                error: None,
+            })
+            .await
+            .unwrap();
+        store
+            .save_snapshot(&ExecutionStateSnapshot {
+                placement_id: second_id,
+                bookmaker: "fonbet".into(),
+                phase: ExecutionStatePhase::Settled,
+                placement_status: BetStatus::Settled,
+                sequence: 2,
+                updated_at: Utc::now() + chrono::Duration::seconds(5),
+                last_action: ExecutionLedgerAction::Updated,
+                last_error: None,
+            })
+            .await
+            .unwrap();
+
+        let snapshots = store.load_state_snapshots().await;
+        let transitions = store.load_transitions().await;
+
+        assert_eq!(snapshots.len(), 2);
+        assert_eq!(snapshots[0].placement_id, second_id);
+        assert_eq!(snapshots[1].placement_id, first_id);
+        assert_eq!(transitions.len(), 1);
+        assert_eq!(transitions[0].placement_id, first_id);
     }
 }

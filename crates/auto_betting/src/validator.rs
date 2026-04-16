@@ -7,6 +7,77 @@ impl StakeValidator {
         let mut reasons = Vec::new();
         let mut adjusted_stake = request.desired_stake;
 
+        if !request.desired_stake.is_finite() {
+            reasons.push("stake must be finite".to_string());
+            return StakeValidationResult {
+                decision: StakeValidationDecision::Reject,
+                adjusted_stake: 0.0,
+                reasons,
+            };
+        }
+
+        if let Some(min_stake) = request.min_stake {
+            if !min_stake.is_finite() || min_stake < 0.0 {
+                reasons.push("minimum stake must be a finite non-negative value".to_string());
+                return StakeValidationResult {
+                    decision: StakeValidationDecision::Reject,
+                    adjusted_stake: 0.0,
+                    reasons,
+                };
+            }
+        }
+
+        if let Some(max_stake) = request.max_stake {
+            if !max_stake.is_finite() || max_stake < 0.0 {
+                reasons.push("maximum stake must be a finite non-negative value".to_string());
+                return StakeValidationResult {
+                    decision: StakeValidationDecision::Reject,
+                    adjusted_stake: 0.0,
+                    reasons,
+                };
+            }
+        }
+
+        if let (Some(min_stake), Some(max_stake)) = (request.min_stake, request.max_stake) {
+            if min_stake > max_stake {
+                reasons.push(format!(
+                    "bookmaker minimum stake {:.2} exceeds maximum {:.2}",
+                    min_stake, max_stake
+                ));
+                return StakeValidationResult {
+                    decision: StakeValidationDecision::Reject,
+                    adjusted_stake: 0.0,
+                    reasons,
+                };
+            }
+        }
+
+        if let Some(bookmaker_available) = request.bookmaker_available_balance {
+            if !bookmaker_available.is_finite() || bookmaker_available < 0.0 {
+                reasons.push(
+                    "bookmaker available balance must be a finite non-negative value".to_string(),
+                );
+                return StakeValidationResult {
+                    decision: StakeValidationDecision::Reject,
+                    adjusted_stake: 0.0,
+                    reasons,
+                };
+            }
+        }
+
+        if let Some(bankroll_available) = request.bankroll_available_balance {
+            if !bankroll_available.is_finite() || bankroll_available < 0.0 {
+                reasons.push(
+                    "bankroll available balance must be a finite non-negative value".to_string(),
+                );
+                return StakeValidationResult {
+                    decision: StakeValidationDecision::Reject,
+                    adjusted_stake: 0.0,
+                    reasons,
+                };
+            }
+        }
+
         if request.desired_stake <= 0.0 {
             reasons.push("stake must be positive".to_string());
             return StakeValidationResult {
@@ -113,6 +184,20 @@ impl StakeValidator {
             };
         }
 
+        if let Some(min_stake) = request.min_stake {
+            if adjusted_stake < min_stake {
+                reasons.push(format!(
+                    "available executable stake {:.2} remains below bookmaker minimum {:.2}",
+                    adjusted_stake, min_stake
+                ));
+                return StakeValidationResult {
+                    decision: StakeValidationDecision::Reject,
+                    adjusted_stake,
+                    reasons,
+                };
+            }
+        }
+
         let decision = if (adjusted_stake - request.desired_stake).abs() < f64::EPSILON {
             StakeValidationDecision::Accept
         } else {
@@ -179,5 +264,44 @@ mod tests {
         let result = StakeValidator::validate(&request);
         assert!(matches!(result.decision, StakeValidationDecision::Adjust));
         assert_eq!(result.adjusted_stake, 480.0);
+    }
+
+    #[test]
+    fn rejects_when_effective_stake_falls_below_minimum_after_caps() {
+        let request = StakeValidationRequest {
+            bookmaker: "pari".into(),
+            desired_stake: 120.0,
+            min_stake: Some(100.0),
+            max_stake: Some(500.0),
+            bookmaker_available_balance: Some(80.0),
+            bankroll_available_balance: Some(1_000.0),
+            allow_auto_adjust: true,
+        };
+
+        let result = StakeValidator::validate(&request);
+        assert!(matches!(result.decision, StakeValidationDecision::Reject));
+        assert_eq!(result.adjusted_stake, 80.0);
+        assert!(result
+            .reasons
+            .iter()
+            .any(|reason| reason.contains("below bookmaker minimum")));
+    }
+
+    #[test]
+    fn rejects_non_finite_stake_requests() {
+        let request = StakeValidationRequest {
+            bookmaker: "pari".into(),
+            desired_stake: f64::NAN,
+            min_stake: Some(10.0),
+            max_stake: Some(500.0),
+            bookmaker_available_balance: Some(1_000.0),
+            bankroll_available_balance: Some(1_000.0),
+            allow_auto_adjust: true,
+        };
+
+        let result = StakeValidator::validate(&request);
+        assert!(matches!(result.decision, StakeValidationDecision::Reject));
+        assert_eq!(result.adjusted_stake, 0.0);
+        assert_eq!(result.reasons, vec!["stake must be finite"]);
     }
 }

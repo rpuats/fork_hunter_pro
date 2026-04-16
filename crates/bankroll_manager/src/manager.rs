@@ -1,7 +1,7 @@
 use chrono::Utc;
 use dashmap::DashMap;
 use parking_lot::RwLock;
-use shared::{BankrollConfig, BankrollState, BookmakerBalance};
+use shared::{BankrollConfig, BankrollState, BookmakerBalance, BookmakerBalanceSnapshot};
 use std::sync::Arc;
 
 use super::allocation::DepositAllocator;
@@ -61,7 +61,16 @@ impl BankrollManager {
                 recommended_withdraw: 0.0,
             });
         }
+        state.total_exposure = state.bookmakers.iter().map(|entry| entry.exposure).sum();
         state.updated_at = Utc::now();
+    }
+
+    pub fn apply_balance_snapshot(&self, snapshot: &BookmakerBalanceSnapshot) {
+        self.update_balance(
+            &snapshot.bookmaker,
+            snapshot.total_balance,
+            snapshot.exposure,
+        );
     }
 
     pub fn get_state(&self) -> BankrollState {
@@ -126,5 +135,45 @@ impl BankrollManager {
         } else {
             state.daily_loss += profit.abs();
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use uuid::Uuid;
+
+    #[test]
+    fn apply_balance_snapshot_updates_bookmaker_and_total_exposure() {
+        let manager = BankrollManager::new(BankrollConfig::default());
+
+        manager.apply_balance_snapshot(&BookmakerBalanceSnapshot {
+            account_id: Uuid::new_v4(),
+            bookmaker: "pari".into(),
+            currency: "RUB".into(),
+            total_balance: 10_000.0,
+            available_balance: 7_500.0,
+            exposure: 2_500.0,
+            captured_at: Utc::now(),
+        });
+
+        let state = manager.get_state();
+        assert_eq!(state.bookmakers.len(), 1);
+        assert_eq!(state.bookmakers[0].bookmaker, "pari");
+        assert_eq!(state.bookmakers[0].balance, 10_000.0);
+        assert_eq!(state.bookmakers[0].available, 7_500.0);
+        assert_eq!(state.total_exposure, 2_500.0);
+    }
+
+    #[test]
+    fn update_balance_recomputes_total_exposure_after_multiple_updates() {
+        let manager = BankrollManager::new(BankrollConfig::default());
+
+        manager.update_balance("pari", 10_000.0, 2_000.0);
+        manager.update_balance("fonbet", 8_000.0, 500.0);
+        manager.update_balance("pari", 10_000.0, 1_250.0);
+
+        let state = manager.get_state();
+        assert_eq!(state.total_exposure, 1_750.0);
     }
 }

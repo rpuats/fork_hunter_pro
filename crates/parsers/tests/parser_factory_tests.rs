@@ -42,7 +42,32 @@ fn factory_reports_sorted_registered_slugs() {
     assert!(slugs.windows(2).all(|w| w[0] <= w[1]));
     assert!(slugs.contains(&"_24bet".to_string()));
     assert!(slugs.contains(&"bet24".to_string()));
+    assert!(slugs.contains(&"betm".to_string()));
     assert!(slugs.contains(&"fonbet".to_string()));
+    assert!(slugs.contains(&"melbet".to_string()));
+}
+
+#[test]
+fn factory_registers_melbet_parser() {
+    let client = Arc::new(Client::builder().build().expect("failed to build client"));
+    let factory = ParserFactory::new(client);
+
+    let parser = factory.get("melbet").expect("melbet parser should resolve");
+    assert_eq!(parser.slug(), "melbet");
+    assert_eq!(parser.name(), "Melbet");
+    assert!(parser.is_enabled());
+}
+
+#[test]
+fn factory_registers_betm_parser() {
+    let client = Arc::new(Client::builder().build().expect("failed to build client"));
+    let factory = ParserFactory::new(client);
+
+    let parser = factory.get("betm").expect("betm parser should resolve");
+    assert_eq!(parser.slug(), "betm");
+    assert_eq!(parser.name(), "Bet-M");
+    assert!(!parser.is_enabled());
+    assert!(parser.readiness().is_some());
 }
 
 #[test]
@@ -78,5 +103,5 @@ fn factory_surfaces_ligastavok_health_snapshot() {
     assert!(health
         .diagnostics
         .iter()
-        .any(|check| check.code == "session_bootstrap_pending"));
+        .any(|check| check.code == "qrator_unattended_bootstrap_unverified"));
 }

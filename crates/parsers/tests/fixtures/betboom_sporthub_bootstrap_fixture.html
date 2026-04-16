@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <title>BetBoom Sporthub bootstrap fixture</title>
+  <script>
+    window.__SPORT_HUB_CONFIG__ = {
+      wsUrl: "wss://sporthub.betboom.ru/ws",
+      feedProto: "/assets/sporthub-feed.proto",
+      transport: "protobuf",
+      channels: ["prematch_snapshot", "live_update"]
+    };
+  </script>
+  <script defer src="/assets/sporthub-runtime.js"></script>
+  <script defer src="https://static.betboom.ru/assets/sporthub-protobuf.pb"></script>
+</head>
+<body>
+  <main id="app">sporthub fixture</main>
+</body>
+</html>

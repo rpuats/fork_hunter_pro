@@ -5,7 +5,7 @@ use reqwest::Client;
 use scraper::{Html, Selector};
 use shared::odds::OddsType;
 use shared::{Event, Odd, Sport};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tracing::{debug, info, warn};
 
@@ -13,11 +13,8 @@ use tracing::{debug, info, warn};
 // Структура парсера
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Betcity парсер — HTTP-запросы + поиск JSON в скрипт-тегах + демо-данные
-/// Betcity использует React SPA с Cloudflare защитой.
-/// Стратегия: сначала пробуем известные API-эндпоинты,
-/// затем парсим window.__INITIAL_STATE__ из HTML,
-/// при неудаче — возвращаем реалистичные демо-данные.
+/// Betcity parser.
+/// Priority path: runtime API, then HTML fallbacks, then demo data.
 #[derive(Debug)]
 pub struct BetcityParser {
     client: Arc<Client>,
@@ -47,51 +44,153 @@ impl BetcityParser {
         Ok(client)
     }
 
-    /// Пробуем получить JSON с ключевых API-эндпоинтов Betcity
-    /// Falls back to demo data if API fails (common due to anti-bot protection)
+    /// Пробуем получить JSON с ключевых API-эндпоинтов Betcity.
     async fn try_api_endpoints(
         &self,
     ) -> Result<(Vec<Event>, Vec<Odd>), Box<dyn std::error::Error + Send + Sync>> {
-        // Build a fresh client (the shared one might have connection issues)
         let client = match Self::build_client() {
             Ok(c) => c,
             Err(e) => {
-                println!("[Betcity] Failed to build client: {}", e);
-                return Ok((Vec::new(), Vec::new()));
+                warn!(error = %e, "Betcity: failed to build dedicated client, falling back to shared client");
+                return self.collect_best_api_results(&self.client).await;
             }
         };
-        
+
+        self.collect_best_api_results(&client).await
+    }
+
+    async fn collect_best_api_results(
+        &self,
+        client: &reqwest::Client,
+    ) -> Result<(Vec<Event>, Vec<Odd>), Box<dyn std::error::Error + Send + Sync>> {
         let mut all_events = Vec::new();
         let mut all_odds = Vec::new();
 
-        // Try prematch endpoint
-        let prematch_url = "https://ad.betcity.ru/d/off/events?id_sp=1&ch_id=0&gr_id=0&rev=2&ver=69&csn=ooca9s";
-        match self.fetch_api(&client, prematch_url, false).await {
+        match self
+            .fetch_best_api_result(client, Self::prematch_urls(), false)
+            .await
+        {
             Ok((events, odds)) => {
-                println!("[Betcity] prematch: {} events", events.len());
                 all_events.extend(events);
                 all_odds.extend(odds);
             }
-            Err(e) => {
-                println!("[Betcity] prematch failed: {}", e);
+            Err(error) => {
+                warn!(error = %error, "Betcity: all prematch API endpoints failed");
             }
         }
 
-        // Try live endpoint (might return 502 but worth trying)
-        let live_url = "https://ad.betcity.ru/d/on_air/bets?rev=2&template=1&ver=69&csn=ooca9s";
-        match self.fetch_api(&client, live_url, true).await {
+        match self
+            .fetch_best_api_result(client, Self::live_urls(), true)
+            .await
+        {
             Ok((events, odds)) => {
-                println!("[Betcity] live: {} events", events.len());
                 all_events.extend(events);
                 all_odds.extend(odds);
             }
-            Err(e) => {
-                println!("[Betcity] live failed: {}", e);
+            Err(error) => {
+                warn!(error = %error, "Betcity: all live API endpoints failed");
             }
         }
 
-        println!("[Betcity] Total: {} events", all_events.len());
+        let (all_events, all_odds) = Self::deduplicate_results(all_events, all_odds);
+
+        info!(
+            events = all_events.len(),
+            odds = all_odds.len(),
+            "Betcity: API stage finished"
+        );
         Ok((all_events, all_odds))
+    }
+
+    async fn fetch_best_api_result(
+        &self,
+        client: &reqwest::Client,
+        urls: &[&'static str],
+        is_live: bool,
+    ) -> Result<(Vec<Event>, Vec<Odd>), Box<dyn std::error::Error + Send + Sync>> {
+        let mut best_result: Option<(&'static str, Vec<Event>, Vec<Odd>)> = None;
+        let mut last_error = None;
+
+        for url in urls {
+            match self.fetch_api(client, url, is_live).await {
+                Ok((events, odds)) => {
+                    info!(
+                        url = *url,
+                        events = events.len(),
+                        odds = odds.len(),
+                        is_live,
+                        "Betcity: API endpoint parsed"
+                    );
+
+                    let should_replace =
+                        best_result
+                            .as_ref()
+                            .is_none_or(|(_, best_events, best_odds)| {
+                                events.len() > best_events.len()
+                                    || (events.len() == best_events.len()
+                                        && odds.len() > best_odds.len())
+                            });
+
+                    if should_replace {
+                        best_result = Some((*url, events, odds));
+                    }
+                }
+                Err(error) => {
+                    warn!(url = *url, error = %error, is_live, "Betcity: API endpoint failed");
+                    last_error = Some(error.to_string());
+                }
+            }
+        }
+
+        if let Some((url, events, odds)) = best_result {
+            info!(
+                url,
+                events = events.len(),
+                odds = odds.len(),
+                is_live,
+                "Betcity: selected best API payload"
+            );
+            Ok((events, odds))
+        } else if let Some(error) = last_error {
+            Err(error.into())
+        } else {
+            Ok((Vec::new(), Vec::new()))
+        }
+    }
+
+    fn deduplicate_results(events: Vec<Event>, odds: Vec<Odd>) -> (Vec<Event>, Vec<Odd>) {
+        let mut seen_event_ids = HashSet::new();
+        let mut unique_events = Vec::with_capacity(events.len());
+        for event in events {
+            if seen_event_ids.insert(event.id.clone()) {
+                unique_events.push(event);
+            }
+        }
+
+        let mut seen_odd_ids = HashSet::new();
+        let mut unique_odds = Vec::with_capacity(odds.len());
+        for odd in odds {
+            if seen_odd_ids.insert(odd.id.clone()) {
+                unique_odds.push(odd);
+            }
+        }
+
+        (unique_events, unique_odds)
+    }
+
+    fn prematch_urls() -> &'static [&'static str] {
+        &[
+            "https://ad.betcity.ru/d/off/events?rev=2&id_sp=1&add=main,ext,name_sp,name_ch&ver=69&csn=ooca9s",
+            "https://ad.betcity.ru/d/off/events?id_sp=1&ch_id=0&gr_id=0&add=main,ext,name_sp,name_ch&rev=2&ver=69&csn=ooca9s",
+            "https://ad.betcity.ru/d/off/events?id_sp=1&ch_id=0&gr_id=0&rev=2&ver=69&csn=ooca9s",
+        ]
+    }
+
+    fn live_urls() -> &'static [&'static str] {
+        &[
+            "https://ad.betcity.ru/d/on_air/bets?rev=8&add=dep_event&template=1&ver=69&csn=ooca9s",
+            "https://ad.betcity.ru/d/on_air/bets?rev=2&template=1&ver=69&csn=ooca9s",
+        ]
     }
 
     /// Fetch API endpoint with fresh client
@@ -105,107 +204,46 @@ impl BetcityParser {
             .get(url)
             .header("Accept", "application/json, text/plain, */*")
             .header("Accept-Language", "ru-RU,ru;q=0.9,en;q=0.8")
-            .header("Referer", "https://betcity.ru/ru/line/football")
+            .header(
+                "Referer",
+                if is_live {
+                    "https://betcity.ru/ru/live/football"
+                } else {
+                    "https://betcity.ru/ru/line/football"
+                },
+            )
             .send()
             .await?;
 
         let status = resp.status();
-        println!("[Betcity] fetch_api: status={} url={}", status, url);
 
         if !resp.status().is_success() {
             return Err(format!("HTTP error: {}", status).into());
         }
 
         let text = resp.text().await?;
-        println!("[Betcity] fetch_api: got {} bytes", text.len());
+        debug!(
+            url,
+            bytes = text.len(),
+            is_live,
+            "Betcity: API payload received"
+        );
 
         let json: serde_json::Value = serde_json::from_str(&text)?;
-        
-        // Debug: check what we got
-        let has_reply = json.get("reply").is_some();
-        let has_sports = json.get("sports").is_some();
-        let has_events = json.get("events").is_some();
-        println!("[Betcity] JSON keys: reply={} sports={} events={}", has_reply, has_sports, has_events);
-        
+
         let result = Self::parse_json_response(&json, is_live);
-        println!("[Betcity] Parsed: {} events, {} odds", result.0.len(), result.1.len());
-        
         Ok(result)
-    }
-
-    /// Вспомогательный метод для запроса и парсинга одного эндпоинта
-    async fn fetch_and_parse_endpoint(
-        &self,
-        client: &Client,
-        url: &str,
-        is_live: bool,
-    ) -> Result<(Vec<Event>, Vec<Odd>), Box<dyn std::error::Error + Send + Sync>> {
-        println!("[Betcity] fetch_and_parse_endpoint START: {}", url);
-        
-        let request = client
-            .get(url)
-            .header("Accept", "application/json, text/plain, */*")
-            .header("Accept-Language", "ru-RU,ru;q=0.9,en;q=0.8")
-            .header("Referer", "https://betcity.ru/ru/line/football")
-            .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36");
-
-        println!("[Betcity] Built request, sending...");
-        
-        let resp = match request.send().await {
-            Ok(r) => {
-                println!("[Betcity] Send OK, status: {}", r.status());
-                r
-            }
-            Err(e) => {
-                println!("[Betcity] Send FAILED: {:?}", e);
-                println!("[Betcity] Is timeout: {}", e.is_timeout());
-                println!("[Betcity] Is connect: {}", e.is_connect());
-                println!("[Betcity] Is request: {}", e.is_request());
-                return Err(Box::new(e));
-            }
-        };
-
-        let status = resp.status();
-        println!("[Betcity] Response status: {} for {}", status, url);
-
-        if !status.is_success() {
-            return Err(format!("HTTP error: {}", status).into());
-        }
-
-        // Read raw text first
-        let text = resp.text().await?;
-        println!("[Betcity] Got text, length: {} for {}", text.len(), url);
-        
-        if text.len() < 50 {
-            return Err(format!("Response too short: {}", text).into());
-        }
-
-        // Parse JSON
-        let json: serde_json::Value = serde_json::from_str(&text)?;
-        
-        // Check for reply wrapper
-        let has_reply = json.get("reply").is_some();
-        println!("[Betcity] JSON has reply: {} for {}", has_reply, url);
-        
-        let (events, odds) = Self::parse_json_response(&json, is_live);
-        
-        println!("[Betcity] Parsed {} events from {}", events.len(), url);
-
-        Ok((events, odds))
     }
 
     /// Загружаем HTML страницу и ищем JSON в скрипт-тегах
     async fn try_html_script_extraction(
         &self,
     ) -> Result<(Vec<Event>, Vec<Odd>), Box<dyn std::error::Error + Send + Sync>> {
-        let urls = [
-            "https://betcity.ru/ru/line",
-            "https://betcity.ru/ru/live",
-        ];
+        let urls = ["https://betcity.ru/ru/line", "https://betcity.ru/ru/live"];
         let client = Self::build_client()?;
 
         for url in &urls {
-            println!("[Betcity] HTML script extraction: trying {}", url);
+            debug!(url = *url, "Betcity: HTML script extraction attempt");
 
             let resp = match client
                 .get(*url)
@@ -219,30 +257,34 @@ impl BetcityParser {
             {
                 Ok(r) => r,
                 Err(e) => {
-                    println!("[Betcity] HTML load failed: {}", e);
+                    debug!(url = *url, error = %e, "Betcity: HTML load failed");
                     continue;
                 }
             };
 
             if !resp.status().is_success() {
-                println!("[Betcity] HTML status: {}", resp.status());
+                debug!(url = *url, status = %resp.status(), "Betcity: HTML request returned non-success status");
                 continue;
             }
 
             let html = match resp.text().await {
                 Ok(h) => h,
                 Err(e) => {
-                    println!("[Betcity] HTML read failed: {}", e);
+                    debug!(url = *url, error = %e, "Betcity: HTML read failed");
                     continue;
                 }
             };
 
-            println!("[Betcity] HTML loaded: {} bytes", html.len());
+            debug!(url = *url, bytes = html.len(), "Betcity: HTML loaded");
 
             // Пробуем извлечь JSON из известных паттернов в скрипт-тегах
             let (events, odds) = Self::extract_from_html(&html);
             if !events.is_empty() {
-                println!("[Betcity] extracted from HTML: {} events", events.len());
+                info!(
+                    url = *url,
+                    events = events.len(),
+                    "Betcity: extracted events from HTML scripts"
+                );
                 return Ok((events, odds));
             }
         }
@@ -254,14 +296,11 @@ impl BetcityParser {
     async fn try_html_dom_parsing(
         &self,
     ) -> Result<(Vec<Event>, Vec<Odd>), Box<dyn std::error::Error + Send + Sync>> {
-        let urls = [
-            "https://betcity.ru/ru/line",
-            "https://betcity.ru/ru/live",
-        ];
+        let urls = ["https://betcity.ru/ru/line", "https://betcity.ru/ru/live"];
         let client = Self::build_client()?;
 
         for url in &urls {
-            println!("[Betcity] DOM parsing: trying {}", url);
+            debug!(url = *url, "Betcity: HTML DOM parsing attempt");
 
             let resp = match client
                 .get(*url)
@@ -275,29 +314,33 @@ impl BetcityParser {
             {
                 Ok(r) => r,
                 Err(e) => {
-                    println!("[Betcity] DOM load failed: {}", e);
+                    debug!(url = *url, error = %e, "Betcity: DOM load failed");
                     continue;
                 }
             };
 
             if !resp.status().is_success() {
-                println!("[Betcity] DOM status: {}", resp.status());
+                debug!(url = *url, status = %resp.status(), "Betcity: DOM request returned non-success status");
                 continue;
             }
 
             let html = match resp.text().await {
                 Ok(h) => h,
                 Err(e) => {
-                    println!("[Betcity] DOM read failed: {}", e);
+                    debug!(url = *url, error = %e, "Betcity: DOM read failed");
                     continue;
                 }
             };
 
-            println!("[Betcity] DOM: {} bytes", html.len());
+            debug!(url = *url, bytes = html.len(), "Betcity: DOM HTML loaded");
 
             let (events, odds) = Self::parse_html_dom(&html, url);
             if !events.is_empty() {
-                println!("[Betcity] DOM parsed: {} events", events.len());
+                info!(
+                    url = *url,
+                    events = events.len(),
+                    "Betcity: parsed events from DOM"
+                );
                 return Ok((events, odds));
             }
         }
@@ -311,21 +354,8 @@ impl BetcityParser {
         let mut events = Vec::new();
         let mut odds = Vec::new();
 
-        // Betcity API wraps response in "reply" key
-        let json = match json.get("reply") {
-            Some(reply_json) => {
-                warn!("Betcity: found 'reply' key, parsing inner JSON");
-                reply_json
-            }
-            None => {
-                warn!("Betcity: no 'reply' key found, using root");
-                json
-            }
-        };
+        let json = json.get("reply").unwrap_or(json);
 
-        warn!(has_sports = json.get("sports").is_some(), has_events = json.get("events").is_some(), "Betcity: JSON structure check");
-
-        // Пробуем разные пути к массиву событий
         let events_array = json
             .get("events")
             .or_else(|| json.get("data"))
@@ -338,97 +368,18 @@ impl BetcityParser {
             let (evs, ods) = Self::parse_events_array(arr, is_live, now);
             events.extend(evs);
             odds.extend(ods);
+        } else if let Some(sports_object) = json.get("sports").and_then(|v| v.as_object()) {
+            let (evs, ods) = Self::parse_sports_object(sports_object, is_live, now);
+            events.extend(evs);
+            odds.extend(ods);
         } else if let Some(sports_array) = json.get("sports").and_then(|v| v.as_array()) {
-            // Betcity sports structure: sports is an array of sport objects
             for sport in sports_array {
-                // Each sport has id_sp and may have chmps (championships)
                 if let Some(chmps_obj) = sport.get("chmps").and_then(|v| v.as_object()) {
-                    for (_chmp_id, chmp_val) in chmps_obj {
-                        let league = chmp_val
-                            .get("name_ch")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("")
-                            .to_string();
-
-                        if let Some(evts_obj) = chmp_val.get("evts").and_then(|v| v.as_object()) {
-                            for (_evt_id, evt_val) in evts_obj {
-                                let home = evt_val
-                                    .get("name_ht")
-                                    .and_then(|v| v.as_str())
-                                    .unwrap_or("");
-
-                                let away = evt_val
-                                    .get("name_at")
-                                    .and_then(|v| v.as_str())
-                                    .unwrap_or("");
-
-                                if home.len() < 2 || away.len() < 2 {
-                                    continue;
-                                }
-
-                                let event_id = format!(
-                                    "betcity-{}",
-                                    evt_val.get("id_ev").and_then(|v| v.as_i64()).unwrap_or(0)
-                                );
-
-                                events.push(Event {
-                                    id: event_id.clone(),
-                                    sport: Sport::Football,
-                                    league: league.clone(),
-                                    home_team: home.to_string(),
-                                    away_team: away.to_string(),
-                                    start_time: None,
-                                    is_live,
-                                    bookmaker_slug: "betcity".to_string(),
-                                    raw_url: Some("https://betcity.ru".to_string()),
-                                    extra: HashMap::new(),
-                                });
-
-                                // Extract odds from main
-                                if let Some(main_obj) = evt_val.get("main").and_then(|v| v.as_object()) {
-                                    for (_market_id, market_val) in main_obj {
-                                        if let Some(data_obj) = market_val.get("data").and_then(|v| v.as_object()) {
-                                            for (_data_id, data_val) in data_obj {
-                                                if let Some(blocks) = data_val.get("blocks").and_then(|v| v.as_object()) {
-                                                    for (_block_name, block_val) in blocks {
-                                                        if let Some(outcomes_obj) = block_val.as_object() {
-                                                            for (selection, outcome_val) in outcomes_obj {
-                                                                if let Some(kf) = outcome_val.get("kf").and_then(|v| v.as_f64()) {
-                                                                    if kf > 1.01 && kf < 100.0 {
-                                                                        let sel = selection.as_str();
-                                                                        odds.push(Odd {
-                                                                            id: format!("{}-{}-{}", event_id, sel, kf),
-                                                                            event_id: event_id.clone(),
-                                                                            bookmaker_slug: "betcity".to_string(),
-                                                                            market: "1X2".to_string(),
-                                                                            selection: sel.to_string(),
-                                                                            odds: kf,
-                                                                            odds_type: match sel {
-                                                                                "Y" | "1" => OddsType::Home,
-                                                                                "N" | "2" => OddsType::Away,
-                                                                                _ => OddsType::Home,
-                                                                            },
-                                                                            line: None,
-                                                                            timestamp: now,
-                                                                        });
-                                                                    }
-                                                                }
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    let (evs, ods) = Self::parse_championships(chmps_obj, sport, is_live, now);
+                    events.extend(evs);
+                    odds.extend(ods);
+                    continue;
                 }
-            }
-        } else if let Some(sports_array) = json.get("sports").and_then(|v| v.as_array()) {
-            // Fallback: old style
-            for sport in sports_array {
                 if let Some(events_arr) = sport
                     .get("events")
                     .or_else(|| sport.get("matches"))
@@ -447,6 +398,457 @@ impl BetcityParser {
         }
 
         (events, odds)
+    }
+
+    fn parse_sports_object(
+        sports: &serde_json::Map<String, serde_json::Value>,
+        is_live: bool,
+        now: chrono::DateTime<Utc>,
+    ) -> (Vec<Event>, Vec<Odd>) {
+        let mut events = Vec::new();
+        let mut odds = Vec::new();
+
+        for sport in sports.values() {
+            if let Some(chmps) = sport.get("chmps").and_then(|v| v.as_object()) {
+                let (evs, ods) = Self::parse_championships(chmps, sport, is_live, now);
+                events.extend(evs);
+                odds.extend(ods);
+            }
+        }
+
+        (events, odds)
+    }
+
+    fn parse_championships(
+        chmps: &serde_json::Map<String, serde_json::Value>,
+        sport_value: &serde_json::Value,
+        is_live: bool,
+        now: chrono::DateTime<Utc>,
+    ) -> (Vec<Event>, Vec<Odd>) {
+        let mut events = Vec::new();
+        let mut odds = Vec::new();
+        let sport = sport_value
+            .get("name_sp")
+            .and_then(|value| value.as_str())
+            .map(Sport::from_str)
+            .unwrap_or(Sport::Other);
+
+        for championship in chmps.values() {
+            let league = championship
+                .get("name_ch")
+                .and_then(|value| value.as_str())
+                .unwrap_or_default();
+
+            if let Some(evts) = championship.get("evts").and_then(|value| value.as_object()) {
+                for event_value in evts.values() {
+                    if let Some((event, event_odds)) =
+                        Self::parse_nested_event(event_value, sport, league, is_live, now)
+                    {
+                        events.push(event);
+                        odds.extend(event_odds);
+                    }
+                }
+            }
+        }
+
+        (events, odds)
+    }
+
+    fn parse_nested_event(
+        event_value: &serde_json::Value,
+        sport: Sport,
+        league: &str,
+        is_live: bool,
+        now: chrono::DateTime<Utc>,
+    ) -> Option<(Event, Vec<Odd>)> {
+        let home = event_value.get("name_ht")?.as_str()?.trim();
+        let away = event_value.get("name_at")?.as_str()?.trim();
+
+        if home.len() < 2 || away.len() < 2 {
+            return None;
+        }
+
+        let event_numeric_id = event_value.get("id_ev").and_then(|value| value.as_i64())?;
+        let event_id = format!("betcity-{event_numeric_id}");
+        let start_time = event_value
+            .get("date_ev")
+            .and_then(|value| value.as_i64())
+            .and_then(|timestamp| chrono::DateTime::<Utc>::from_timestamp(timestamp, 0));
+
+        let event = Event {
+            id: event_id.clone(),
+            sport,
+            league: league.to_string(),
+            home_team: home.to_string(),
+            away_team: away.to_string(),
+            start_time,
+            is_live,
+            bookmaker_slug: "betcity".to_string(),
+            raw_url: Some("https://betcity.ru".to_string()),
+            extra: HashMap::new(),
+        };
+
+        let odds = Self::extract_event_odds(event_value, &event_id, now);
+        Some((event, odds))
+    }
+
+    fn extract_event_odds(
+        event_value: &serde_json::Value,
+        event_id: &str,
+        now: chrono::DateTime<Utc>,
+    ) -> Vec<Odd> {
+        let mut odds = Vec::new();
+
+        let mut seen = HashSet::new();
+
+        for section_name in ["main", "ext", "dep_event"] {
+            let Some(section) = event_value
+                .get(section_name)
+                .and_then(|value| value.as_object())
+            else {
+                continue;
+            };
+
+            for market in section.values() {
+                Self::extract_market_odds(market, event_id, now, &mut seen, &mut odds, None);
+            }
+        }
+
+        odds
+    }
+
+    fn extract_market_odds(
+        market_value: &serde_json::Value,
+        event_id: &str,
+        now: chrono::DateTime<Utc>,
+        seen: &mut HashSet<String>,
+        odds: &mut Vec<Odd>,
+        inherited_name: Option<&str>,
+    ) {
+        let market_name = market_value
+            .get("name")
+            .and_then(|value| value.as_str())
+            .or(inherited_name)
+            .unwrap_or_default();
+
+        if let Some(data) = market_value.get("data") {
+            Self::extract_market_data(data, market_name, event_id, now, seen, odds);
+        }
+
+        if let Some(rows) = market_value.get("rows").and_then(|value| value.as_object()) {
+            for row in rows.values() {
+                let row_name = row
+                    .get("name")
+                    .and_then(|value| value.as_str())
+                    .unwrap_or(market_name);
+                Self::extract_market_odds(row, event_id, now, seen, odds, Some(row_name));
+            }
+        }
+    }
+
+    fn extract_market_data(
+        data_value: &serde_json::Value,
+        market_name: &str,
+        event_id: &str,
+        now: chrono::DateTime<Utc>,
+        seen: &mut HashSet<String>,
+        odds: &mut Vec<Odd>,
+    ) {
+        match data_value {
+            serde_json::Value::Object(object) => {
+                if let Some(blocks) = object.get("blocks").and_then(|value| value.as_object()) {
+                    Self::extract_market_blocks(blocks, market_name, event_id, now, seen, odds);
+                }
+
+                if let Some(rows) = object.get("rows").and_then(|value| value.as_object()) {
+                    for row in rows.values() {
+                        let row_name = row
+                            .get("name")
+                            .and_then(|value| value.as_str())
+                            .unwrap_or(market_name);
+                        Self::extract_market_odds(row, event_id, now, seen, odds, Some(row_name));
+                    }
+                }
+
+                for nested in object.values() {
+                    if nested.is_object() && nested.get("blocks").is_some() {
+                        Self::extract_market_data(nested, market_name, event_id, now, seen, odds);
+                    }
+                }
+            }
+            serde_json::Value::Array(items) => {
+                for item in items {
+                    Self::extract_market_data(item, market_name, event_id, now, seen, odds);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn extract_market_blocks(
+        blocks: &serde_json::Map<String, serde_json::Value>,
+        market_name: &str,
+        event_id: &str,
+        now: chrono::DateTime<Utc>,
+        seen: &mut HashSet<String>,
+        odds: &mut Vec<Odd>,
+    ) {
+        let market_name_lower = market_name.to_lowercase();
+
+        for block in blocks.values() {
+            let Some(block_obj) = block.as_object() else {
+                continue;
+            };
+
+            if block_obj.contains_key("P1")
+                || block_obj.contains_key("X")
+                || block_obj.contains_key("P2")
+            {
+                let market = if Self::is_period_market_name(&market_name_lower) {
+                    market_name
+                } else {
+                    "1X2"
+                };
+
+                Self::push_named_outcome_unique(
+                    odds,
+                    seen,
+                    event_id,
+                    market,
+                    "1",
+                    OddsType::Home,
+                    block_obj.get("P1"),
+                    None,
+                    now,
+                );
+                Self::push_named_outcome_unique(
+                    odds,
+                    seen,
+                    event_id,
+                    market,
+                    "X",
+                    OddsType::Draw,
+                    block_obj.get("X"),
+                    None,
+                    now,
+                );
+                Self::push_named_outcome_unique(
+                    odds,
+                    seen,
+                    event_id,
+                    market,
+                    "2",
+                    OddsType::Away,
+                    block_obj.get("P2"),
+                    None,
+                    now,
+                );
+            }
+
+            if market_name_lower.contains("тотал")
+                || (block_obj.contains_key("Tm") && block_obj.contains_key("Tb"))
+            {
+                let total_line = block_obj
+                    .get("Tot")
+                    .and_then(|value| value.as_f64())
+                    .or_else(|| block_obj.get("Tm").and_then(Self::extract_line))
+                    .or_else(|| block_obj.get("Tb").and_then(Self::extract_line));
+                let market = if Self::is_period_market_name(&market_name_lower) {
+                    market_name
+                } else {
+                    "Total"
+                };
+
+                Self::push_named_outcome_unique(
+                    odds,
+                    seen,
+                    event_id,
+                    market,
+                    "Under",
+                    OddsType::Under,
+                    block_obj.get("Tm"),
+                    total_line,
+                    now,
+                );
+                Self::push_named_outcome_unique(
+                    odds,
+                    seen,
+                    event_id,
+                    market,
+                    "Over",
+                    OddsType::Over,
+                    block_obj.get("Tb"),
+                    total_line,
+                    now,
+                );
+            }
+
+            if market_name_lower.contains("обе забьют")
+                || market_name_lower.contains("обе команды забьют")
+            {
+                Self::push_named_outcome_unique(
+                    odds,
+                    seen,
+                    event_id,
+                    "BTTS",
+                    "Yes",
+                    OddsType::BothTeamsScoreYes,
+                    block_obj.get("Y"),
+                    None,
+                    now,
+                );
+                Self::push_named_outcome_unique(
+                    odds,
+                    seen,
+                    event_id,
+                    "BTTS",
+                    "No",
+                    OddsType::BothTeamsScoreNo,
+                    block_obj.get("N"),
+                    None,
+                    now,
+                );
+            }
+
+            if market_name_lower.contains("двойн")
+                || (block_obj.contains_key("1X")
+                    && block_obj.contains_key("12")
+                    && block_obj.contains_key("X2"))
+            {
+                Self::push_named_outcome_unique(
+                    odds,
+                    seen,
+                    event_id,
+                    "DoubleChance",
+                    "1X",
+                    OddsType::Custom,
+                    block_obj.get("1X"),
+                    None,
+                    now,
+                );
+                Self::push_named_outcome_unique(
+                    odds,
+                    seen,
+                    event_id,
+                    "DoubleChance",
+                    "12",
+                    OddsType::Custom,
+                    block_obj.get("12"),
+                    None,
+                    now,
+                );
+                Self::push_named_outcome_unique(
+                    odds,
+                    seen,
+                    event_id,
+                    "DoubleChance",
+                    "X2",
+                    OddsType::Custom,
+                    block_obj.get("X2"),
+                    None,
+                    now,
+                );
+            }
+
+            if market_name_lower.contains("фора")
+                || (block_obj.contains_key("Kf_F1") && block_obj.contains_key("Kf_F2"))
+            {
+                let home_line = block_obj
+                    .get("F1")
+                    .and_then(Self::extract_numeric_value)
+                    .or_else(|| block_obj.get("Kf_F1").and_then(Self::extract_line));
+                let away_line = block_obj
+                    .get("F2")
+                    .and_then(Self::extract_numeric_value)
+                    .or_else(|| block_obj.get("Kf_F2").and_then(Self::extract_line));
+
+                Self::push_named_outcome_unique(
+                    odds,
+                    seen,
+                    event_id,
+                    "Handicap",
+                    "1",
+                    OddsType::Handicap,
+                    block_obj.get("Kf_F1"),
+                    home_line,
+                    now,
+                );
+                Self::push_named_outcome_unique(
+                    odds,
+                    seen,
+                    event_id,
+                    "Handicap",
+                    "2",
+                    OddsType::Handicap,
+                    block_obj.get("Kf_F2"),
+                    away_line,
+                    now,
+                );
+            }
+        }
+    }
+
+    fn extract_numeric_value(value: &serde_json::Value) -> Option<f64> {
+        value
+            .as_f64()
+            .or_else(|| value.as_i64().map(|value| value as f64))
+            .or_else(|| value.as_u64().map(|value| value as f64))
+    }
+
+    fn extract_line(value: &serde_json::Value) -> Option<f64> {
+        value
+            .get("lv")
+            .and_then(|line| line.as_f64())
+            .or_else(|| value.get("lvt").and_then(|line| line.as_f64()))
+    }
+
+    fn is_period_market_name(market_name_lower: &str) -> bool {
+        market_name_lower.contains("тайм")
+            || market_name_lower.contains("period")
+            || market_name_lower.contains("период")
+            || market_name_lower.contains("сет")
+            || market_name_lower.contains("четвер")
+    }
+
+    fn push_named_outcome_unique(
+        odds: &mut Vec<Odd>,
+        seen: &mut HashSet<String>,
+        event_id: &str,
+        market: &str,
+        selection: &str,
+        odds_type: OddsType,
+        outcome: Option<&serde_json::Value>,
+        line: Option<f64>,
+        now: chrono::DateTime<Utc>,
+    ) {
+        let Some(price) = outcome
+            .and_then(|value| value.get("kf"))
+            .and_then(|value| value.as_f64())
+            .filter(|value| *value > 1.01 && *value < 100.0)
+        else {
+            return;
+        };
+
+        let unique_id = match line {
+            Some(line_value) => format!("{event_id}-{market}-{selection}-{line_value}"),
+            None => format!("{event_id}-{market}-{selection}"),
+        };
+
+        if !seen.insert(unique_id.clone()) {
+            return;
+        }
+
+        odds.push(Odd {
+            id: unique_id,
+            event_id: event_id.to_string(),
+            bookmaker_slug: "betcity".to_string(),
+            market: market.to_string(),
+            selection: selection.to_string(),
+            odds: price,
+            odds_type,
+            line,
+            timestamp: now,
+        });
     }
 
     /// Разбираем массив событий в единообразном формате
@@ -1147,5 +1549,74 @@ impl BookmakerParser for BetcityParser {
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) \
          AppleWebKit/537.36 (KHTML, like Gecko) \
          Chrome/124.0.0.0 Safari/537.36"
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::BetcityParser;
+    use shared::OddsType;
+    use shared::Sport;
+
+    #[test]
+    fn parses_live_payload_with_main_and_period_markets() {
+        let payload: serde_json::Value =
+            serde_json::from_str(include_str!("../tests/fixtures/betcity_live_payload.json"))
+                .expect("live fixture should be valid json");
+
+        let (events, odds) = BetcityParser::parse_json_response(&payload, true);
+
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].sport, Sport::Football);
+        assert_eq!(events[0].home_team, "Бавария (5x5)");
+        assert_eq!(events[0].away_team, "Шальке (5x5)");
+        assert!(events[0].is_live);
+
+        let one_x_two_count = odds.iter().filter(|odd| odd.market == "1X2").count();
+        assert_eq!(one_x_two_count, 3);
+        assert!(odds.iter().any(|odd| {
+            odd.market == "Total"
+                && odd.selection == "Over"
+                && odd.odds_type == OddsType::Over
+                && odd.line == Some(3.5)
+        }));
+        assert!(odds.iter().any(|odd| {
+            odd.market == "DoubleChance"
+                && odd.selection == "1X"
+                && odd.odds_type == OddsType::Custom
+        }));
+        assert!(odds.iter().any(|odd| {
+            odd.market == "Handicap"
+                && odd.selection == "1"
+                && odd.odds_type == OddsType::Handicap
+                && odd.line == Some(-1.5)
+        }));
+        assert!(odds.iter().any(|odd| {
+            odd.market == "1-й тайм" && odd.selection == "1" && odd.odds_type == OddsType::Home
+        }));
+    }
+
+    #[test]
+    fn parses_prematch_payload_with_total_line() {
+        let payload: serde_json::Value = serde_json::from_str(include_str!(
+            "../tests/fixtures/betcity_prematch_payload.json"
+        ))
+        .expect("prematch fixture should be valid json");
+
+        let (events, odds) = BetcityParser::parse_json_response(&payload, false);
+
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].league, "Футбол. Англия. Премьер-лига.");
+        assert!(!events[0].is_live);
+
+        assert!(odds.iter().any(|odd| {
+            odd.market == "1X2" && odd.selection == "1" && odd.odds_type == OddsType::Home
+        }));
+        assert!(odds.iter().any(|odd| {
+            odd.market == "Total"
+                && odd.selection == "Under"
+                && odd.odds_type == OddsType::Under
+                && odd.line == Some(2.5)
+        }));
     }
 }

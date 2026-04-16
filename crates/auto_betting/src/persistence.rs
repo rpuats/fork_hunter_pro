@@ -1,11 +1,27 @@
 use async_trait::async_trait;
-use shared::{BookmakerAccount, BookmakerBalanceSnapshot, BookmakerSession};
+use chrono::{DateTime, Utc};
+use shared::{BetPlacement, BookmakerAccount, BookmakerBalanceSnapshot, BookmakerSession};
+
+use crate::state_machine::{ExecutionStateSnapshot, ExecutionStateTransition};
 
 #[derive(Debug, Clone, Default)]
 pub struct ExecutionRegistrySnapshot {
     pub accounts: Vec<BookmakerAccount>,
     pub sessions: Vec<BookmakerSession>,
     pub balances: Vec<BookmakerBalanceSnapshot>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+pub enum ExecutionLedgerAction {
+    Placed,
+    Updated,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ExecutionLedgerEntry {
+    pub placement: BetPlacement,
+    pub action: ExecutionLedgerAction,
+    pub recorded_at: DateTime<Utc>,
 }
 
 #[async_trait]
@@ -20,4 +36,17 @@ pub trait ExecutionRegistryPersistence: Send + Sync {
         &self,
         snapshot: &BookmakerBalanceSnapshot,
     ) -> Result<(), String>;
+}
+
+pub trait ExecutionLedgerPersistence: Send + Sync {
+    fn record(&self, entry: ExecutionLedgerEntry);
+}
+
+#[async_trait]
+pub trait ExecutionStatePersistence: Send + Sync {
+    async fn load_snapshots(&self) -> Result<Vec<ExecutionStateSnapshot>, String>;
+
+    async fn save_snapshot(&self, snapshot: &ExecutionStateSnapshot) -> Result<(), String>;
+
+    async fn record_transition(&self, transition: &ExecutionStateTransition) -> Result<(), String>;
 }

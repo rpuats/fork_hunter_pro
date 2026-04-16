@@ -29,19 +29,22 @@ impl HealthChecker {
         match parser.fetch_all().await {
             Ok(result) => {
                 let elapsed = start.elapsed().as_millis() as f64;
+                let is_empty = result.is_empty();
                 ParserHealth {
                     bookmaker: parser.slug().to_string(),
-                    status: if result.is_empty() {
+                    status: if is_empty {
                         shared::HealthStatus::Degraded
                     } else {
                         shared::HealthStatus::Healthy
                     },
                     last_success: Some(chrono::Utc::now()),
-                    last_error: None,
+                    last_error: is_empty.then(|| {
+                        "parser returned no events or odds during health check".to_string()
+                    }),
                     consecutive_failures: 0,
                     avg_response_time_ms: elapsed,
                     events_parsed: result.events.len() as u64,
-                    uptime_percent: 100.0,
+                    uptime_percent: if is_empty { 0.0 } else { 100.0 },
                     readiness,
                     diagnostics,
                 }

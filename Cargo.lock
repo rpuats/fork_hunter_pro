@@ -77,7 +77,9 @@ dependencies = [
  "chrono",
  "engine",
  "futures",
+ "parsers",
  "persistence",
+ "reqwest 0.12.28",
  "scanner",
  "serde",
  "serde_json",
@@ -367,11 +369,13 @@ dependencies = [
  "engine",
  "scanner",
  "serde",
+ "serde_json",
  "shared",
  "teloxide",
  "thiserror 1.0.69",
  "tokio",
  "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -3025,6 +3029,7 @@ name = "scanner"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-trait",
  "auto_betting",
  "bankroll_manager",
  "bonus_hunter",

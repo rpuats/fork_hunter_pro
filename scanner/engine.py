@@ -736,11 +736,15 @@ class GhostScanner:
         )
     
     def get_corridors(self, min_ev: float = 1.0, sport: Optional[str] = None) -> List[Dict]:
-        return self.corridor_finder.find_corridors(
-            events=self.get_events(),
-            min_ev=min_ev,
-            sport=sport,
-        )
+        filtered = self.corridors
+
+        if min_ev > 0:
+            filtered = [corridor for corridor in filtered if corridor.get('expected_roi', 0) >= min_ev]
+
+        if sport:
+            filtered = [corridor for corridor in filtered if corridor.get('sport', '').lower() == sport.lower()]
+
+        return filtered
     
     def get_stats(self) -> Dict:
         uptime = time.time() - self.stats.started_at if self.stats.started_at else 0

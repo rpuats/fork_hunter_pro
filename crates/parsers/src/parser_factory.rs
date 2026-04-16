@@ -1,7 +1,7 @@
 use crate::base::BookmakerParser;
 use crate::{
-    baltbet, bet24, betboom, betcity, bettery, fonbet, leon, ligastavok, marathon, olimpbet, pari,
-    sportbet, winline, zenit,
+    baltbet, bet24, betboom, betcity, betm, bettery, fonbet, leon, ligastavok, marathon, melbet,
+    olimpbet, pari, sportbet, tennisi, winline, zenit,
 };
 use shared::{BookmakerMetadata, HealthStatus, ParserCoverage, ParserHealth};
 use std::collections::HashMap;
@@ -36,6 +36,15 @@ const BOOKMAKER_REGISTRY: &[BookmakerRegistryEntry] = &[
         source: "crates/parsers/src/fonbet.rs",
         execution_supported: false,
         notes: Some("Rust parser registered for market scanning."),
+    },
+    BookmakerRegistryEntry {
+        slug: "betm",
+        name: "Bet-M",
+        aliases: &["betm"],
+        parser_type: "headless",
+        source: "crates/parsers/src/betm.rs",
+        execution_supported: false,
+        notes: Some("Rust headless parser probes legacy and current Bet-M public routes, but production scanning stays disabled until public feed coverage is verified."),
     },
     BookmakerRegistryEntry {
         slug: "bettery",
@@ -83,13 +92,31 @@ const BOOKMAKER_REGISTRY: &[BookmakerRegistryEntry] = &[
         notes: Some("Rust parser registered for market scanning."),
     },
     BookmakerRegistryEntry {
+        slug: "tennisi",
+        name: "Tennisi",
+        aliases: &["tennisi"],
+        parser_type: "api",
+        source: "crates/parsers/src/tennisi.rs",
+        execution_supported: false,
+        notes: Some("Rust HTTP parser uses legacy Tennisi HTML line/live pages for market scanning."),
+    },
+    BookmakerRegistryEntry {
+        slug: "melbet",
+        name: "Melbet",
+        aliases: &["melbet"],
+        parser_type: "headless",
+        source: "crates/parsers/src/melbet.rs",
+        execution_supported: false,
+        notes: Some("Rust headless parser registered from legacy Playwright flow."),
+    },
+    BookmakerRegistryEntry {
         slug: "winline",
         name: "Winline",
         aliases: &["winline"],
-        parser_type: "python",
+        parser_type: "api",
         source: "crates/parsers/src/winline.rs",
         execution_supported: false,
-        notes: Some("Python wrapper registered for scan-only operation."),
+        notes: Some("Rust HTTP parser registered for market scanning."),
     },
     BookmakerRegistryEntry {
         slug: "zenit",
@@ -116,7 +143,7 @@ const BOOKMAKER_REGISTRY: &[BookmakerRegistryEntry] = &[
         parser_type: "api",
         source: "crates/parsers/src/baltbet.rs",
         execution_supported: false,
-        notes: Some("Pure HTTP parser with HTML parsing and demo fallback."),
+        notes: Some("Pure HTTP parser with live JSON, banner metadata fallback, and legacy prematch groups; strict nightly KPI progress is tracked in readiness diagnostics."),
     },
     BookmakerRegistryEntry {
         slug: "olimpbet",
@@ -125,7 +152,7 @@ const BOOKMAKER_REGISTRY: &[BookmakerRegistryEntry] = &[
         parser_type: "api",
         source: "crates/parsers/src/olimpbet.rs",
         execution_supported: false,
-        notes: Some("Registered parser is currently scan-only."),
+        notes: Some("Rust parser is registered and enabled for market scanning."),
     },
     BookmakerRegistryEntry {
         slug: "betboom",
@@ -134,7 +161,7 @@ const BOOKMAKER_REGISTRY: &[BookmakerRegistryEntry] = &[
         parser_type: "api",
         source: "crates/parsers/src/betboom.rs",
         execution_supported: false,
-        notes: Some("Parser exists but is disabled in production."),
+        notes: Some("Rendered sport-page parser is registered for diagnostics, but production scanning stays disabled until league expansion covers target live/prematch volumes."),
     },
     BookmakerRegistryEntry {
         slug: "ligastavok",
@@ -143,7 +170,7 @@ const BOOKMAKER_REGISTRY: &[BookmakerRegistryEntry] = &[
         parser_type: "api",
         source: "crates/parsers/src/ligastavok.rs",
         execution_supported: false,
-        notes: Some("Parser exists but is disabled in production."),
+        notes: Some("Sport-scoped HTTP parser with tournament discovery remains disabled until QRATOR bootstrap is proven in runtime diagnostics."),
     },
     BookmakerRegistryEntry {
         slug: "olimp",
@@ -161,8 +188,30 @@ pub struct ParserFactory {
 }
 
 impl ParserFactory {
+    const STATIC_HEALTH_NOTE: &'static str =
+        "Static factory snapshot only; runtime fetch has not been executed yet.";
+
     fn registry_entry(slug: &str) -> Option<&'static BookmakerRegistryEntry> {
         BOOKMAKER_REGISTRY.iter().find(|entry| entry.slug == slug)
+    }
+
+    fn snapshot_health_status(coverage: &ParserCoverage) -> HealthStatus {
+        if coverage.enabled || coverage.readiness.is_some() {
+            HealthStatus::Degraded
+        } else {
+            HealthStatus::Unhealthy
+        }
+    }
+
+    fn snapshot_health_error(coverage: &ParserCoverage) -> Option<String> {
+        if coverage.enabled {
+            Some(Self::STATIC_HEALTH_NOTE.to_string())
+        } else {
+            coverage
+                .notes
+                .clone()
+                .or_else(|| Some(Self::STATIC_HEALTH_NOTE.to_string()))
+        }
     }
 
     pub fn new(client: Arc<reqwest::Client>) -> Self {
@@ -176,6 +225,10 @@ impl ParserFactory {
         parsers.insert(
             "marathon".to_string(),
             Arc::new(marathon::MarathonParser::new(client.clone())),
+        );
+        parsers.insert(
+            "betm".to_string(),
+            Arc::new(betm::BetMParser::new(client.clone())),
         );
         parsers.insert(
             "bettery".to_string(),
@@ -194,6 +247,10 @@ impl ParserFactory {
             Arc::new(sportbet::SportbetParser::new(client.clone())),
         );
         parsers.insert(
+            "tennisi".to_string(),
+            Arc::new(tennisi::TennisiParser::new(client.clone())),
+        );
+        parsers.insert(
             "ligastavok".to_string(),
             Arc::new(ligastavok::LigaStavokParser::new(client.clone())),
         );
@@ -201,8 +258,11 @@ impl ParserFactory {
             "betboom".to_string(),
             Arc::new(betboom::BetboomParser::new(client.clone())),
         );
-
         // HTTP парсеры — Winline, Zenit, Betcity, Baltbet
+        parsers.insert(
+            "melbet".to_string(),
+            Arc::new(melbet::MelbetParser::new(client.clone())),
+        );
         parsers.insert(
             "winline".to_string(),
             Arc::new(winline::WinlineParser::new(client.clone())),
@@ -349,6 +409,7 @@ impl ParserFactory {
                 source: entry.source.to_string(),
                 notes: entry.notes.map(str::to_string),
                 readiness,
+                runtime_health: None,
             });
         }
 
@@ -365,27 +426,18 @@ impl ParserFactory {
                 .as_ref()
                 .map(|item| item.checks.clone())
                 .unwrap_or_default();
-            let degraded_reason = if coverage.enabled {
-                None
-            } else {
-                coverage.notes.clone()
-            };
+            let status = Self::snapshot_health_status(&coverage);
+            let last_error = Self::snapshot_health_error(&coverage);
 
             items.push(ParserHealth {
                 bookmaker: coverage.slug.clone(),
-                status: if coverage.enabled {
-                    HealthStatus::Healthy
-                } else if coverage.readiness.is_some() {
-                    HealthStatus::Degraded
-                } else {
-                    HealthStatus::Unhealthy
-                },
+                status,
                 last_success: None,
-                last_error: degraded_reason,
+                last_error,
                 consecutive_failures: 0,
                 avg_response_time_ms: 0.0,
                 events_parsed: 0,
-                uptime_percent: if coverage.enabled { 100.0 } else { 0.0 },
+                uptime_percent: 0.0,
                 readiness: coverage.readiness.clone(),
                 diagnostics,
             });
@@ -407,7 +459,7 @@ impl ParserFactory {
 #[cfg(test)]
 mod tests {
     use super::ParserFactory;
-    use shared::HealthStatus;
+    use shared::{DiagnosticSeverity, HealthStatus, ParserReadinessStage};
     use std::sync::Arc;
 
     #[test]
@@ -443,6 +495,179 @@ mod tests {
         assert!(health
             .diagnostics
             .iter()
-            .any(|check| check.code == "session_bootstrap_pending"));
+            .any(|check| check.code == "qrator_unattended_bootstrap_unverified"));
+    }
+
+    #[test]
+    fn betm_coverage_includes_readiness() {
+        let client = Arc::new(reqwest::Client::builder().build().expect("client"));
+        let factory = ParserFactory::new(client);
+
+        let coverage = factory
+            .parser_coverage()
+            .into_iter()
+            .find(|item| item.slug == "betm")
+            .expect("coverage");
+
+        assert_eq!(coverage.parser_type, "headless");
+        assert_eq!(coverage.source, "crates/parsers/src/betm.rs");
+        assert!(coverage.readiness.is_some());
+        assert!(!coverage.enabled);
+    }
+
+    #[test]
+    fn betm_health_snapshot_includes_diagnostics() {
+        let client = Arc::new(reqwest::Client::builder().build().expect("client"));
+        let factory = ParserFactory::new(client);
+
+        let health = factory
+            .parser_health_snapshots()
+            .into_iter()
+            .find(|item| item.bookmaker == "betm")
+            .expect("health");
+
+        assert!(matches!(health.status, HealthStatus::Degraded));
+        assert!(health.readiness.is_some());
+        assert!(health
+            .diagnostics
+            .iter()
+            .any(|check| check.code == "public_feed_not_confirmed"));
+    }
+
+    #[test]
+    fn winline_coverage_matches_rust_parser_metadata() {
+        let client = Arc::new(reqwest::Client::builder().build().expect("client"));
+        let factory = ParserFactory::new(client);
+
+        let coverage = factory
+            .parser_coverage()
+            .into_iter()
+            .find(|item| item.slug == "winline")
+            .expect("coverage");
+
+        assert_eq!(coverage.parser_type, "api");
+        assert_eq!(coverage.source, "crates/parsers/src/winline.rs");
+        assert!(coverage.enabled);
+        assert!(coverage.scan_supported);
+        assert_eq!(
+            coverage.notes.as_deref(),
+            Some("Rust HTTP parser registered for market scanning.")
+        );
+    }
+
+    #[test]
+    fn melbet_coverage_matches_rust_parser_metadata() {
+        let client = Arc::new(reqwest::Client::builder().build().expect("client"));
+        let factory = ParserFactory::new(client);
+
+        let coverage = factory
+            .parser_coverage()
+            .into_iter()
+            .find(|item| item.slug == "melbet")
+            .expect("coverage");
+
+        assert_eq!(coverage.parser_type, "headless");
+        assert_eq!(coverage.source, "crates/parsers/src/melbet.rs");
+        assert!(coverage.enabled);
+        assert!(coverage.scan_supported);
+        assert_eq!(
+            coverage.notes.as_deref(),
+            Some("Rust headless parser registered from legacy Playwright flow.")
+        );
+    }
+
+    #[test]
+    fn tennisi_coverage_matches_rust_parser_metadata() {
+        let client = Arc::new(reqwest::Client::builder().build().expect("client"));
+        let factory = ParserFactory::new(client);
+
+        let coverage = factory
+            .parser_coverage()
+            .into_iter()
+            .find(|item| item.slug == "tennisi")
+            .expect("coverage");
+
+        assert_eq!(coverage.parser_type, "api");
+        assert_eq!(coverage.source, "crates/parsers/src/tennisi.rs");
+        assert!(coverage.enabled);
+        assert!(coverage.scan_supported);
+        assert_eq!(
+            coverage.notes.as_deref(),
+            Some("Rust HTTP parser uses legacy Tennisi HTML line/live pages for market scanning.")
+        );
+    }
+
+    #[test]
+    fn baltbet_coverage_reflects_post_kpi_readiness() {
+        let client = Arc::new(reqwest::Client::builder().build().expect("client"));
+        let factory = ParserFactory::new(client);
+
+        let coverage = factory
+            .parser_coverage()
+            .into_iter()
+            .find(|item| item.slug == "baltbet")
+            .expect("coverage");
+
+        assert!(coverage.enabled);
+        assert!(coverage.scan_supported);
+        assert_eq!(coverage.parser_type, "api");
+        assert_eq!(coverage.source, "crates/parsers/src/baltbet.rs");
+        assert_eq!(
+            coverage.notes.as_deref(),
+            Some("Pure HTTP parser with live JSON, banner metadata fallback, and legacy prematch groups; strict nightly KPI progress is tracked in readiness diagnostics.")
+        );
+
+        let readiness = coverage.readiness.expect("readiness");
+        assert_eq!(readiness.stage, ParserReadinessStage::Production);
+        assert!(readiness.production_enabled);
+        assert!(readiness.self_check_available);
+        assert!(readiness
+            .checks
+            .iter()
+            .any(|check| check.code == "strict_live_kpi_recently_met"
+                && matches!(check.severity, DiagnosticSeverity::Pass)));
+        assert!(readiness
+            .checks
+            .iter()
+            .any(|check| check.code == "strict_prematch_kpi_recently_met"
+                && matches!(check.severity, DiagnosticSeverity::Pass)));
+    }
+
+    #[test]
+    fn olimpbet_metadata_is_not_marked_scan_only() {
+        let client = Arc::new(reqwest::Client::builder().build().expect("client"));
+        let factory = ParserFactory::new(client);
+
+        let metadata = factory
+            .bookmaker_metadata()
+            .into_iter()
+            .find(|item| item.slug == "olimpbet")
+            .expect("metadata");
+
+        assert!(metadata.enabled);
+        assert!(metadata.scan_supported);
+        assert_eq!(
+            metadata.notes.as_deref(),
+            Some("Rust parser is registered and enabled for market scanning.")
+        );
+    }
+
+    #[test]
+    fn enabled_parser_static_health_snapshot_is_not_healthy() {
+        let client = Arc::new(reqwest::Client::builder().build().expect("client"));
+        let factory = ParserFactory::new(client);
+
+        let health = factory
+            .parser_health_snapshots()
+            .into_iter()
+            .find(|item| item.bookmaker == "winline")
+            .expect("health");
+
+        assert!(matches!(health.status, HealthStatus::Degraded));
+        assert_eq!(
+            health.last_error.as_deref(),
+            Some(ParserFactory::STATIC_HEALTH_NOTE)
+        );
+        assert_eq!(health.uptime_percent, 0.0);
     }
 }

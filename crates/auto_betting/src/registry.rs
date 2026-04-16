@@ -92,6 +92,15 @@ impl ExecutionRegistry {
             );
         }
 
+        validate_operator_control_state_transition(
+            self.get_account(bookmaker).as_ref(),
+            self.get_session(bookmaker).as_ref(),
+            self.get_balance_snapshot(bookmaker).as_ref(),
+            &self.get_capability(bookmaker),
+            enabled,
+            &mode,
+        )?;
+
         let mut account = self
             .accounts
             .get_mut(bookmaker)
@@ -147,6 +156,12 @@ impl ExecutionRegistry {
 
     pub fn get_balance_snapshot(&self, bookmaker: &str) -> Option<BookmakerBalanceSnapshot> {
         self.balances.get(bookmaker).map(|entry| entry.clone())
+    }
+
+    pub fn list_balance_snapshots(&self) -> Vec<BookmakerBalanceSnapshot> {
+        let mut snapshots: Vec<_> = self.balances.iter().map(|entry| entry.clone()).collect();
+        snapshots.sort_by(|left, right| left.bookmaker.cmp(&right.bookmaker));
+        snapshots
     }
 
     pub fn register_adapter(
@@ -251,6 +266,8 @@ impl ExecutionRegistry {
         &self,
         request: &BetExecutionRequest,
     ) -> Result<BetExecutionReceipt, String> {
+        validate_execution_request(request)?;
+
         let bookmaker = request.bookmaker.as_str();
         let capability = self.get_capability(bookmaker);
         let account = self.get_account(bookmaker);
@@ -283,7 +300,32 @@ impl ExecutionRegistry {
                         "account is armed, but semi-real submission mode is not enabled",
                     )
                 } else if account.mode.allows_submission_path() {
-                    if capability.supports_bet_placement {
+                    if request
+                        .reference
+                        .as_deref()
+                        .map(str::trim)
+                        .filter(|reference| !reference.is_empty())
+                        .is_none()
+                    {
+                        return Err(
+                            "submission-path execution requires a non-empty approval reference"
+                                .into(),
+                        );
+                    }
+
+                    if request.allow_dry_run {
+                        armed_receipt(
+                            account,
+                            request,
+                            "submission path remains approval-gated because request is marked as dry-run",
+                        )
+                    } else if !capability.supports_real_money {
+                        armed_receipt(
+                            account,
+                            request,
+                            "submission path reached approval gate, but remote coupon submit remains disabled in safe mode",
+                        )
+                    } else if capability.supports_bet_placement {
                         adapter.place_bet(account, request).await?
                     } else {
                         blocked_receipt(
@@ -311,6 +353,8 @@ impl ExecutionRegistry {
         &self,
         request: &BetExecutionRequest,
     ) -> Result<BetExecutionReceipt, String> {
+        validate_execution_request(request)?;
+
         let bookmaker = request.bookmaker.as_str();
         let account = self.get_account(bookmaker);
 
@@ -367,6 +411,47 @@ where
     }
 }
 
+fn validate_operator_control_state_transition(
+    account: Option<&BookmakerAccount>,
+    session: Option<&BookmakerSession>,
+    balance: Option<&BookmakerBalanceSnapshot>,
+    capability: &BookmakerExecutionCapability,
+    enabled: bool,
+    mode: &BookmakerExecutionMode,
+) -> Result<(), String> {
+    if account.is_none() {
+        return Err("bookmaker account state not found".into());
+    }
+
+    if matches!(mode, BookmakerExecutionMode::Armed) {
+        if !enabled {
+            return Err("armed mode requires the account to stay enabled".into());
+        }
+
+        if !capability.supports_dry_run {
+            return Err("armed mode requires a dry-run capable bookmaker adapter".into());
+        }
+
+        if !capability.supports_bet_placement {
+            return Err("armed mode requires bookmaker placement support".into());
+        }
+
+        if capability.requires_session
+            && !session
+                .map(|item| matches!(item.state, BookmakerSessionState::Active))
+                .unwrap_or(false)
+        {
+            return Err("armed mode requires an active bookmaker session".into());
+        }
+
+        if capability.supports_balance_snapshot && balance.is_none() {
+            return Err("armed mode requires a cached bookmaker balance snapshot".into());
+        }
+    }
+
+    Ok(())
+}
+
 fn blocked_receipt(
     account: Option<&BookmakerAccount>,
     request: &BetExecutionRequest,
@@ -408,6 +493,40 @@ impl Default for ExecutionRegistry {
     fn default() -> Self {
         Self::new()
     }
+}
+
+fn validate_execution_request(request: &BetExecutionRequest) -> Result<(), String> {
+    if request.bookmaker.trim().is_empty() {
+        return Err("bookmaker is required".into());
+    }
+
+    if request.event_id.trim().is_empty() {
+        return Err("event_id is required".into());
+    }
+
+    if request.market.trim().is_empty() {
+        return Err("market is required".into());
+    }
+
+    if request.selection.trim().is_empty() {
+        return Err("selection is required".into());
+    }
+
+    if !request.odds.is_finite() || request.odds <= 1.0 {
+        return Err("odds must be finite and greater than 1.0".into());
+    }
+
+    if !request.stake.is_finite() || request.stake <= 0.0 {
+        return Err("stake must be finite and positive".into());
+    }
+
+    if let Some(reference) = request.reference.as_deref() {
+        if reference.trim().is_empty() {
+            return Err("reference must be non-empty when provided".into());
+        }
+    }
+
+    Ok(())
 }
 
 fn map_sync_state_to_session_state(
@@ -605,7 +724,7 @@ mod tests {
     }
 
     #[test]
-    fn semi_real_mode_is_blocked_when_adapter_submission_is_unsupported() {
+    fn semi_real_mode_stays_approval_gated_for_dry_run_requests() {
         let registry = ExecutionRegistry::new();
         let account = BookmakerAccount {
             id: Uuid::new_v4(),
@@ -632,13 +751,17 @@ mod tests {
         }))
         .expect("blocked receipt should succeed");
 
-        assert_eq!(receipt.status, BetExecutionStatus::Blocked);
+        assert_eq!(receipt.status, BetExecutionStatus::Armed);
         assert_eq!(receipt.mode, BookmakerExecutionMode::SemiRealReady);
-        assert_eq!(receipt.accepted_stake, 0.0);
+        assert_eq!(receipt.accepted_stake, 500.0);
+        assert!(receipt
+            .message
+            .unwrap_or_default()
+            .contains("marked as dry-run"));
     }
 
     #[test]
-    fn semi_real_mode_reaches_safe_submission_path_for_pari() {
+    fn semi_real_mode_for_pari_stays_approval_gated() {
         let registry = ExecutionRegistry::new();
         let account = BookmakerAccount {
             id: Uuid::new_v4(),
@@ -663,11 +786,15 @@ mod tests {
             allow_dry_run: true,
             reference: Some("pari-submission".into()),
         }))
-        .expect("pari submission receipt should succeed");
+        .expect("pari approval gate receipt should succeed");
 
-        assert_eq!(receipt.status, BetExecutionStatus::Submitted);
+        assert_eq!(receipt.status, BetExecutionStatus::Armed);
         assert_eq!(receipt.mode, BookmakerExecutionMode::SemiRealReady);
         assert_eq!(receipt.account_id, Some(account.id));
+        assert!(receipt
+            .message
+            .unwrap_or_default()
+            .contains("marked as dry-run"));
     }
 
     #[test]
@@ -707,7 +834,24 @@ mod tests {
             last_used_at: None,
         };
 
-        registry.register_account(account);
+        registry.register_account(account.clone());
+        registry.upsert_session(BookmakerSession {
+            account_id: account.id,
+            bookmaker: account.bookmaker.clone(),
+            state: BookmakerSessionState::Active,
+            token_hint: Some("sess...".into()),
+            last_synced_at: Utc::now(),
+            expires_at: None,
+        });
+        registry.upsert_balance_snapshot(BookmakerBalanceSnapshot {
+            account_id: account.id,
+            bookmaker: account.bookmaker.clone(),
+            currency: account.currency.clone(),
+            total_balance: 10_000.0,
+            available_balance: 7_500.0,
+            exposure: 2_500.0,
+            captured_at: Utc::now(),
+        });
 
         let updated = registry
             .update_account_control_state("pari", true, BookmakerExecutionMode::Armed)
@@ -722,6 +866,77 @@ mod tests {
                 .mode,
             BookmakerExecutionMode::Armed
         );
+    }
+
+    #[test]
+    fn operator_control_updates_reject_arming_when_readiness_is_incomplete() {
+        let registry = ExecutionRegistry::new();
+        let account = BookmakerAccount {
+            id: Uuid::new_v4(),
+            bookmaker: "pari".into(),
+            label: "main".into(),
+            currency: "RUB".into(),
+            enabled: true,
+            mode: BookmakerExecutionMode::DryRun,
+            created_at: Utc::now(),
+            last_used_at: None,
+        };
+
+        registry.register_account(account);
+
+        let error = registry
+            .update_account_control_state("pari", true, BookmakerExecutionMode::Armed)
+            .expect_err("arming without readiness should be rejected");
+
+        assert!(error.contains("active bookmaker session") || error.contains("balance snapshot"));
+    }
+
+    #[test]
+    fn execution_request_validation_rejects_invalid_odds() {
+        let error = validate_execution_request(&BetExecutionRequest {
+            bookmaker: "pari".into(),
+            event_id: "event-1".into(),
+            market: "1X2".into(),
+            selection: "1".into(),
+            odds: 1.0,
+            stake: 500.0,
+            allow_dry_run: true,
+            reference: Some("approval-1".into()),
+        })
+        .expect_err("invalid odds must be rejected");
+
+        assert!(error.contains("odds"));
+    }
+
+    #[test]
+    fn submission_path_requires_audit_reference() {
+        let registry = ExecutionRegistry::new();
+        let account = BookmakerAccount {
+            id: Uuid::new_v4(),
+            bookmaker: "pari".into(),
+            label: "main".into(),
+            currency: "RUB".into(),
+            enabled: true,
+            mode: BookmakerExecutionMode::SemiRealReady,
+            created_at: Utc::now(),
+            last_used_at: None,
+        };
+
+        registry.register_account(account);
+
+        let error = futures::executor::block_on(registry.execute_bet(&BetExecutionRequest {
+            bookmaker: "pari".into(),
+            event_id: "event-1".into(),
+            market: "1X2".into(),
+            selection: "1".into(),
+            odds: 2.15,
+            stake: 500.0,
+            allow_dry_run: false,
+            reference: None,
+        }))
+        .expect_err("submission path without reference must be rejected");
+
+        assert!(error.contains("approval reference"));
     }
 
     #[test]
@@ -839,6 +1054,38 @@ mod tests {
             BookmakerSessionSyncState::Configured
         );
         assert!(refresh.snapshot.is_none());
+    }
+
+    #[test]
+    fn lists_cached_balance_snapshots_in_bookmaker_order() {
+        let registry = ExecutionRegistry::new();
+        let pari_account_id = Uuid::new_v4();
+        let fonbet_account_id = Uuid::new_v4();
+
+        registry.upsert_balance_snapshot(BookmakerBalanceSnapshot {
+            account_id: pari_account_id,
+            bookmaker: "pari".into(),
+            currency: "RUB".into(),
+            total_balance: 10_000.0,
+            available_balance: 8_000.0,
+            exposure: 2_000.0,
+            captured_at: Utc::now(),
+        });
+        registry.upsert_balance_snapshot(BookmakerBalanceSnapshot {
+            account_id: fonbet_account_id,
+            bookmaker: "fonbet".into(),
+            currency: "RUB".into(),
+            total_balance: 7_000.0,
+            available_balance: 6_500.0,
+            exposure: 500.0,
+            captured_at: Utc::now(),
+        });
+
+        let snapshots = registry.list_balance_snapshots();
+
+        assert_eq!(snapshots.len(), 2);
+        assert_eq!(snapshots[0].bookmaker, "fonbet");
+        assert_eq!(snapshots[1].bookmaker, "pari");
     }
 
     #[tokio::test]

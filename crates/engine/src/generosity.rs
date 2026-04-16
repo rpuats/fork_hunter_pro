@@ -1,23 +1,32 @@
 /// Индекс щедрости БК — рассчитывает насколько «щедра» БК по отношению к игрокам.
-/// Учитывает: среднюю маржу, количество лучших коэффициентов, глубину линии.
-use chrono::Utc;
+/// Учитывает текущий snapshot рантайма: реальную маржу по рынкам, долю лучших коэффициентов
+/// и покрытие событий по каждому виду спорта.
+use chrono::{DateTime, Utc};
 use dashmap::DashMap;
 use shared::{Event, GenerosityIndex, Odd, Sport};
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct BookmakerSportKey {
+    bookmaker: String,
+    sport: Sport,
+}
 
 #[derive(Clone)]
 pub struct GenerosityIndexCalc {
-    bookmaker_odds: Arc<DashMap<String, BookmakerStats>>,
+    bookmaker_odds: Arc<DashMap<BookmakerSportKey, BookmakerStats>>,
 }
 
 #[derive(Debug, Clone, Default)]
 struct BookmakerStats {
     pub total_odds: usize,
+    pub total_events: usize,
     pub best_odds_count: usize,
     pub sum_margins: f64,
+    pub market_count: usize,
     pub sum_odds: f64,
-    #[allow(dead_code)]
-    pub events_by_sport: DashMap<String, usize>,
+    pub updated_at: DateTime<Utc>,
 }
 
 impl GenerosityIndexCalc {
@@ -28,58 +37,85 @@ impl GenerosityIndexCalc {
     }
 
     /// Обновить данные по событиям и коэффициентам
-    pub fn update(&self, _events: &[Event], all_odds: &[Odd]) {
-        // Собираем статистику по каждой БК из коэффициентов
-        let bk_stats: DashMap<String, BookmakerStats> = DashMap::new();
+    pub fn update(&self, events: &[Event], all_odds: &[Odd]) {
+        let updated_at = Utc::now();
+        let event_lookup: HashMap<&str, &Event> = events
+            .iter()
+            .map(|event| (event.id.as_str(), event))
+            .collect();
+        let mut snapshot: HashMap<BookmakerSportKey, BookmakerStats> = HashMap::new();
+        let mut seen_events: HashSet<(String, Sport, String)> = HashSet::new();
+        let mut best_by_selection: HashMap<(Sport, String, String, String), (String, f64)> =
+            HashMap::new();
+        let mut markets: HashMap<(BookmakerSportKey, String, String, String), Vec<f64>> =
+            HashMap::new();
 
-        // Инициализируем БК из odds
         for odd in all_odds {
-            bk_stats.entry(odd.bookmaker_slug.clone()).or_default();
-        }
+            let Some(event) = event_lookup.get(odd.event_id.as_str()) else {
+                continue;
+            };
+            let event_key = comparable_event_key(event);
 
-        // Считаем коэффициенты
-        for odd in all_odds {
-            let mut stats = bk_stats.entry(odd.bookmaker_slug.clone()).or_default();
+            let key = BookmakerSportKey {
+                bookmaker: odd.bookmaker_slug.clone(),
+                sport: event.sport,
+            };
+            let stats = snapshot
+                .entry(key.clone())
+                .or_insert_with(|| BookmakerStats {
+                    updated_at,
+                    ..BookmakerStats::default()
+                });
+            if seen_events.insert((odd.bookmaker_slug.clone(), event.sport, event_key.clone())) {
+                stats.total_events += 1;
+            }
             stats.total_odds += 1;
             stats.sum_odds += odd.odds;
+
+            let best_key = (
+                event.sport,
+                event_key.clone(),
+                odd.market.to_lowercase(),
+                selection_key(odd),
+            );
+            match best_by_selection.get_mut(&best_key) {
+                Some((bookmaker, best_odds)) if odd.odds > *best_odds => {
+                    *bookmaker = odd.bookmaker_slug.clone();
+                    *best_odds = odd.odds;
+                }
+                None => {
+                    best_by_selection.insert(best_key, (odd.bookmaker_slug.clone(), odd.odds));
+                }
+                _ => {}
+            }
+
+            let market_key = (key, event_key, market_key(&odd.market), line_key(odd.line));
+            markets.entry(market_key).or_default().push(odd.odds);
         }
 
-        // Находим лучшие коэффициенты для каждого исхода
-        let best_by_selection: DashMap<String, (String, f64)> = DashMap::new();
-        for odd in all_odds {
-            let key = format!("{}|{}|{}", odd.event_id, odd.market, odd.selection);
-            let mut entry = best_by_selection
-                .entry(key)
-                .or_insert_with(|| (odd.bookmaker_slug.clone(), odd.odds));
-            if odd.odds > entry.1 {
-                *entry = (odd.bookmaker_slug.clone(), odd.odds);
+        for ((sport, _, _, _), (bookmaker, _)) in best_by_selection {
+            let key = BookmakerSportKey { bookmaker, sport };
+            let stats = snapshot.entry(key).or_insert_with(|| BookmakerStats {
+                updated_at,
+                ..BookmakerStats::default()
+            });
+            stats.best_odds_count += 1;
+        }
+
+        for ((key, _, _, _), odds) in markets {
+            if let Some(margin) = calculate_market_margin(&odds) {
+                let stats = snapshot.entry(key).or_insert_with(|| BookmakerStats {
+                    updated_at,
+                    ..BookmakerStats::default()
+                });
+                stats.sum_margins += margin;
+                stats.market_count += 1;
             }
         }
 
-        // Считаем сколько раз каждая БК была лучшей
-        for entry in best_by_selection.iter() {
-            let bk_slug = &entry.value().0;
-            if let Some(mut stats) = bk_stats.get_mut(bk_slug.as_str()) {
-                stats.best_odds_count += 1;
-            }
-        }
-
-        // Рассчитываем средние маржи
-        for odd in all_odds {
-            if let Some(mut stats) = bk_stats.get_mut(&odd.bookmaker_slug) {
-                // Упрощённая оценка маржи: margin = 1 - 1/odds (для одного исхода)
-                let implied_prob = 1.0 / odd.odds;
-                let margin = (1.0 - implied_prob) * 100.0;
-                stats.sum_margins += margin.max(0.0);
-            }
-        }
-
-        // Сохраняем
-        for entry in bk_stats.iter() {
-            let bk_slug = entry.key();
-            let stats = entry.value();
-            let mut my_entry = self.bookmaker_odds.entry(bk_slug.clone()).or_default();
-            *my_entry = stats.clone();
+        self.bookmaker_odds.clear();
+        for (key, stats) in snapshot {
+            self.bookmaker_odds.insert(key, stats);
         }
     }
 
@@ -87,12 +123,15 @@ impl GenerosityIndexCalc {
     pub fn get_index(&self, bookmaker: &str, sport: Sport) -> GenerosityIndex {
         let stats = self
             .bookmaker_odds
-            .get(bookmaker)
+            .get(&BookmakerSportKey {
+                bookmaker: bookmaker.to_string(),
+                sport,
+            })
             .map(|e| e.value().clone())
             .unwrap_or_default();
 
-        let avg_margin = if stats.total_odds > 0 {
-            stats.sum_margins / stats.total_odds as f64
+        let avg_margin = if stats.market_count > 0 {
+            stats.sum_margins / stats.market_count as f64
         } else {
             0.0
         };
@@ -103,14 +142,10 @@ impl GenerosityIndexCalc {
             0.0
         };
 
-        // Score: 0-10, где 10 = очень щедрый
-        // Щедрость = БК даёт игрокам лучшие коэффициенты
-        // Компоненты:
-        //   - avg_odds_score: чем выше средние odds, тем щедрее (0-5)
-        //   - best_ratio: доля лучших коэффициентов (0-5)
+        // Score: 0-10, где 10 = очень щедрый.
+        // Компоненты: лучшие коэффициенты, низкая маржа, ширина покрытия.
         let avg_odds_score = if stats.total_odds > 0 {
-            // Нормализуем: odds 1.0-5.0 → score 0-5
-            ((stats.sum_odds / stats.total_odds as f64 - 1.0) / 4.0 * 5.0).clamp(0.0, 5.0)
+            ((avg_odds - 1.0) / 4.0 * 2.0).clamp(0.0, 2.0)
         } else {
             0.0
         };
@@ -121,7 +156,18 @@ impl GenerosityIndexCalc {
             0.0
         };
 
-        let score = avg_odds_score + best_ratio_score;
+        let margin_score = if stats.market_count > 0 {
+            (3.0 - (avg_margin / 5.0)).clamp(0.0, 3.0)
+        } else {
+            0.0
+        };
+        let coverage_score = if stats.total_events > 0 {
+            (stats.total_events as f64 / 50.0).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+
+        let score = best_ratio_score + margin_score + coverage_score + avg_odds_score;
 
         GenerosityIndex {
             bookmaker: bookmaker.to_string(),
@@ -129,24 +175,33 @@ impl GenerosityIndexCalc {
             avg_margin,
             avg_odds,
             best_odds_count: stats.best_odds_count,
-            total_events: stats.total_odds,
+            total_events: stats.total_events,
             score,
-            updated_at: Utc::now(),
+            updated_at: stats.updated_at,
         }
     }
 
-    /// Получить индексы для всех БК
-    pub fn get_all_indices(&self, sport: Sport) -> Vec<GenerosityIndex> {
+    /// Получить индексы для всех БК по виду спорта
+    pub fn get_indices_by_sport(&self, sport: Sport) -> Vec<GenerosityIndex> {
         let mut indices = Vec::new();
         for entry in self.bookmaker_odds.iter() {
-            let bk_slug = entry.key();
-            indices.push(self.get_index(bk_slug, sport));
+            let key = entry.key();
+            if key.sport == sport {
+                indices.push(self.get_index(&key.bookmaker, sport));
+            }
         }
-        indices.sort_by(|a, b| {
-            b.score
-                .partial_cmp(&a.score)
-                .unwrap_or(std::cmp::Ordering::Equal)
-        });
+        sort_indices(&mut indices);
+        indices
+    }
+
+    /// Получить индексы для всех БК по всем видам спорта
+    pub fn get_all_indices(&self) -> Vec<GenerosityIndex> {
+        let mut indices = Vec::new();
+        for entry in self.bookmaker_odds.iter() {
+            let key = entry.key();
+            indices.push(self.get_index(&key.bookmaker, key.sport));
+        }
+        sort_indices(&mut indices);
         indices
     }
 
@@ -154,6 +209,81 @@ impl GenerosityIndexCalc {
     pub fn clear(&self) {
         self.bookmaker_odds.clear();
     }
+}
+
+fn sort_indices(indices: &mut [GenerosityIndex]) {
+    indices.sort_by(|a, b| {
+        b.score
+            .partial_cmp(&a.score)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.bookmaker.cmp(&b.bookmaker))
+            .then_with(|| format!("{:?}", a.sport).cmp(&format!("{:?}", b.sport)))
+    });
+}
+
+fn line_key(line: Option<f64>) -> String {
+    line.map(|value| format!("{value:.3}")).unwrap_or_default()
+}
+
+fn market_key(market: &str) -> String {
+    market.trim().to_lowercase()
+}
+
+fn selection_key(odd: &Odd) -> String {
+    let line = line_key(odd.line);
+    if line.is_empty() {
+        odd.selection.trim().to_lowercase()
+    } else {
+        format!("{}|{}", odd.selection.trim().to_lowercase(), line)
+    }
+}
+
+fn comparable_event_key(event: &Event) -> String {
+    let home = normalize_entity_name(&event.home_team);
+    let away = normalize_entity_name(&event.away_team);
+    let league = normalize_entity_name(&event.league);
+    let (first, second) = if home <= away {
+        (home, away)
+    } else {
+        (away, home)
+    };
+
+    format!(
+        "{:?}|{}|{}|{}|{}",
+        event.sport,
+        if event.is_live { "live" } else { "prematch" },
+        league,
+        first,
+        second
+    )
+}
+
+fn normalize_entity_name(value: &str) -> String {
+    value
+        .chars()
+        .flat_map(char::to_lowercase)
+        .map(|ch| if ch.is_alphanumeric() { ch } else { ' ' })
+        .collect::<String>()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn calculate_market_margin(odds: &[f64]) -> Option<f64> {
+    if odds.len() < 2 {
+        return None;
+    }
+
+    let implied_probability_sum: f64 = odds
+        .iter()
+        .filter(|odd| **odd > 1.0)
+        .map(|odd| 1.0 / odd)
+        .sum();
+    if implied_probability_sum <= 0.0 {
+        return None;
+    }
+
+    Some(((implied_probability_sum - 1.0) * 100.0).max(0.0))
 }
 
 #[cfg(test)]
@@ -165,8 +295,8 @@ mod tests {
             id: id.to_string(),
             sport: Sport::Football,
             league: "Test League".into(),
-            home_team: "Team A".into(),
-            away_team: "Team B".into(),
+            home_team: format!("Team A {id}"),
+            away_team: format!("Team B {id}"),
             start_time: None,
             is_live: false,
             bookmaker_slug: String::new(),
@@ -217,6 +347,8 @@ mod tests {
         );
         assert_eq!(idx1.best_odds_count, 2);
         assert_eq!(idx2.best_odds_count, 0);
+        assert_eq!(idx1.total_events, 2);
+        assert!(idx1.avg_margin >= 0.0);
     }
 
     #[test]
@@ -237,10 +369,68 @@ mod tests {
 
         calc.update(&events, &odds);
 
-        let all = calc.get_all_indices(Sport::Football);
+        let all = calc.get_indices_by_sport(Sport::Football);
         assert_eq!(all.len(), 2);
         // bk1 должен быть первым (2 лучших vs 1 у bk2)
         assert_eq!(all[0].bookmaker, "bk1", "bk1 should be first");
+    }
+
+    #[test]
+    fn test_generosity_index_tracks_sports_separately() {
+        let calc = GenerosityIndexCalc::new();
+
+        let football_event = make_event("e1");
+        let mut tennis_event = make_event("e2");
+        tennis_event.sport = Sport::Tennis;
+        tennis_event.bookmaker_slug = "bk1".into();
+
+        let mut football_bk2 = make_event("e3");
+        football_bk2.bookmaker_slug = "bk2".into();
+
+        let mut football_bk1 = football_event.clone();
+        football_bk1.bookmaker_slug = "bk1".into();
+
+        let events = vec![football_bk1, football_bk2, tennis_event];
+        let odds = vec![
+            make_odd("e1", "bk1", "1", 2.10),
+            make_odd("e1", "bk2", "1", 1.90),
+            make_odd("e2", "bk1", "player_a", 1.95),
+            make_odd("e2", "bk1", "player_b", 1.95),
+        ];
+
+        calc.update(&events, &odds);
+
+        let football = calc.get_indices_by_sport(Sport::Football);
+        let tennis = calc.get_indices_by_sport(Sport::Tennis);
+        let all = calc.get_all_indices();
+
+        assert_eq!(football.len(), 2);
+        assert_eq!(tennis.len(), 1);
+        assert_eq!(all.len(), 3);
+        assert_eq!(tennis[0].bookmaker, "bk1");
+        assert_eq!(tennis[0].total_events, 1);
+    }
+
+    #[test]
+    fn test_generosity_index_uses_market_overround_margin() {
+        let calc = GenerosityIndexCalc::new();
+
+        let mut event = make_event("e1");
+        event.bookmaker_slug = "bk1".into();
+        let events = vec![event];
+        let odds = vec![
+            make_odd("e1", "bk1", "1", 2.0),
+            make_odd("e1", "bk1", "X", 3.5),
+            make_odd("e1", "bk1", "2", 4.0),
+        ];
+
+        calc.update(&events, &odds);
+
+        let idx = calc.get_index("bk1", Sport::Football);
+        let expected_margin = ((1.0 / 2.0) + (1.0 / 3.5) + (1.0 / 4.0) - 1.0) * 100.0;
+
+        assert!((idx.avg_margin - expected_margin).abs() < 0.0001);
+        assert_eq!(idx.total_events, 1);
     }
 
     #[test]

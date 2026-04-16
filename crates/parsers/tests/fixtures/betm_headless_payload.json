@@ -1,0 +1,26 @@
+[
+  {
+    "home": "Спартак Москва",
+    "away": "Зенит",
+    "odds": [2.18, 3.55, 3.12],
+    "sourceUrl": "https://bet-m.net/live"
+  },
+  {
+    "home": "Локомотив Кубань",
+    "away": "УНИКС",
+    "odds": [1.79, 2.08],
+    "sourceUrl": "https://bet-m.net/line"
+  },
+  {
+    "home": "Спартак Москва",
+    "away": "Зенит",
+    "odds": [2.18, 3.55, 3.12],
+    "sourceUrl": "https://bet-m.net/live"
+  },
+  {
+    "home": "404 Not Found",
+    "away": "Bet-M",
+    "odds": [1.5, 2.5],
+    "sourceUrl": "https://bet-m.net/live"
+  }
+]

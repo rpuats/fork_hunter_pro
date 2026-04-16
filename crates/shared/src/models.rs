@@ -79,6 +79,7 @@ pub struct ParserCoverage {
     pub source: String,
     pub notes: Option<String>,
     pub readiness: Option<ParserReadiness>,
+    pub runtime_health: Option<ParserHealth>,
 }
 
 impl BookmakerMetadata {
@@ -304,6 +305,65 @@ pub struct ParserHealth {
     pub diagnostics: Vec<ParserDiagnosticCheck>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum RuntimeCircuitState {
+    Closed,
+    HalfOpen,
+    Open,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ParserRuntimeSnapshot {
+    pub bookmaker: String,
+    pub last_attempt: Option<DateTime<Utc>>,
+    pub last_success: Option<DateTime<Utc>>,
+    pub last_error: Option<String>,
+    pub last_result_status: ParserResultStatus,
+    pub last_result_message: Option<String>,
+    pub validation_checks: Vec<ParserDiagnosticCheck>,
+    pub consecutive_failures: u32,
+    pub avg_response_time_ms: f64,
+    pub events_parsed: u64,
+    pub odds_parsed: u64,
+    pub uptime_percent: f64,
+    pub total_runs: u64,
+    pub successful_runs: u64,
+    pub circuit_state: RuntimeCircuitState,
+}
+
+impl ParserRuntimeSnapshot {
+    pub fn latest_activity(&self) -> Option<DateTime<Utc>> {
+        match (self.last_attempt, self.last_success) {
+            (Some(last_attempt), Some(last_success)) => Some(last_attempt.max(last_success)),
+            (Some(last_attempt), None) => Some(last_attempt),
+            (None, Some(last_success)) => Some(last_success),
+            (None, None) => None,
+        }
+    }
+
+    pub fn staleness_age_secs(&self, now: DateTime<Utc>) -> Option<i64> {
+        self.latest_activity()
+            .map(|activity| now.signed_duration_since(activity).num_seconds().max(0))
+    }
+
+    pub fn is_stale(&self, now: DateTime<Utc>, stale_after_secs: u64) -> bool {
+        self.total_runs > 0
+            && stale_after_secs > 0
+            && self
+                .staleness_age_secs(now)
+                .is_some_and(|age_secs| age_secs >= stale_after_secs as i64)
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ParserResultStatus {
+    Healthy,
+    Degraded,
+    Failed,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum HealthStatus {
     Healthy,
@@ -491,6 +551,7 @@ pub struct AccountSessionSummary {
     pub accounts_configured: usize,
     pub accounts_enabled: usize,
     pub disabled_accounts: usize,
+    pub accounts_with_control_issues: usize,
     pub sessions_configured: usize,
     pub sessions_authenticated: usize,
     pub balances_cached: usize,
@@ -503,6 +564,90 @@ pub struct ExecutionOverview {
     pub autobet_status: AutoBetStatus,
     pub accounts: AccountSessionSummary,
     pub recent_placements: ExecutionPlacementSummary,
+    pub ledger_placements: ExecutionPlacementSummary,
+    pub state_machine: ExecutionStateMachineMetadata,
+    pub generated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ExecutionStatePhaseSummary {
+    pub pending_placement: usize,
+    pub confirmed_placement: usize,
+    pub settled: usize,
+    pub cancelled: usize,
+    pub failed: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExecutionStateSnapshotRecord {
+    pub placement_id: Uuid,
+    pub bookmaker: String,
+    pub phase: String,
+    pub placement_status: BetStatus,
+    pub sequence: u64,
+    pub updated_at: DateTime<Utc>,
+    pub last_action: String,
+    pub last_error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ExecutionStateMachineMetadata {
+    pub total_snapshots: usize,
+    pub total_transitions: usize,
+    pub latest_snapshot_at: Option<DateTime<Utc>>,
+    pub latest_transition_at: Option<DateTime<Utc>>,
+    pub phases: ExecutionStatePhaseSummary,
+    pub recent_snapshots: Vec<ExecutionStateSnapshotRecord>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExecutionStateTransitionRecord {
+    pub placement_id: Uuid,
+    pub bookmaker: String,
+    pub from_phase: Option<String>,
+    pub to_phase: String,
+    pub placement_status: BetStatus,
+    pub sequence: u64,
+    pub action: String,
+    pub occurred_at: DateTime<Utc>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ExecutionBookmakerStateSummary {
+    pub bookmaker: String,
+    pub total_snapshots: usize,
+    pub phases: ExecutionStatePhaseSummary,
+    pub latest_snapshot_at: Option<DateTime<Utc>>,
+    pub latest_transition_at: Option<DateTime<Utc>>,
+    pub latest_error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExecutionStateAudit {
+    pub total_snapshots: usize,
+    pub total_transitions: usize,
+    pub latest_snapshot_at: Option<DateTime<Utc>>,
+    pub latest_transition_at: Option<DateTime<Utc>>,
+    pub bookmaker_summaries: Vec<ExecutionBookmakerStateSummary>,
+    pub recent_transitions: Vec<ExecutionStateTransitionRecord>,
+    pub generated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExecutionLedgerRecord {
+    pub placement: BetPlacement,
+    pub action: String,
+    pub recorded_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExecutionLedgerAudit {
+    pub total_entries: usize,
+    pub unique_placements: usize,
+    pub latest_recorded_at: Option<DateTime<Utc>>,
+    pub state_machine: ExecutionStateMachineMetadata,
+    pub recent_records: Vec<ExecutionLedgerRecord>,
     pub generated_at: DateTime<Utc>,
 }
 
@@ -869,6 +1014,10 @@ pub struct FreebetConversionPlan {
     pub qualifying_cost: f64,
     pub conversion_rate: f64,
     pub estimated_profit: f64,
+    #[serde(default)]
+    pub required_cash_by_bookmaker: HashMap<String, f64>,
+    #[serde(default)]
+    pub funding_recommendation: String,
     pub hedge: FreebetHedgeLeg,
     pub steps: Vec<FreebetPlanStep>,
     pub created_at: DateTime<Utc>,
@@ -889,6 +1038,48 @@ pub enum FreebetProgressStatus {
     NotStarted,
     InProgress,
     Completed,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum FreebetAutoRolloverStatus {
+    DraftOnly,
+    AwaitingFunding,
+    AwaitingTrigger,
+    Monitoring,
+    Completed,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct FreebetFundingReadiness {
+    pub ready: bool,
+    pub total_gap: f64,
+    #[serde(default)]
+    pub blocking_bookmakers: Vec<String>,
+    pub largest_gap_bookmaker: Option<String>,
+    pub largest_gap_amount: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FreebetAutoRolloverDraft {
+    pub status: FreebetAutoRolloverStatus,
+    pub safe_mode: bool,
+    pub execution_allowed: bool,
+    #[serde(default)]
+    pub required_cash_by_bookmaker: HashMap<String, f64>,
+    #[serde(default)]
+    pub funding_gap_by_bookmaker: HashMap<String, f64>,
+    #[serde(default)]
+    pub funding_readiness: FreebetFundingReadiness,
+    #[serde(default)]
+    pub funding_recommendation: String,
+    pub trigger: String,
+    #[serde(default)]
+    pub next_action: String,
+    #[serde(default)]
+    pub read_only_check: String,
+    #[serde(default)]
+    pub notes: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -914,12 +1105,34 @@ pub struct FreebetBookmakerAllocation {
 pub struct FreebetLifecycleState {
     pub bookmaker: String,
     pub lifecycle_stage: FreebetLifecycleStage,
+    #[serde(default)]
+    pub next_milestone: String,
+    #[serde(default)]
+    pub blocked_by: Vec<String>,
+    #[serde(default)]
+    pub read_only_follow_up: String,
+    #[serde(default)]
+    pub read_only_focus: String,
     pub opportunity: Option<FreebetOpportunity>,
     pub bonus: Option<BonusInfo>,
     pub plan: Option<FreebetConversionPlan>,
     pub rollover: Option<FreebetRolloverProgress>,
     pub allocation: Option<FreebetBookmakerAllocation>,
+    #[serde(default)]
+    pub auto_rollover: Option<FreebetAutoRolloverDraft>,
     pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FreebetLifecycleLabelCount {
+    pub label: String,
+    pub count: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FreebetLifecycleFundingGapLeader {
+    pub bookmaker: String,
+    pub amount: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -929,12 +1142,23 @@ pub struct FreebetLifecycleSummary {
     pub active_bonuses: usize,
     pub tracked_plans: usize,
     pub deposit_required_bookmakers: usize,
+    pub blocked_states: usize,
+    #[serde(default)]
+    pub total_funding_gap: f64,
+    #[serde(default)]
+    pub largest_funding_gap: Option<FreebetLifecycleFundingGapLeader>,
     pub discovered: usize,
     pub available: usize,
     pub qualified: usize,
     pub planned: usize,
     pub rollover_in_progress: usize,
     pub rollover_completed: usize,
+    #[serde(default)]
+    pub next_milestones: Vec<FreebetLifecycleLabelCount>,
+    #[serde(default)]
+    pub blockers: Vec<FreebetLifecycleLabelCount>,
+    #[serde(default)]
+    pub read_only_focuses: Vec<FreebetLifecycleLabelCount>,
     pub total_freebet_amount: f64,
     pub total_estimated_profit: f64,
     pub generated_at: DateTime<Utc>,

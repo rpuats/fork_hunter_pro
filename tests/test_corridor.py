@@ -151,12 +151,18 @@ class TestCorridor:
             description="Both win",
             probability=0.25,
             profit_percent=15.0,
+            both_win=True,
         )
         corridor = Corridor(
             id='test_1',
             event_name='Team A vs Team B',
             sport='football',
             corridor_type='totals',
+            home_team='Team A',
+            away_team='Team B',
+            league='La Liga',
+            start_time='2026-04-13T18:00:00Z',
+            is_live=True,
             markets=[{'selection': 'ТБ 2.5'}, {'selection': 'ТМ 3.5'}],
             odds=[1.95, 1.90],
             scenarios=[scenario],
@@ -166,6 +172,11 @@ class TestCorridor:
         assert d['id'] == 'test_1'
         assert d['corridor_type'] == 'totals'
         assert len(d['scenarios']) == 1
+        assert d['home_team'] == 'Team A'
+        assert d['away_team'] == 'Team B'
+        assert d['league'] == 'La Liga'
+        assert d['double_win_probability'] == 0.25
+        assert d['expected_roi'] == 5.0
 
 
 class TestCorridorCalculation:

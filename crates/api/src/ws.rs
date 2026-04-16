@@ -2,7 +2,8 @@ use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::response::IntoResponse;
 use axum::Extension;
 use futures::{SinkExt, StreamExt};
-use shared::EventBus;
+use serde::Serialize;
+use shared::{BusEvent, EventBus};
 use std::sync::Arc;
 use std::time::Duration;
 use tracing::{error, info, warn};
@@ -12,14 +13,37 @@ static CONNECTION_COUNT: std::sync::atomic::AtomicUsize = std::sync::atomic::Ato
 const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(15);
 const CLIENT_TIMEOUT: Duration = Duration::from_secs(60);
 
+#[derive(Clone, Copy)]
+enum WsMode {
+    RawBus,
+    SurebetsV1,
+}
+
+#[derive(Serialize)]
+struct CompatEnvelope<'a> {
+    #[serde(rename = "type")]
+    legacy_type: &'static str,
+    event: &'static str,
+    channel: &'static str,
+    version: &'static str,
+    data: &'a serde_json::Value,
+}
+
 pub async fn ws_handler(
     ws: WebSocketUpgrade,
     Extension(event_bus): Extension<Arc<EventBus>>,
 ) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| handle_socket(socket, event_bus))
+    ws.on_upgrade(move |socket| handle_socket(socket, event_bus, WsMode::RawBus))
 }
 
-async fn handle_socket(socket: WebSocket, event_bus: Arc<EventBus>) {
+pub async fn ws_surebets_v1_handler(
+    ws: WebSocketUpgrade,
+    Extension(event_bus): Extension<Arc<EventBus>>,
+) -> impl IntoResponse {
+    ws.on_upgrade(move |socket| handle_socket(socket, event_bus, WsMode::SurebetsV1))
+}
+
+async fn handle_socket(socket: WebSocket, event_bus: Arc<EventBus>, mode: WsMode) {
     let conn_id = CONNECTION_COUNT.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     let subscriber_id = Uuid::new_v4().to_string();
 
@@ -48,13 +72,14 @@ async fn handle_socket(socket: WebSocket, event_bus: Arc<EventBus>) {
                 event_result = event_rx.recv() => {
                     match event_result {
                         Ok(event) => {
-                            match serde_json::to_string(&event) {
-                                Ok(json) => {
+                            match encode_event(&event, mode) {
+                                Ok(Some(json)) => {
                                     if sender.send(Message::Text(json)).await.is_err() {
                                         warn!(connection = conn_id, "Client disconnected while sending event");
                                         break;
                                     }
                                 }
+                                Ok(None) => continue,
                                 Err(e) => {
                                     error!(error = %e, "Failed to serialize event");
                                     continue;
@@ -117,4 +142,23 @@ async fn handle_socket(socket: WebSocket, event_bus: Arc<EventBus>) {
     event_bus.unsubscribe(&subscriber_id);
 
     info!(connection = conn_id, subscriber = %subscriber_id, "WebSocket client disconnected");
+}
+
+fn encode_event(event: &BusEvent, mode: WsMode) -> Result<Option<String>, serde_json::Error> {
+    match mode {
+        WsMode::RawBus => serde_json::to_string(event).map(Some),
+        WsMode::SurebetsV1 => match event {
+            BusEvent::SurebetFound { payload, .. } => {
+                let envelope = CompatEnvelope {
+                    legacy_type: "new_surebet",
+                    event: "surebet.created",
+                    channel: "surebets",
+                    version: "v1",
+                    data: payload,
+                };
+                serde_json::to_string(&envelope).map(Some)
+            }
+            _ => Ok(None),
+        },
+    }
 }

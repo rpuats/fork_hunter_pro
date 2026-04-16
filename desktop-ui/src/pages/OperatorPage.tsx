@@ -1,0 +1,1322 @@
+import { useMemo, useState } from 'react'
+import { motion } from 'framer-motion'
+import { Activity, AlertTriangle, CheckCircle2, Clock3, PauseCircle, PlayCircle, Search, ShieldAlert, ShieldCheck, ShieldX, Siren, TimerReset, Wallet } from 'lucide-react'
+import { CompactSignalOverlay } from '../components/CompactSignalOverlay'
+import type { AccountStateResponse, BackendParserHealthStatus, BackendParserReadinessStage, Bookmaker, ExecutionLedgerAudit, ExecutionOverview, ExecutionStateAudit, ExecutionStateSnapshotRecord, ParserCoverage, ParserHealth } from '../types'
+
+interface OperatorPageProps {
+  executionOverview: ExecutionOverview | null
+  executionLedger: ExecutionLedgerAudit | null
+  executionState: ExecutionStateAudit | null
+  parserCoverage: ParserCoverage[]
+  parserHealth: ParserHealth[]
+  bookmakers: Bookmaker[]
+  accountStates: AccountStateResponse[]
+  onOpenAccount: (bookmaker: string) => void
+}
+
+type ReadinessFilter = 'all' | 'attention' | 'execution' | 'blocked'
+type LedgerFilter = 'all' | 'errors' | 'pending' | 'settled' | 'active'
+type LedgerSort = 'priority' | 'newest' | 'oldest' | 'stake' | 'odds'
+
+interface TimelineItem {
+  id: string
+  recordedAt: string
+  title: string
+  subtitle: string
+  meta: string
+  status: string
+  stake: number | null
+  odds: number | null
+  error: string | null
+  bookmaker: string
+  action: string
+  source: 'ledger' | 'state'
+  priority: number
+}
+
+interface BookmakerHotspot {
+  key: string
+  name: string
+  score: number
+  tone: 'danger' | 'warning' | 'info' | 'success'
+  parserStatus: BackendParserHealthStatus | null
+  readinessStage: BackendParserReadinessStage
+  ledgerErrors: number
+  pendingPlacements: number
+  accountBlocked: boolean
+  safeModeBlocked: boolean
+  approvalRequired: boolean
+  latestAt: string | null
+  reasons: string[]
+  timelineBookmaker: string | null
+}
+
+const container = {
+  hidden: { opacity: 0 },
+  show: {
+    opacity: 1,
+    transition: { staggerChildren: 0.05 },
+  },
+}
+
+const item = {
+  hidden: { opacity: 0, y: 20 },
+  show: { opacity: 1, y: 0, transition: { duration: 0.3 } },
+}
+
+function formatDateTime(value: string | null) {
+  if (!value) return '—'
+
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return '—'
+
+  return date.toLocaleString('ru-RU', {
+    day: '2-digit',
+    month: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+}
+
+function formatCurrency(value: number) {
+  return `${value >= 0 ? '+' : ''}${value.toLocaleString('ru-RU', { maximumFractionDigits: 2 })} RUB`
+}
+
+function formatPercent(value: number) {
+  return `${value.toFixed(0)}%`
+}
+
+function formatRelativeAge(value: string | null) {
+  if (!value) return 'no data'
+
+  const timestamp = new Date(value).getTime()
+  if (Number.isNaN(timestamp)) return 'no data'
+
+  const diffMs = Math.max(Date.now() - timestamp, 0)
+  const diffMinutes = Math.floor(diffMs / 60000)
+
+  if (diffMinutes < 1) return '<1 min ago'
+  if (diffMinutes < 60) return `${diffMinutes} min ago`
+
+  const diffHours = Math.floor(diffMinutes / 60)
+  if (diffHours < 24) return `${diffHours} h ago`
+
+  const diffDays = Math.floor(diffHours / 24)
+  return `${diffDays} d ago`
+}
+
+function toTitleCase(value: string) {
+  return value
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+}
+
+function normalizeKey(value: string) {
+  return value.trim().toLowerCase().replace(/\s+/g, '-')
+}
+
+function healthBadgeClass(status: BackendParserHealthStatus | null) {
+  switch (status) {
+    case 'Healthy':
+      return 'badge-success'
+    case 'Degraded':
+      return 'badge-warning'
+    case 'Unhealthy':
+    case 'CircuitOpen':
+      return 'badge-danger'
+    default:
+      return 'badge-info'
+  }
+}
+
+function readinessBadgeClass(stage: BackendParserReadinessStage) {
+  switch (stage) {
+    case 'production':
+      return 'badge-success'
+    case 'rollout_ready':
+      return 'badge-info'
+    case 'diagnostic_only':
+      return 'badge-warning'
+    case 'blocked':
+      return 'badge-danger'
+  }
+}
+
+export function OperatorPage({ executionOverview, executionLedger, executionState, parserCoverage, parserHealth, bookmakers, accountStates, onOpenAccount }: OperatorPageProps) {
+  const [readinessFilter, setReadinessFilter] = useState<ReadinessFilter>('attention')
+  const [ledgerFilter, setLedgerFilter] = useState<LedgerFilter>('errors')
+  const [ledgerSort, setLedgerSort] = useState<LedgerSort>('priority')
+  const [ledgerBookmaker, setLedgerBookmaker] = useState<string>('all')
+  const [ledgerQuery, setLedgerQuery] = useState('')
+  const executionStatus = executionOverview?.autobet_status ?? null
+  const accounts = executionOverview?.accounts ?? null
+  const recentPlacements = executionOverview?.recent_placements ?? null
+  const ledgerPlacements = executionOverview?.ledger_placements ?? null
+  const stateMachine = executionLedger?.state_machine ?? executionOverview?.state_machine ?? null
+  const stateDiagnostics = executionState ?? null
+  const stateMachineSnapshot = executionState
+    ? {
+        total_snapshots: executionState.total_snapshots,
+        total_transitions: executionState.total_transitions,
+        latest_snapshot_at: executionState.latest_snapshot_at,
+        latest_transition_at: executionState.latest_transition_at,
+        phases: executionState.bookmaker_summaries.reduce((summary, entry) => ({
+          pending_placement: summary.pending_placement + entry.phases.pending_placement,
+          confirmed_placement: summary.confirmed_placement + entry.phases.confirmed_placement,
+          settled: summary.settled + entry.phases.settled,
+          cancelled: summary.cancelled + entry.phases.cancelled,
+          failed: summary.failed + entry.phases.failed,
+        }), { pending_placement: 0, confirmed_placement: 0, settled: 0, cancelled: 0, failed: 0 }),
+        recent_snapshots: [],
+      }
+    : stateMachine
+
+  const executionTone = executionStatus?.emergency_stopped
+    ? { label: 'Emergency stop', badge: 'badge-danger', icon: ShieldX, accent: 'var(--accent-red)' }
+    : executionStatus?.running
+      ? { label: 'Autobet running', badge: 'badge-success', icon: PlayCircle, accent: 'var(--accent-green)' }
+      : executionStatus?.enabled
+        ? { label: 'Standby / armed', badge: 'badge-warning', icon: PauseCircle, accent: 'var(--accent-yellow)' }
+        : { label: 'Disabled', badge: 'badge-info', icon: PauseCircle, accent: 'var(--accent-blue)' }
+
+  const readinessRows = useMemo(() => {
+    const coverageBySlug = new Map(parserCoverage.map((entry) => [entry.slug, entry]))
+    const healthByBookmaker = new Map(parserHealth.map((entry) => [normalizeKey(entry.bookmaker), entry]))
+
+    return bookmakers
+      .map((bookmaker) => {
+        const coverage = coverageBySlug.get(bookmaker.slug)
+        const readiness = coverage?.readiness
+        const health = healthByBookmaker.get(normalizeKey(bookmaker.slug)) ?? healthByBookmaker.get(normalizeKey(bookmaker.name))
+        const mode = coverage?.execution_supported
+          ? readiness?.production_enabled ? 'armed path' : 'dry-run path'
+          : bookmaker.execution_supported ? 'contract only' : 'scan only'
+        const stage = readiness?.stage ?? (coverage?.enabled || bookmaker.enabled ? 'production' : 'blocked')
+        const checks = readiness?.checks ?? []
+        const failingChecks = checks.filter((check) => check.severity === 'warn' || check.severity === 'fail')
+        const healthStatus = health?.status ?? null
+        const hasHealthIssue = healthStatus === 'Unhealthy' || healthStatus === 'CircuitOpen'
+        const hasAttention = stage === 'blocked' || failingChecks.length > 0 || hasHealthIssue
+
+        return {
+          slug: bookmaker.slug,
+          name: coverage?.name ?? bookmaker.name,
+          mode,
+          backendStatus: coverage?.status ?? bookmaker.backend_status ?? 'disabled',
+          stage,
+          checks,
+          failingChecks,
+          notes: coverage?.notes ?? bookmaker.notes ?? null,
+          executionSupported: coverage?.execution_supported ?? bookmaker.execution_supported ?? false,
+          scanSupported: coverage?.scan_supported ?? bookmaker.scan_supported ?? false,
+          healthStatus,
+          consecutiveFailures: health?.consecutive_failures ?? 0,
+          uptimePercent: health?.uptime_percent ?? null,
+          avgResponseTimeMs: health?.avg_response_time_ms ?? null,
+          lastError: health?.last_error ?? null,
+          hasAttention,
+          group: hasAttention ? 'attention' : (coverage?.execution_supported ?? bookmaker.execution_supported ?? false) ? 'execution' : 'watchlist',
+        }
+      })
+      .sort((a, b) => Number(b.hasAttention) - Number(a.hasAttention) || Number(b.executionSupported) - Number(a.executionSupported) || a.name.localeCompare(b.name))
+  }, [bookmakers, parserCoverage, parserHealth])
+
+  const readinessSummary = useMemo(() => ({
+    executionReady: readinessRows.filter((entry) => entry.executionSupported).length,
+    production: readinessRows.filter((entry) => entry.stage === 'production').length,
+    blocked: readinessRows.filter((entry) => entry.stage === 'blocked').length,
+    warnings: readinessRows.filter((entry) => entry.checks.some((check) => check.severity === 'warn' || check.severity === 'fail')).length,
+  }), [readinessRows])
+
+  const parserHealthSummary = useMemo(() => ({
+    healthy: parserHealth.filter((entry) => entry.status === 'Healthy').length,
+    degraded: parserHealth.filter((entry) => entry.status === 'Degraded').length,
+    incidents: parserHealth.filter((entry) => entry.status === 'Unhealthy' || entry.status === 'CircuitOpen').length,
+  }), [parserHealth])
+
+  const timelineItems = useMemo<TimelineItem[]>(() => {
+    if (executionLedger?.recent_records.length) {
+      return executionLedger.recent_records.map((record) => ({
+        id: `${record.placement.id}-${record.recorded_at}-${record.action}`,
+        recordedAt: record.recorded_at,
+        title: `${record.placement.bookmaker} • ${record.action}`,
+        subtitle: `${record.placement.event.home_team} vs ${record.placement.event.away_team}`,
+        meta: `${record.placement.market} / ${record.placement.selection}`,
+        status: record.placement.status,
+        stake: record.placement.stake,
+        odds: record.placement.odds,
+        error: record.placement.error,
+        bookmaker: record.placement.bookmaker,
+        action: record.action,
+        source: 'ledger',
+        priority: record.placement.error
+          ? 100
+          : record.placement.status.toLowerCase().includes('pending')
+            ? 70
+            : record.placement.status.toLowerCase().includes('cancel')
+              ? 65
+              : record.placement.status.toLowerCase().includes('settled')
+                ? 20
+                : 40,
+      }))
+    }
+
+    return (stateMachine?.recent_snapshots ?? []).map((snapshot: ExecutionStateSnapshotRecord) => ({
+      id: `${snapshot.placement_id}-${snapshot.sequence}`,
+      recordedAt: snapshot.updated_at,
+      title: `${snapshot.bookmaker} • ${toTitleCase(snapshot.phase)}`,
+      subtitle: `Action: ${toTitleCase(snapshot.last_action)}`,
+      meta: `State ${toTitleCase(snapshot.placement_status)} / seq ${snapshot.sequence}`,
+      status: snapshot.placement_status,
+      stake: null,
+      odds: null,
+      error: snapshot.last_error,
+      bookmaker: snapshot.bookmaker,
+      action: snapshot.last_action,
+      source: 'state',
+      priority: snapshot.last_error
+        ? 95
+        : snapshot.phase.toLowerCase().includes('failed') || snapshot.placement_status.toLowerCase().includes('failed')
+          ? 85
+          : snapshot.phase.toLowerCase().includes('pending') || snapshot.placement_status.toLowerCase().includes('pending')
+            ? 60
+            : snapshot.phase.toLowerCase().includes('settled') || snapshot.placement_status.toLowerCase().includes('settled')
+              ? 20
+              : 35,
+    }))
+  }, [executionLedger, stateMachine])
+
+  const ledgerBookmakerOptions = useMemo(() => {
+    return Array.from(new Set(timelineItems.map((entry) => entry.bookmaker).filter(Boolean))).sort((a, b) => a.localeCompare(b))
+  }, [timelineItems])
+
+  const ledgerSummary = useMemo(() => ({
+    errors: timelineItems.filter((entry) => Boolean(entry.error)).length,
+    pending: timelineItems.filter((entry) => entry.status.toLowerCase().includes('pending')).length,
+    settled: timelineItems.filter((entry) => entry.status.toLowerCase().includes('settled')).length,
+    active: timelineItems.filter((entry) => !entry.error && !entry.status.toLowerCase().includes('settled')).length,
+  }), [timelineItems])
+
+  const filteredTimelineItems = useMemo(() => {
+    const normalizedQuery = ledgerQuery.trim().toLowerCase()
+
+    return timelineItems
+      .filter((entry) => {
+        if (ledgerBookmaker !== 'all' && entry.bookmaker !== ledgerBookmaker) return false
+
+        if (ledgerFilter === 'errors' && !entry.error) return false
+        if (ledgerFilter === 'pending' && !entry.status.toLowerCase().includes('pending')) return false
+        if (ledgerFilter === 'settled' && !entry.status.toLowerCase().includes('settled')) return false
+        if (ledgerFilter === 'active' && (entry.error || entry.status.toLowerCase().includes('settled'))) return false
+
+        if (!normalizedQuery) return true
+
+        const haystack = `${entry.title} ${entry.subtitle} ${entry.meta} ${entry.error ?? ''} ${entry.action} ${entry.bookmaker}`.toLowerCase()
+        return haystack.includes(normalizedQuery)
+      })
+      .sort((a, b) => {
+        const timeA = new Date(a.recordedAt).getTime()
+        const timeB = new Date(b.recordedAt).getTime()
+
+        switch (ledgerSort) {
+          case 'oldest':
+            return timeA - timeB
+          case 'stake':
+            return (b.stake ?? -1) - (a.stake ?? -1) || timeB - timeA
+          case 'odds':
+            return (b.odds ?? -1) - (a.odds ?? -1) || timeB - timeA
+          case 'newest':
+            return timeB - timeA
+          default:
+            return b.priority - a.priority || timeB - timeA
+        }
+      })
+  }, [ledgerBookmaker, ledgerFilter, ledgerQuery, ledgerSort, timelineItems])
+
+  const triageQueue = useMemo(() => filteredTimelineItems.slice(0, 4), [filteredTimelineItems])
+
+  const readyRate = accounts && accounts.total_bookmakers > 0
+    ? (accounts.ready_for_execution / accounts.total_bookmakers) * 100
+    : 0
+  const authRate = accounts && accounts.sessions_configured > 0
+    ? (accounts.sessions_authenticated / accounts.sessions_configured) * 100
+    : 0
+  const ledgerErrorRate = ledgerPlacements && ledgerPlacements.total > 0
+    ? (ledgerPlacements.errors / ledgerPlacements.total) * 100
+    : 0
+
+  const attentionCards = useMemo(() => {
+    const cards: Array<{ key: string, title: string, detail: string, badge: string }> = []
+
+    if (executionStatus?.emergency_stopped) {
+      cards.push({
+        key: 'emergency-stop',
+        title: 'Execution остановлен аварийно',
+        detail: 'Новые placement actions заблокированы до ручного восстановления backend-процесса.',
+        badge: 'badge-danger',
+      })
+    }
+
+    if ((accounts?.accounts_with_control_issues ?? 0) > 0) {
+      cards.push({
+        key: 'control-issues',
+        title: `${accounts?.accounts_with_control_issues ?? 0} аккаунтов с control issues`,
+        detail: `Ready for execution: ${accounts?.ready_for_execution ?? 0} из ${accounts?.total_bookmakers ?? readinessRows.length}.`,
+        badge: 'badge-warning',
+      })
+    }
+
+    if (parserHealthSummary.incidents > 0 || parserHealthSummary.degraded > 0) {
+      cards.push({
+        key: 'parser-health',
+        title: `Parser incidents: ${parserHealthSummary.incidents} critical / ${parserHealthSummary.degraded} degraded`,
+        detail: 'Используй health snapshot для быстрой сверки, почему execution-ready account ушёл в риск.',
+        badge: parserHealthSummary.incidents > 0 ? 'badge-danger' : 'badge-warning',
+      })
+    }
+
+    if (ledgerPlacements && ledgerPlacements.errors > 0) {
+      cards.push({
+        key: 'ledger-errors',
+        title: `Ledger errors ${ledgerPlacements.errors} из ${ledgerPlacements.total}`,
+        detail: `Текущий error rate ${formatPercent(ledgerErrorRate)}; timeline ниже уже подсвечивает problem placements.`,
+        badge: 'badge-danger',
+      })
+    }
+
+    return cards.slice(0, 4)
+  }, [accounts, executionStatus, ledgerErrorRate, ledgerPlacements, parserHealthSummary, readinessRows.length])
+
+  const filteredReadinessRows = useMemo(() => {
+    switch (readinessFilter) {
+      case 'attention':
+        return readinessRows.filter((entry) => entry.hasAttention)
+      case 'execution':
+        return readinessRows.filter((entry) => entry.executionSupported)
+      case 'blocked':
+        return readinessRows.filter((entry) => entry.stage === 'blocked')
+      default:
+        return readinessRows
+    }
+  }, [readinessFilter, readinessRows])
+
+  const readinessGroups = useMemo(() => ([
+    {
+      key: 'attention',
+      title: 'Needs attention',
+      description: 'Blocked readiness, warn/fail checks, unhealthy parser health.',
+      rows: filteredReadinessRows.filter((entry) => entry.group === 'attention'),
+    },
+    {
+      key: 'execution',
+      title: 'Execution-ready lane',
+      description: 'Execution contract exposed and no immediate incidents in GET snapshots.',
+      rows: filteredReadinessRows.filter((entry) => entry.group === 'execution'),
+    },
+    {
+      key: 'watchlist',
+      title: 'Scan / watchlist lane',
+      description: 'Safe to monitor, but not part of the current execution path.',
+      rows: filteredReadinessRows.filter((entry) => entry.group === 'watchlist'),
+    },
+  ]), [filteredReadinessRows])
+
+  const ToneIcon = executionTone.icon
+  const transitionRows = useMemo(() => (stateDiagnostics?.recent_transitions ?? []).slice(0, 8), [stateDiagnostics])
+  const bookmakerStateRows = useMemo(() => {
+    return [...(stateDiagnostics?.bookmaker_summaries ?? [])]
+      .sort((a, b) => Number(Boolean(b.latest_error)) - Number(Boolean(a.latest_error)) || b.total_snapshots - a.total_snapshots || a.bookmaker.localeCompare(b.bookmaker))
+      .slice(0, 6)
+  }, [stateDiagnostics])
+  const stateActivityAt = stateDiagnostics?.latest_transition_at
+    ?? stateDiagnostics?.latest_snapshot_at
+    ?? executionLedger?.latest_recorded_at
+    ?? executionOverview?.generated_at
+    ?? null
+  const stateFreshness = useMemo(() => {
+    if (!stateActivityAt) {
+      return {
+        label: 'No state signal',
+        badge: 'badge-info',
+        detail: 'Waiting for execution state snapshots.',
+      }
+    }
+
+    const stateActivityTimestamp = new Date(stateActivityAt).getTime()
+    if (Number.isNaN(stateActivityTimestamp)) {
+      return {
+        label: 'No state signal',
+        badge: 'badge-info',
+        detail: 'Execution state timestamp is not parseable.',
+      }
+    }
+
+    const ageMs = Math.max(Date.now() - stateActivityTimestamp, 0)
+    if (ageMs <= 2 * 60 * 1000) {
+      return {
+        label: 'Fresh snapshot',
+        badge: 'badge-success',
+        detail: `${formatRelativeAge(stateActivityAt)} from latest state activity.`,
+      }
+    }
+
+    if (ageMs <= 10 * 60 * 1000) {
+      return {
+        label: 'Delayed snapshot',
+        badge: 'badge-warning',
+        detail: `${formatRelativeAge(stateActivityAt)}; verify poll cadence before triage.`,
+      }
+    }
+
+    return {
+      label: 'Stale snapshot',
+      badge: 'badge-danger',
+      detail: `${formatRelativeAge(stateActivityAt)}; timeline may no longer reflect live execution.`,
+    }
+  }, [stateActivityAt])
+  const operatorBrief = useMemo(() => {
+    const topTriage = triageQueue[0] ?? null
+    const topReadiness = readinessRows.find((entry) => entry.hasAttention) ?? null
+    const totalHotspots = attentionCards.length + parserHealthSummary.incidents + readinessSummary.blocked + ledgerSummary.errors
+
+    return {
+      tone: executionStatus?.emergency_stopped || ledgerSummary.errors > 0 || parserHealthSummary.incidents > 0
+        ? 'danger'
+        : readinessSummary.warnings > 0 || stateFreshness.badge === 'badge-warning'
+          ? 'warning'
+          : 'success',
+      summary: totalHotspots > 0
+        ? `${totalHotspots} active operator signals across execution, readiness and parser health. ${topTriage ? `Current front-of-queue is ${topTriage.bookmaker} with ${topTriage.error ? 'an execution error' : toTitleCase(topTriage.status)}.` : 'Snapshot is ready for triage.'}`
+        : 'No blocking signals surfaced in the current execution snapshot; use the cards below for quick verification.',
+      pills: [
+        { label: 'freshness', value: stateFreshness.label, tone: stateFreshness.badge === 'badge-danger' ? 'danger' : stateFreshness.badge === 'badge-warning' ? 'warning' : 'success' },
+        { label: 'ledger', value: `${ledgerSummary.errors} errors`, tone: ledgerSummary.errors > 0 ? 'danger' : 'success' },
+        { label: 'readiness', value: `${readinessSummary.blocked} blocked`, tone: readinessSummary.blocked > 0 ? 'warning' : 'success' },
+        { label: 'parser', value: `${parserHealthSummary.incidents} incidents`, tone: parserHealthSummary.incidents > 0 ? 'danger' : parserHealthSummary.degraded > 0 ? 'warning' : 'success' },
+      ],
+      actions: [
+        topTriage
+          ? `${topTriage.bookmaker}: ${topTriage.error ?? `${toTitleCase(topTriage.status)} state on ${topTriage.meta}.`}`
+          : 'No execution records in the current triage queue.',
+        topReadiness
+          ? `${topReadiness.name}: ${topReadiness.failingChecks[0]?.message ?? topReadiness.lastError ?? topReadiness.notes ?? 'Readiness attention is visible on this lane.'}`
+          : 'No parser readiness blockers are currently surfaced.',
+      ],
+    } as const
+  }, [attentionCards.length, executionStatus?.emergency_stopped, ledgerSummary.errors, parserHealthSummary.degraded, parserHealthSummary.incidents, readinessRows, readinessSummary.blocked, readinessSummary.warnings, stateFreshness.badge, stateFreshness.label, triageQueue])
+  const operatorActionQueue = useMemo(() => {
+    return accountStates
+      .map((account) => {
+        const reasons = [
+          ...(account.readiness.operator_action ? [account.readiness.operator_action] : []),
+          ...account.readiness.blocking_reasons,
+          ...account.control_issues,
+        ]
+        const uniqueReasons = Array.from(new Set(reasons.filter(Boolean)))
+        const priority =
+          (account.readiness.submit_blocked_by_safe_mode ? 90 : 0)
+          + (account.readiness.approval_required ? 70 : 0)
+          + (!account.readiness.session_ready ? 55 : 0)
+          + (!account.readiness.balance_ready ? 35 : 0)
+          + (!account.readiness.placement_ready ? 25 : 0)
+          + Math.min(account.control_issues.length * 8, 24)
+          + Math.min(account.readiness.blocking_reasons.length * 6, 18)
+
+        return {
+          bookmaker: account.bookmaker,
+          mode: account.account?.mode ?? 'no account',
+          sessionState: account.session?.state ?? 'missing',
+          availableBalance: account.balance?.available_balance ?? null,
+          reasons: uniqueReasons,
+          priority,
+          tone: account.readiness.submit_blocked_by_safe_mode
+            ? 'danger'
+            : account.readiness.approval_required || !account.readiness.session_ready || !account.readiness.balance_ready
+              ? 'warning'
+              : 'info',
+        }
+      })
+      .filter((entry) => entry.reasons.length > 0)
+      .sort((a, b) => b.priority - a.priority || a.bookmaker.localeCompare(b.bookmaker))
+      .slice(0, 6)
+  }, [accountStates])
+  const operatorActionSummary = useMemo(() => ({
+    safeMode: accountStates.filter((account) => account.readiness.submit_blocked_by_safe_mode).length,
+    approval: accountStates.filter((account) => account.readiness.approval_required).length,
+    sessionRestore: accountStates.filter((account) => !account.readiness.session_ready).length,
+    balanceRefresh: accountStates.filter((account) => !account.readiness.balance_ready).length,
+  }), [accountStates])
+  const bookmakerHotspots = useMemo<BookmakerHotspot[]>(() => {
+    const healthByBookmaker = new Map(parserHealth.map((entry) => [normalizeKey(entry.bookmaker), entry]))
+    const accountByBookmaker = new Map(accountStates.map((entry) => [normalizeKey(entry.bookmaker), entry]))
+    const readinessByBookmaker = new Map(readinessRows.flatMap((entry) => ([
+      [normalizeKey(entry.slug), entry] as const,
+      [normalizeKey(entry.name), entry] as const,
+    ])))
+    const stateByBookmaker = new Map((stateDiagnostics?.bookmaker_summaries ?? []).map((entry) => [normalizeKey(entry.bookmaker), entry]))
+    const ledgerByBookmaker = timelineItems.reduce((summary, entry) => {
+      const key = normalizeKey(entry.bookmaker)
+      const current = summary.get(key) ?? { errors: 0, pending: 0, latestAt: null as string | null, bookmaker: entry.bookmaker }
+
+      if (entry.error) current.errors += 1
+      if (entry.status.toLowerCase().includes('pending')) current.pending += 1
+      current.bookmaker = current.bookmaker || entry.bookmaker
+
+      const currentTimestamp = current.latestAt ? new Date(current.latestAt).getTime() : 0
+      const entryTimestamp = new Date(entry.recordedAt).getTime()
+      if (!current.latestAt || (!Number.isNaN(entryTimestamp) && entryTimestamp > currentTimestamp)) {
+        current.latestAt = entry.recordedAt
+      }
+
+      summary.set(key, current)
+      return summary
+    }, new Map<string, { errors: number, pending: number, latestAt: string | null, bookmaker: string | null }>())
+
+    const allKeys = new Set<string>([
+      ...readinessRows.map((entry) => normalizeKey(entry.slug)),
+      ...parserHealth.map((entry) => normalizeKey(entry.bookmaker)),
+      ...accountStates.map((entry) => normalizeKey(entry.bookmaker)),
+      ...timelineItems.map((entry) => normalizeKey(entry.bookmaker)),
+      ...(stateDiagnostics?.bookmaker_summaries ?? []).map((entry) => normalizeKey(entry.bookmaker)),
+    ])
+
+    return [...allKeys]
+      .map((key) => {
+        const readiness = readinessByBookmaker.get(key) ?? null
+        const health = healthByBookmaker.get(key) ?? null
+        const account = accountByBookmaker.get(key) ?? null
+        const ledger = ledgerByBookmaker.get(key) ?? null
+        const state = stateByBookmaker.get(key) ?? null
+        const reasons: string[] = []
+        let score = 0
+
+        if (health?.status === 'Unhealthy' || health?.status === 'CircuitOpen') {
+          score += 34
+          reasons.push(health.last_error ?? `${health.status} parser runtime`)
+        } else if (health?.status === 'Degraded') {
+          score += 16
+          reasons.push(health.last_error ?? 'parser runtime degraded')
+        }
+
+        if (readiness?.stage === 'blocked') {
+          score += 24
+          reasons.push(readiness.failingChecks[0]?.message ?? readiness.notes ?? 'parser readiness blocked')
+        } else if (readiness?.stage === 'diagnostic_only') {
+          score += 12
+          reasons.push(readiness.failingChecks[0]?.message ?? 'parser is still diagnostic-only')
+        } else if (readiness?.failingChecks.length) {
+          score += Math.min(readiness.failingChecks.length * 6, 18)
+          reasons.push(readiness.failingChecks[0]?.message)
+        }
+
+        if (account && !account.readiness.placement_ready) {
+          score += 24
+          reasons.push(account.readiness.operator_action ?? account.readiness.blocking_reasons[0] ?? 'account not ready for placement')
+        }
+
+        if (account?.readiness.submit_blocked_by_safe_mode) {
+          score += 18
+          reasons.push('safe mode blocks submit')
+        }
+
+        if (account?.readiness.approval_required) {
+          score += 8
+          reasons.push('approval required before placement')
+        }
+
+        if (account && !account.readiness.session_ready) {
+          score += 10
+          reasons.push('session restore needed')
+        }
+
+        if (account && !account.readiness.balance_ready) {
+          score += 6
+          reasons.push('balance snapshot stale or missing')
+        }
+
+        if (account?.control_issues.length) {
+          score += Math.min(account.control_issues.length * 6, 18)
+          reasons.push(account.control_issues[0])
+        }
+
+        if ((ledger?.errors ?? 0) > 0) {
+          score += Math.min((ledger?.errors ?? 0) * 14, 32)
+          reasons.push(`${ledger?.errors ?? 0} ledger errors in recent timeline`)
+        }
+
+        if ((ledger?.pending ?? 0) > 0) {
+          score += Math.min((ledger?.pending ?? 0) * 4, 12)
+          reasons.push(`${ledger?.pending ?? 0} pending placements still open`)
+        }
+
+        if (state?.latest_error) {
+          score += 10
+          reasons.push(state.latest_error)
+        }
+
+        const uniqueReasons = Array.from(new Set(reasons.filter(Boolean))).slice(0, 3)
+        const latestAtCandidates = [ledger?.latestAt, state?.latest_transition_at, state?.latest_snapshot_at, health?.last_success].filter(Boolean) as string[]
+        const latestAt = latestAtCandidates.sort((a, b) => new Date(b).getTime() - new Date(a).getTime())[0] ?? null
+
+        return {
+          key,
+          name: readiness?.name ?? account?.bookmaker ?? health?.bookmaker ?? ledger?.bookmaker ?? state?.bookmaker ?? key,
+          score,
+          tone: score >= 55 ? 'danger' : score >= 25 ? 'warning' : score > 0 ? 'info' : 'success',
+          parserStatus: health?.status ?? readiness?.healthStatus ?? null,
+          readinessStage: readiness?.stage ?? 'production',
+          ledgerErrors: ledger?.errors ?? 0,
+          pendingPlacements: ledger?.pending ?? 0,
+          accountBlocked: Boolean(account && !account.readiness.placement_ready),
+          safeModeBlocked: Boolean(account?.readiness.submit_blocked_by_safe_mode),
+          approvalRequired: Boolean(account?.readiness.approval_required),
+          latestAt,
+          reasons: uniqueReasons,
+          timelineBookmaker: ledger?.bookmaker ?? account?.bookmaker ?? health?.bookmaker ?? state?.bookmaker ?? readiness?.name ?? null,
+        } satisfies BookmakerHotspot
+      })
+      .sort((a, b) => b.score - a.score || b.ledgerErrors - a.ledgerErrors || a.name.localeCompare(b.name))
+      .slice(0, 6)
+  }, [accountStates, parserHealth, readinessRows, stateDiagnostics, timelineItems])
+  const hotspotSummary = useMemo(() => ({
+    danger: bookmakerHotspots.filter((entry) => entry.tone === 'danger').length,
+    warning: bookmakerHotspots.filter((entry) => entry.tone === 'warning').length,
+    active: bookmakerHotspots.filter((entry) => entry.score > 0).length,
+  }), [bookmakerHotspots])
+
+  return (
+    <motion.div variants={container} initial="hidden" animate="show" className="space-y-6">
+      <motion.div variants={item} className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+        <div>
+          <h2 className="text-2xl font-bold">Execution / Operator</h2>
+          <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
+            Read-only surface поверх execution GET endpoints без управляющих действий.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <span className={`badge ${stateFreshness.badge}`}>{stateFreshness.label}</span>
+          <span className={`badge ${executionTone.badge}`}>{executionTone.label}</span>
+          <div className="rounded-lg px-3 py-2 text-xs" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
+            Snapshot {formatDateTime(executionState?.generated_at ?? executionOverview?.generated_at ?? executionLedger?.generated_at ?? null)}
+          </div>
+        </div>
+      </motion.div>
+
+      <motion.div variants={item}>
+        <CompactSignalOverlay
+          title="Operator snapshot brief"
+          tone={operatorBrief.tone}
+          summary={operatorBrief.summary}
+          pills={operatorBrief.pills}
+          actions={operatorBrief.actions}
+        />
+      </motion.div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+        <motion.div variants={item} className="glass-card p-5">
+          <div className="flex items-start justify-between mb-4">
+            <div>
+              <p className="text-xs uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Execution overview</p>
+              <p className="text-xl font-semibold mt-1">{executionStatus?.running ? 'Running' : executionStatus?.enabled ? 'Standby' : 'Disabled'}</p>
+            </div>
+            <ToneIcon size={20} style={{ color: executionTone.accent }} />
+          </div>
+          <div className="space-y-2 text-sm">
+            <div className="flex items-center justify-between"><span style={{ color: 'var(--text-secondary)' }}>Today</span><span>{executionStatus?.bets_placed_today ?? 0} bets</span></div>
+            <div className="flex items-center justify-between"><span style={{ color: 'var(--text-secondary)' }}>Total</span><span>{executionStatus?.bets_placed_total ?? 0} bets</span></div>
+            <div className="flex items-center justify-between"><span style={{ color: 'var(--text-secondary)' }}>P&L day</span><span className={executionStatus && executionStatus.profit_today >= 0 ? 'profit-positive' : 'profit-negative'}>{formatCurrency(executionStatus?.profit_today ?? 0)}</span></div>
+            <div className="flex items-center justify-between"><span style={{ color: 'var(--text-secondary)' }}>Errors today</span><span className={executionStatus && executionStatus.errors_today > 0 ? 'profit-negative' : 'profit-positive'}>{executionStatus?.errors_today ?? 0}</span></div>
+            <div className="flex items-center justify-between"><span style={{ color: 'var(--text-secondary)' }}>Last bet</span><span>{formatDateTime(executionStatus?.last_bet ?? null)}</span></div>
+          </div>
+        </motion.div>
+
+        <motion.div variants={item} className="glass-card p-5">
+          <div className="flex items-start justify-between mb-4">
+            <div>
+              <p className="text-xs uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Accounts readiness</p>
+              <p className="text-xl font-semibold mt-1">{accounts?.ready_for_execution ?? 0} / {accounts?.total_bookmakers ?? readinessRows.length}</p>
+            </div>
+            <Wallet size={20} style={{ color: 'var(--accent-blue)' }} />
+          </div>
+          <div className="space-y-2 text-sm">
+            <div className="flex items-center justify-between"><span style={{ color: 'var(--text-secondary)' }}>Ready for execution</span><span>{formatPercent(readyRate)}</span></div>
+            <div className="flex items-center justify-between"><span style={{ color: 'var(--text-secondary)' }}>Authenticated sessions</span><span>{accounts?.sessions_authenticated ?? 0} / {accounts?.sessions_configured ?? 0}</span></div>
+            <div className="flex items-center justify-between"><span style={{ color: 'var(--text-secondary)' }}>Session auth rate</span><span>{formatPercent(authRate)}</span></div>
+            <div className="flex items-center justify-between"><span style={{ color: 'var(--text-secondary)' }}>Balances cached</span><span>{accounts?.balances_cached ?? 0}</span></div>
+            <div className="flex items-center justify-between"><span style={{ color: 'var(--text-secondary)' }}>Control issues</span><span className={(accounts?.accounts_with_control_issues ?? 0) > 0 ? 'profit-negative' : 'profit-positive'}>{accounts?.accounts_with_control_issues ?? 0}</span></div>
+          </div>
+        </motion.div>
+
+        <motion.div variants={item} className="glass-card p-5">
+          <div className="flex items-start justify-between mb-4">
+            <div>
+              <p className="text-xs uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Ledger timeline</p>
+              <p className="text-xl font-semibold mt-1">{executionLedger?.total_entries ?? ledgerPlacements?.total ?? 0} records</p>
+            </div>
+            <Activity size={20} style={{ color: 'var(--accent-cyan)' }} />
+          </div>
+          <div className="space-y-2 text-sm">
+            <div className="flex items-center justify-between"><span style={{ color: 'var(--text-secondary)' }}>Unique placements</span><span>{executionLedger?.unique_placements ?? recentPlacements?.total ?? 0}</span></div>
+            <div className="flex items-center justify-between"><span style={{ color: 'var(--text-secondary)' }}>Pending / settled</span><span>{ledgerPlacements?.pending ?? 0} / {ledgerPlacements?.settled ?? 0}</span></div>
+            <div className="flex items-center justify-between"><span style={{ color: 'var(--text-secondary)' }}>Ledger errors</span><span className={ledgerErrorRate > 0 ? 'profit-negative' : 'profit-positive'}>{formatPercent(ledgerErrorRate)}</span></div>
+            <div className="flex items-center justify-between"><span style={{ color: 'var(--text-secondary)' }}>Latest record</span><span>{formatDateTime(executionLedger?.latest_recorded_at ?? null)}</span></div>
+            <div className="flex items-center justify-between"><span style={{ color: 'var(--text-secondary)' }}>Transitions</span><span>{stateMachine?.total_transitions ?? 0}</span></div>
+          </div>
+        </motion.div>
+      </div>
+
+      {attentionCards.length > 0 ? (
+        <motion.div variants={item} className="grid grid-cols-1 xl:grid-cols-4 gap-3">
+          {attentionCards.map((entry) => (
+            <div key={entry.key} className="rounded-xl p-4" style={{ background: 'var(--bg-card)', border: `1px solid ${entry.badge === 'badge-danger' ? 'rgba(248, 81, 73, 0.3)' : 'rgba(210, 153, 34, 0.3)'}` }}>
+              <div className="flex items-center justify-between gap-3 mb-2">
+                <p className="text-sm font-semibold">{entry.title}</p>
+                <span className={`badge ${entry.badge}`}><Siren size={12} /> attention</span>
+              </div>
+              <p className="text-xs leading-5" style={{ color: 'var(--text-secondary)' }}>{entry.detail}</p>
+            </div>
+          ))}
+        </motion.div>
+      ) : null}
+
+      <div className="grid grid-cols-1 xl:grid-cols-[1.35fr,0.85fr] gap-6">
+        <motion.div variants={item} className="glass-card p-5">
+          <div className="flex items-center justify-between mb-4 gap-4">
+            <div>
+              <h3 className="text-base font-semibold">Accounts readiness</h3>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                `/api/v1/bookmakers` + `/api/v1/parsers/coverage`
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2 text-xs">
+              <span className="badge badge-success">exec {readinessSummary.executionReady}</span>
+              <span className="badge badge-info">prod {readinessSummary.production}</span>
+              <span className="badge badge-danger">blocked {readinessSummary.blocked}</span>
+              <span className="badge badge-warning">warn {readinessSummary.warnings}</span>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap gap-2 mb-4">
+            {([
+              ['attention', `attention ${readinessRows.filter((entry) => entry.hasAttention).length}`, 'badge-danger'],
+              ['execution', `execution ${readinessRows.filter((entry) => entry.executionSupported).length}`, 'badge-success'],
+              ['blocked', `blocked ${readinessRows.filter((entry) => entry.stage === 'blocked').length}`, 'badge-warning'],
+              ['all', `all ${readinessRows.length}`, 'badge-info'],
+            ] as const).map(([value, label, badge]) => (
+              <button key={value} type="button" onClick={() => setReadinessFilter(value)} className={`badge ${readinessFilter === value ? badge : 'badge-info'}`} style={{ opacity: readinessFilter === value ? 1 : 0.7 }}>
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <div className="space-y-4">
+            {readinessGroups.map((group) => group.rows.length > 0 ? (
+              <div key={group.key} className="space-y-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <h4 className="text-sm font-semibold">{group.title}</h4>
+                    <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{group.description}</p>
+                  </div>
+                  <span className="badge badge-info">{group.rows.length}</span>
+                </div>
+
+                {group.rows.map((entry) => (
+                  <div key={entry.slug} className="rounded-xl p-4" style={{ background: 'var(--bg-secondary)', border: `1px solid ${entry.hasAttention ? 'rgba(248, 81, 73, 0.22)' : 'var(--border-color)'}` }}>
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-sm font-semibold">{entry.name}</p>
+                          <span className={`badge ${entry.executionSupported ? 'badge-success' : 'badge-info'}`}>{entry.mode}</span>
+                          <span className={`badge ${readinessBadgeClass(entry.stage)}`}>{entry.stage.replace('_', ' ')}</span>
+                          {entry.healthStatus ? <span className={`badge ${healthBadgeClass(entry.healthStatus)}`}>{entry.healthStatus}</span> : null}
+                        </div>
+                        <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
+                          {entry.scanSupported ? 'scan' : 'no scan'} • {entry.executionSupported ? 'execution contract ready' : 'execution not exposed'} • backend {entry.backendStatus}
+                          {entry.uptimePercent !== null ? ` • uptime ${entry.uptimePercent.toFixed(1)}%` : ''}
+                          {entry.avgResponseTimeMs !== null ? ` • avg ${entry.avgResponseTimeMs.toFixed(0)} ms` : ''}
+                        </p>
+                        {entry.notes ? (
+                          <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>{entry.notes}</p>
+                        ) : null}
+                        {entry.lastError ? (
+                          <p className="text-xs mt-2 profit-negative">{entry.lastError}</p>
+                        ) : null}
+                        {entry.failingChecks.slice(0, 2).map((check) => (
+                          <p key={`${entry.slug}-${check.code}-message`} className="text-xs mt-2" style={{ color: check.severity === 'fail' ? 'var(--accent-red)' : 'var(--accent-yellow)' }}>
+                            {check.code}: {check.message}
+                          </p>
+                        ))}
+                      </div>
+
+                      <div className="flex flex-wrap gap-2 lg:max-w-[40%] lg:justify-end">
+                        {entry.checks.slice(0, 4).map((check) => (
+                          <span key={`${entry.slug}-${check.code}`} className={`badge ${check.severity === 'fail' ? 'badge-danger' : check.severity === 'warn' ? 'badge-warning' : check.severity === 'pass' ? 'badge-success' : 'badge-info'}`}>
+                            {check.code}
+                          </span>
+                        ))}
+                        {entry.consecutiveFailures > 0 ? <span className="badge badge-danger">fails {entry.consecutiveFailures}</span> : null}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : null)}
+
+            {filteredReadinessRows.length === 0 ? (
+              <div className="rounded-xl border border-dashed p-6 text-center" style={{ borderColor: 'var(--border-color)', color: 'var(--text-muted)' }}>
+                <ShieldCheck size={24} className="mx-auto mb-3 opacity-40" />
+                <p className="text-sm">Текущий фильтр не нашёл account issues в read-only snapshots.</p>
+              </div>
+            ) : null}
+          </div>
+        </motion.div>
+
+        <motion.div variants={item} className="glass-card p-5">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h3 className="text-base font-semibold">State machine</h3>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                `/api/v1/execution/state` with overview / ledger fallback
+              </p>
+            </div>
+            <TimerReset size={16} style={{ color: 'var(--text-muted)' }} />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            {[
+              { label: 'Pending', value: stateMachineSnapshot?.phases.pending_placement ?? 0, icon: Clock3, color: 'var(--accent-yellow)' },
+              { label: 'Confirmed', value: stateMachineSnapshot?.phases.confirmed_placement ?? 0, icon: CheckCircle2, color: 'var(--accent-green)' },
+              { label: 'Settled', value: stateMachineSnapshot?.phases.settled ?? 0, icon: ShieldCheck, color: 'var(--accent-blue)' },
+              { label: 'Failed', value: stateMachineSnapshot?.phases.failed ?? 0, icon: ShieldAlert, color: 'var(--accent-red)' },
+            ].map((entry) => {
+              const Icon = entry.icon
+
+              return (
+                <div key={entry.label} className="rounded-lg p-3" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>{entry.label}</span>
+                    <Icon size={14} style={{ color: entry.color }} />
+                  </div>
+                  <p className="text-2xl font-semibold">{entry.value}</p>
+                </div>
+              )
+            })}
+          </div>
+
+          <div className="space-y-3">
+            <div className="rounded-lg p-3" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
+              <p className="text-xs uppercase tracking-wider mb-1" style={{ color: 'var(--text-muted)' }}>Freshness</p>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className={`badge ${stateFreshness.badge}`}>{stateFreshness.label}</span>
+                <span className="text-sm">{stateFreshness.detail}</span>
+              </div>
+            </div>
+            <div className="rounded-lg p-3" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
+              <p className="text-xs uppercase tracking-wider mb-1" style={{ color: 'var(--text-muted)' }}>Recent placements</p>
+              <p className="text-sm">{recentPlacements?.placed ?? 0} placed / {recentPlacements?.pending ?? 0} pending / {recentPlacements?.errors ?? 0} errors</p>
+            </div>
+            <div className="rounded-lg p-3" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
+              <p className="text-xs uppercase tracking-wider mb-1" style={{ color: 'var(--text-muted)' }}>Latest transition</p>
+              <p className="text-sm">{formatDateTime(stateMachineSnapshot?.latest_transition_at ?? null)}</p>
+            </div>
+            <div className="rounded-lg p-3" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
+              <p className="text-xs uppercase tracking-wider mb-1" style={{ color: 'var(--text-muted)' }}>Latest snapshot</p>
+              <p className="text-sm">{formatDateTime(stateMachineSnapshot?.latest_snapshot_at ?? null)}</p>
+            </div>
+          </div>
+        </motion.div>
+      </div>
+
+      <div className="grid grid-cols-1 xl:grid-cols-[0.95fr,1.05fr] gap-6">
+        <motion.div variants={item} className="glass-card p-5">
+          <div className="flex items-center justify-between mb-4 gap-4">
+            <div>
+              <h3 className="text-base font-semibold">Execution state diagnostics</h3>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                `/api/v1/execution/state` as troubleshooting surface
+              </p>
+            </div>
+            {stateDiagnostics ? <span className="badge badge-info">{stateDiagnostics.total_transitions} transitions</span> : null}
+          </div>
+
+          {bookmakerStateRows.length > 0 ? (
+            <div className="space-y-3">
+              {bookmakerStateRows.map((entry) => (
+                <div key={entry.bookmaker} className="rounded-xl p-4" style={{ background: 'var(--bg-secondary)', border: `1px solid ${entry.latest_error ? 'rgba(248, 81, 73, 0.22)' : 'var(--border-color)'}` }}>
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-semibold">{entry.bookmaker}</p>
+                        <span className={`badge ${entry.latest_error ? 'badge-danger' : 'badge-success'}`}>{entry.total_snapshots} snapshots</span>
+                      </div>
+                      <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
+                        Pending {entry.phases.pending_placement} • Confirmed {entry.phases.confirmed_placement} • Settled {entry.phases.settled} • Failed {entry.phases.failed}
+                      </p>
+                      {entry.latest_error ? <p className="text-xs mt-2 profit-negative">{entry.latest_error}</p> : null}
+                    </div>
+
+                    <div className="text-left lg:text-right shrink-0">
+                      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>snapshot {formatDateTime(entry.latest_snapshot_at)}</p>
+                      <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>transition {formatDateTime(entry.latest_transition_at)}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-xl border border-dashed p-6 text-center" style={{ borderColor: 'var(--border-color)', color: 'var(--text-muted)' }}>
+              <Activity size={24} className="mx-auto mb-3 opacity-40" />
+              <p className="text-sm">Execution state endpoint пока не отдал bookmaker diagnostics.</p>
+            </div>
+          )}
+        </motion.div>
+
+        <motion.div variants={item} className="glass-card p-5">
+          <div className="flex items-center justify-between mb-4 gap-4">
+            <div>
+              <h3 className="text-base font-semibold">Recent state transitions</h3>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                Error-first replay from `/api/v1/execution/state`
+              </p>
+            </div>
+            {transitionRows.length > 0 ? <span className="badge badge-info">{transitionRows.length} shown</span> : null}
+          </div>
+
+          {transitionRows.length > 0 ? (
+            <div className="space-y-3">
+              {transitionRows.map((entry) => (
+                <div key={`${entry.placement_id}-${entry.sequence}`} className="rounded-xl p-4" style={{ background: 'var(--bg-secondary)', border: `1px solid ${entry.error ? 'rgba(248, 81, 73, 0.22)' : 'var(--border-color)'}` }}>
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-semibold">{entry.bookmaker}</p>
+                        <span className={`badge ${entry.error ? 'badge-danger' : entry.to_phase.toLowerCase().includes('failed') ? 'badge-danger' : entry.to_phase.toLowerCase().includes('settled') ? 'badge-success' : 'badge-warning'}`}>{toTitleCase(entry.to_phase)}</span>
+                        <span className="badge badge-info">seq {entry.sequence}</span>
+                      </div>
+                      <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
+                        {entry.from_phase ? `${toTitleCase(entry.from_phase)} -> ${toTitleCase(entry.to_phase)}` : `Entered ${toTitleCase(entry.to_phase)}`} • {toTitleCase(entry.placement_status)} • {toTitleCase(entry.action)}
+                      </p>
+                      {entry.error ? <p className="text-xs mt-2 profit-negative">{entry.error}</p> : null}
+                    </div>
+
+                    <div className="text-left lg:text-right shrink-0">
+                      <p className="text-sm font-medium">{formatDateTime(entry.occurred_at)}</p>
+                      <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>{entry.placement_id}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-xl border border-dashed p-6 text-center" style={{ borderColor: 'var(--border-color)', color: 'var(--text-muted)' }}>
+              <AlertTriangle size={24} className="mx-auto mb-3 opacity-40" />
+              <p className="text-sm">Execution state replay пока пустой: UI ждёт transitions из `/api/v1/execution/state`.</p>
+            </div>
+          )}
+        </motion.div>
+      </div>
+
+      <motion.div variants={item} className="glass-card p-5">
+        <div className="flex items-center justify-between mb-4 gap-4">
+          <div>
+            <h3 className="text-base font-semibold">Operator action queue</h3>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+              Account-level review hints from `/api/v1/accounts` without execution mutations.
+            </p>
+          </div>
+          {operatorActionQueue.length > 0 ? <span className="badge badge-info">{operatorActionQueue.length} queued</span> : null}
+        </div>
+
+        {operatorActionQueue.length > 0 ? (
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+              {[
+                ['Safe-mode blocks', operatorActionSummary.safeMode, 'badge-danger'],
+                ['Approval required', operatorActionSummary.approval, 'badge-warning'],
+                ['Session restore', operatorActionSummary.sessionRestore, 'badge-warning'],
+                ['Balance refresh', operatorActionSummary.balanceRefresh, 'badge-info'],
+              ].map(([label, value, badge]) => (
+                <div key={String(label)} className="rounded-xl p-4" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>{label}</p>
+                    <span className={`badge ${badge}`}>{value}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div className="space-y-3">
+              {operatorActionQueue.map((entry, index) => (
+                <button
+                  key={`${entry.bookmaker}-${index}`}
+                  type="button"
+                  onClick={() => onOpenAccount(entry.bookmaker)}
+                  className="w-full rounded-xl p-4 text-left transition-colors"
+                  style={{ background: 'var(--bg-secondary)', border: `1px solid ${entry.tone === 'danger' ? 'rgba(248, 81, 73, 0.22)' : entry.tone === 'warning' ? 'rgba(210, 153, 34, 0.22)' : 'var(--border-color)'}` }}
+                >
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="badge badge-info">#{index + 1}</span>
+                        <p className="text-sm font-semibold">{entry.bookmaker}</p>
+                        <span className={`badge ${entry.tone === 'danger' ? 'badge-danger' : entry.tone === 'warning' ? 'badge-warning' : 'badge-info'}`}>{entry.mode}</span>
+                        <span className={`badge ${entry.sessionState.toLowerCase().includes('auth') || entry.sessionState.toLowerCase().includes('ready') ? 'badge-success' : 'badge-warning'}`}>{entry.sessionState}</span>
+                      </div>
+                      <div className="mt-2 space-y-1">
+                        {entry.reasons.slice(0, 3).map((reason) => (
+                          <p key={`${entry.bookmaker}-${reason}`} className="text-xs" style={{ color: 'var(--text-secondary)' }}>{reason}</p>
+                        ))}
+                      </div>
+                      <p className="text-xs mt-3" style={{ color: 'var(--accent-blue)' }}>
+                        Open account drill-down
+                      </p>
+                    </div>
+
+                    <div className="text-left lg:text-right shrink-0">
+                      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>available balance</p>
+                      <p className="text-sm font-medium">{entry.availableBalance !== null ? `${entry.availableBalance.toFixed(2)} RUB` : 'no balance snapshot'}</p>
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-xl border border-dashed p-6 text-center" style={{ borderColor: 'var(--border-color)', color: 'var(--text-muted)' }}>
+            <ShieldCheck size={24} className="mx-auto mb-3 opacity-40" />
+            <p className="text-sm">Account snapshot не показал operator actions: execution path выглядит чистым в текущем GET-срезе.</p>
+          </div>
+        )}
+      </motion.div>
+
+      <motion.div variants={item} className="glass-card p-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between mb-4">
+          <div>
+            <h3 className="text-base font-semibold">Bookmaker hotspot board</h3>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+              Unified operator ranking across parser health, account readiness and recent execution timeline.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2 text-xs">
+            <span className={`badge ${hotspotSummary.danger > 0 ? 'badge-danger' : 'badge-success'}`}>critical {hotspotSummary.danger}</span>
+            <span className={`badge ${hotspotSummary.warning > 0 ? 'badge-warning' : 'badge-success'}`}>watch {hotspotSummary.warning}</span>
+            <span className="badge badge-info">active {hotspotSummary.active}</span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+          {bookmakerHotspots.map((entry) => (
+            <button
+              key={entry.key}
+              type="button"
+              onClick={() => {
+                setLedgerBookmaker(entry.timelineBookmaker ?? 'all')
+                setLedgerQuery(entry.name)
+                setLedgerFilter(entry.ledgerErrors > 0 ? 'errors' : entry.pendingPlacements > 0 ? 'pending' : 'all')
+              }}
+              className="w-full rounded-xl p-4 text-left transition-colors"
+              style={{
+                background: 'var(--bg-secondary)',
+                border: `1px solid ${entry.tone === 'danger' ? 'rgba(248, 81, 73, 0.22)' : entry.tone === 'warning' ? 'rgba(210, 153, 34, 0.22)' : 'var(--border-color)'}`,
+              }}
+            >
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="text-sm font-semibold">{entry.name}</p>
+                    <span className={`badge ${entry.tone === 'danger' ? 'badge-danger' : entry.tone === 'warning' ? 'badge-warning' : entry.tone === 'info' ? 'badge-info' : 'badge-success'}`}>score {entry.score}</span>
+                    <span className={`badge ${healthBadgeClass(entry.parserStatus)}`}>{entry.parserStatus ?? 'No runtime'}</span>
+                    <span className={`badge ${readinessBadgeClass(entry.readinessStage)}`}>{entry.readinessStage.replace('_', ' ')}</span>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {entry.accountBlocked ? <span className="badge badge-warning">account blocked</span> : <span className="badge badge-success">account ready</span>}
+                    {entry.safeModeBlocked ? <span className="badge badge-danger">safe mode</span> : null}
+                    {entry.approvalRequired ? <span className="badge badge-warning">approval</span> : null}
+                    {entry.ledgerErrors > 0 ? <span className="badge badge-danger">ledger {entry.ledgerErrors} errors</span> : null}
+                    {entry.pendingPlacements > 0 ? <span className="badge badge-info">pending {entry.pendingPlacements}</span> : null}
+                  </div>
+
+                  <div className="mt-3 space-y-1">
+                    {entry.reasons.map((reason) => (
+                      <p key={`${entry.key}-${reason}`} className="text-xs" style={{ color: 'var(--text-secondary)' }}>{reason}</p>
+                    ))}
+                    {entry.reasons.length === 0 ? <p className="text-xs" style={{ color: 'var(--text-muted)' }}>No active blockers surfaced in the current read-only snapshot.</p> : null}
+                  </div>
+                </div>
+
+                <div className="text-left lg:text-right shrink-0">
+                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>latest signal</p>
+                  <p className="text-sm font-medium">{formatDateTime(entry.latestAt)}</p>
+                  <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>click to focus ledger</p>
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+      </motion.div>
+
+      <motion.div variants={item} className="glass-card p-5">
+        <div className="flex items-center justify-between mb-4 gap-4">
+          <div>
+            <h3 className="text-base font-semibold">Ledger timeline</h3>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+              Последние execution records в read-only режиме.
+            </p>
+          </div>
+          {timelineItems.length > 0 ? <span className="badge badge-info">{filteredTimelineItems.length} / {timelineItems.length} items</span> : null}
+        </div>
+
+        {timelineItems.length > 0 ? (
+          <div className="space-y-3">
+            <div className="grid grid-cols-1 xl:grid-cols-4 gap-3 mb-2">
+              {[
+                { key: 'errors', label: 'Errors first', value: ledgerSummary.errors, badge: 'badge-danger' },
+                { key: 'pending', label: 'Pending', value: ledgerSummary.pending, badge: 'badge-warning' },
+                { key: 'active', label: 'Open lane', value: ledgerSummary.active, badge: 'badge-info' },
+                { key: 'settled', label: 'Settled', value: ledgerSummary.settled, badge: 'badge-success' },
+              ].map((entry) => (
+                <button
+                  key={entry.key}
+                  type="button"
+                  onClick={() => setLedgerFilter(entry.key as LedgerFilter)}
+                  className="rounded-xl p-4 text-left transition-colors"
+                  style={{
+                    background: 'var(--bg-secondary)',
+                    border: `1px solid ${ledgerFilter === entry.key ? 'var(--accent-blue)' : 'var(--border-color)'}`,
+                  }}
+                >
+                  <div className="flex items-center justify-between gap-3 mb-2">
+                    <p className="text-xs uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>{entry.label}</p>
+                    <span className={`badge ${entry.badge}`}>{entry.value}</span>
+                  </div>
+                  <p className="text-lg font-semibold">{entry.value}</p>
+                </button>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-1 xl:grid-cols-[1.4fr,0.8fr,0.8fr] gap-3">
+              <label className="rounded-xl px-3 py-2 flex items-center gap-2" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
+                <Search size={14} style={{ color: 'var(--text-muted)' }} />
+                <input
+                  value={ledgerQuery}
+                  onChange={(event) => setLedgerQuery(event.target.value)}
+                  placeholder="Search bookmaker, event, market, error"
+                  className="w-full bg-transparent text-sm outline-none"
+                  style={{ color: 'var(--text-primary)' }}
+                />
+              </label>
+
+              <select
+                value={ledgerBookmaker}
+                onChange={(event) => setLedgerBookmaker(event.target.value)}
+                className="rounded-xl px-3 py-2 text-sm"
+                style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', color: 'var(--text-primary)' }}
+              >
+                <option value="all">All bookmakers</option>
+                {ledgerBookmakerOptions.map((option) => (
+                  <option key={option} value={option}>{option}</option>
+                ))}
+              </select>
+
+              <select
+                value={ledgerSort}
+                onChange={(event) => setLedgerSort(event.target.value as LedgerSort)}
+                className="rounded-xl px-3 py-2 text-sm"
+                style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', color: 'var(--text-primary)' }}
+              >
+                <option value="priority">Sort: triage priority</option>
+                <option value="newest">Sort: newest first</option>
+                <option value="oldest">Sort: oldest first</option>
+                <option value="stake">Sort: highest stake</option>
+                <option value="odds">Sort: highest odds</option>
+              </select>
+            </div>
+
+            {triageQueue.length > 0 ? (
+              <div className="rounded-xl p-4" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
+                <div className="flex items-center justify-between gap-3 mb-3">
+                  <div>
+                    <h4 className="text-sm font-semibold">Operator triage</h4>
+                    <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                      Error-first queue from current GET snapshot.
+                    </p>
+                  </div>
+                  <span className="badge badge-danger">top {triageQueue.length}</span>
+                </div>
+
+                <div className="space-y-2">
+                  {triageQueue.map((entry, index) => (
+                    <div key={`triage-${entry.id}`} className="rounded-lg p-3" style={{ background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border-color)' }}>
+                      <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="badge badge-info">#{index + 1}</span>
+                            <p className="text-sm font-semibold">{entry.title}</p>
+                            <span className={`badge ${entry.error ? 'badge-danger' : entry.status.toLowerCase().includes('pending') ? 'badge-warning' : 'badge-success'}`}>
+                              {toTitleCase(entry.status)}
+                            </span>
+                          </div>
+                          <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>{entry.subtitle}</p>
+                          <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>{entry.meta}</p>
+                          {entry.error ? <p className="text-xs mt-2 profit-negative">{entry.error}</p> : null}
+                        </div>
+
+                        <div className="text-left lg:text-right shrink-0">
+                          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{formatDateTime(entry.recordedAt)}</p>
+                          <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>{entry.source === 'ledger' ? 'ledger record' : 'state snapshot'}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {filteredTimelineItems.map((entry) => (
+              <div key={entry.id} className="rounded-xl p-4" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-sm font-semibold">{entry.title}</p>
+                      <span className="badge badge-info">{entry.source}</span>
+                      <span className={`badge ${entry.error ? 'badge-danger' : entry.status.toLowerCase().includes('pending') ? 'badge-warning' : 'badge-success'}`}>
+                        {toTitleCase(entry.status)}
+                      </span>
+                    </div>
+                    <p className="text-sm mt-1">{entry.subtitle}</p>
+                    <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>{entry.meta}</p>
+                    {entry.error ? (
+                      <p className="text-xs mt-2 profit-negative">{entry.error}</p>
+                    ) : null}
+                  </div>
+
+                  <div className="text-left lg:text-right shrink-0">
+                    <p className="text-sm font-medium">{formatDateTime(entry.recordedAt)}</p>
+                    <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
+                      {entry.stake !== null && entry.odds !== null ? `${entry.stake.toFixed(2)} RUB @ ${entry.odds.toFixed(2)}` : 'state snapshot'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            {filteredTimelineItems.length === 0 ? (
+              <div className="rounded-xl border border-dashed p-6 text-center" style={{ borderColor: 'var(--border-color)', color: 'var(--text-muted)' }}>
+                <AlertTriangle size={24} className="mx-auto mb-3 opacity-40" />
+                <p className="text-sm">Текущие ledger filters ничего не нашли, но snapshot сохранён и готов к следующему triage pass.</p>
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          <div className="rounded-xl border border-dashed p-6 text-center" style={{ borderColor: 'var(--border-color)', color: 'var(--text-muted)' }}>
+            <AlertTriangle size={24} className="mx-auto mb-3 opacity-40" />
+            <p className="text-sm">Ledger timeline пока пустой: UI готов к live snapshot с `/api/v1/execution/ledger`.</p>
+          </div>
+        )}
+      </motion.div>
+    </motion.div>
+  )
+}

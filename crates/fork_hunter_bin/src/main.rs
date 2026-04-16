@@ -20,7 +20,9 @@ use engine::value::ValueDetector;
 use engine::verifier::OddsVerifier;
 use express_forks::scanner::ExpressForkScanner;
 use parsers::parser_factory::ParserFactory;
+use persistence::execution_ledger::ExecutionLedgerStore;
 use persistence::execution_state::ExecutionStateStore;
+use persistence::freebet_lifecycle::FreebetLifecycleStore;
 use persistence::history::SurebetHistory;
 use scanner::engine::GhostScanner;
 use scanner::runner::ScannerRunner;
@@ -39,7 +41,17 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("Ghost Imperium starting...");
 
     let config = AppConfig::load()?;
-    tracing::info!("Configuration loaded");
+    tracing::info!(
+        profile = ?config.profile,
+        offline_synced_events_fallback = config.features.offline_synced_events_fallback_enabled(),
+        "Configuration loaded"
+    );
+    if matches!(config.profile, shared::config::RuntimeProfile::Production) {
+        tracing::info!(
+            cors_origins = ?config.server.cors_origins,
+            "Production profile guardrails validated"
+        );
+    }
 
     let http_client = Arc::new(
         reqwest::Client::builder()
@@ -50,8 +62,6 @@ async fn main() -> anyhow::Result<()> {
 
     let parser_factory = Arc::new(ParserFactory::new(http_client.clone()));
     let parser_metadata = Arc::new(parser_factory.bookmaker_metadata());
-    let parser_coverage = Arc::new(parser_factory.parser_coverage());
-    let parser_health = Arc::new(parser_factory.parser_health_snapshots());
     let parsers = parser_factory.get_enabled();
     tracing::info!("{} parsers loaded", parsers.len());
 
@@ -96,82 +106,107 @@ async fn main() -> anyhow::Result<()> {
     let bonus_hunter = Arc::new(BonusHunter::new(BonusConfig::default()));
 
     let execution_state_store = Arc::new(ExecutionStateStore::new(&config.database.url).await?);
+    let execution_ledger_store = Arc::new(ExecutionLedgerStore::new(&config.database.url).await?);
+    let freebet_lifecycle_store = Arc::new(FreebetLifecycleStore::new(&config.database.url).await?);
     let execution_registry = Arc::new(auto_betting::ExecutionRegistry::with_persistence(
-        execution_state_store,
+        execution_state_store.clone(),
     ));
     if let Err(error) = execution_registry.restore_persisted_state().await {
         tracing::warn!(error = %error, "Failed to restore execution registry state");
     }
-    let auto_bet_engine = Arc::new(AutoBetEngine::with_registry(
+    for snapshot in execution_registry.list_balance_snapshots() {
+        bankroll_manager.apply_balance_snapshot(&snapshot);
+    }
+    let auto_bet_engine = Arc::new(AutoBetEngine::with_registry_ledger_and_state(
         AutoBetConfig::default(),
         execution_registry,
+        execution_ledger_store.clone(),
+        execution_state_store.clone(),
     ));
 
     let event_bus = Arc::new(shared::EventBus::new());
     let history = SurebetHistory::new(&config.database.url).await?;
     let history = Arc::new(history);
 
-    // Telegram bot (optional — запускается если есть токен в конфиге)
-    let telegram_handle = if let Some(token) = std::env::var("TELEGRAM_BOT_TOKEN").ok() {
-        let admin_chats: Vec<i64> = std::env::var("TELEGRAM_ADMIN_CHATS")
+    let telegram_token = if config.telegram.bot_token.is_empty() {
+        std::env::var("TELEGRAM_BOT_TOKEN").ok().unwrap_or_default()
+    } else {
+        config.telegram.bot_token.clone()
+    };
+    let telegram_admin_chats = if config.telegram.admin_chat_ids.is_empty() {
+        std::env::var("TELEGRAM_ADMIN_CHATS")
             .unwrap_or_default()
             .split(',')
-            .filter_map(|s| s.trim().parse().ok())
-            .collect();
-
-        if !admin_chats.is_empty() {
-            let bot = Arc::new(bot::telegram::TelegramBot::new(
-                &token,
-                admin_chats,
-                config.scanner.min_profit_percent,
-                false,
-            ));
-            tracing::info!("Telegram bot starting...");
-            Some(bot.spawn())
-        } else {
-            tracing::warn!("TELEGRAM_ADMIN_CHATS not set, bot will only respond to commands");
-            let bot = Arc::new(bot::telegram::TelegramBot::new(
-                &token,
-                vec![],
-                config.scanner.min_profit_percent,
-                false,
-            ));
-            Some(bot.spawn())
-        }
+            .filter_map(|value| value.trim().parse().ok())
+            .collect()
     } else {
-        tracing::info!("TELEGRAM_BOT_TOKEN not set, skipping Telegram bot");
-        None
+        config.telegram.admin_chat_ids.clone()
     };
 
-    let scanner = Arc::new(GhostScanner::new(
-        parsers,
-        calculator,
-        normalizer,
-        event_pool,
-        freebet_hunter.clone(),
-        generosity_index.clone(),
-        mirror_detector,
-        momentum_scanner,
-        odds_error_detector,
-        value_detector,
-        odds_verifier,
-        corridor_scanner,
-        express_fork_scanner,
-        bankroll_manager.clone(),
-        bonus_hunter.clone(),
-        auto_bet_engine.clone(),
-        event_bus.clone(),
-        config.scanner.scan_interval_secs,
-    ));
+    // Telegram bot + EventBus bridge (optional)
+    let telegram_handles = if telegram_token.is_empty() {
+        tracing::info!("Telegram token not configured, skipping Telegram bot");
+        None
+    } else {
+        if telegram_admin_chats.is_empty() {
+            tracing::warn!("Telegram admin chats not configured, bridge will stay command-only");
+        }
+
+        let bot = Arc::new(bot::telegram::TelegramBot::new(
+            &telegram_token,
+            telegram_admin_chats,
+            config.telegram.notify_min_profit,
+            config.telegram.silent_mode,
+            Some(event_bus.clone()),
+        ));
+        tracing::info!("Telegram bot starting...");
+        Some((
+            bot.clone().spawn(),
+            bot::spawn_event_bus_bridge(bot, event_bus.clone()),
+        ))
+    };
+
+    let scanner = Arc::new(
+        GhostScanner::new(
+            parsers,
+            calculator,
+            normalizer,
+            event_pool,
+            freebet_hunter.clone(),
+            generosity_index.clone(),
+            mirror_detector,
+            momentum_scanner,
+            odds_error_detector,
+            value_detector,
+            odds_verifier,
+            corridor_scanner,
+            express_fork_scanner,
+            bankroll_manager.clone(),
+            bonus_hunter.clone(),
+            auto_bet_engine.clone(),
+            history.clone(),
+            event_bus.clone(),
+            config.profile,
+            config.features.clone(),
+            config.scanner.scan_interval_secs,
+            config.scanner.request_timeout_secs,
+            config.bookmakers.per_bookmaker_timeout_secs.clone(),
+        )
+        .with_parser_execution_config(&config.scanner)
+        .with_freebet_lifecycle_store(freebet_lifecycle_store.clone()),
+    );
 
     let scanner_runner = Arc::new(ScannerRunner::new(scanner.clone()));
 
     let api_state = AppState {
         scanner: scanner_runner.clone(),
+        parser_runtime_stale_after_secs: config.scanner.cache_ttl_secs,
+        parser_factory: parser_factory.clone(),
         bookmakers: parser_metadata,
-        parser_coverage,
-        parser_health,
         history: history.clone(),
+        execution_ledger: execution_ledger_store.clone(),
+        execution_state_store: execution_state_store.clone(),
+        freebet_lifecycle_store: Some(freebet_lifecycle_store.clone()),
         freebet_hunter: freebet_hunter.clone(),
         generosity_index: generosity_index.clone(),
         auto_bet_engine: auto_bet_engine.clone(),
@@ -203,9 +238,10 @@ async fn main() -> anyhow::Result<()> {
     scanner_runner.stop();
     scanner_handle.abort();
 
-    if let Some(handle) = telegram_handle {
-        handle.abort();
-        tracing::info!("Telegram bot stopped");
+    if let Some((bot_handle, bridge_handle)) = telegram_handles {
+        bridge_handle.abort();
+        bot_handle.abort();
+        tracing::info!("Telegram bot and EventBus bridge stopped");
     }
 
     tracing::info!("Ghost Imperium shut down gracefully");

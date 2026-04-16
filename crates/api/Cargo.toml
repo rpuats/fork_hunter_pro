@@ -3,11 +3,16 @@ name = "api"
 version.workspace = true
 edition.workspace = true
 
+[features]
+default = ["full"]
+full = ["dep:scanner", "dep:parsers"]
+
 [dependencies]
 shared = { path = "../shared" }
 engine = { path = "../engine" }
 persistence = { path = "../persistence" }
-scanner = { path = "../scanner" }
+scanner = { path = "../scanner", optional = true }
+parsers = { path = "../parsers", optional = true }
 auto_betting = { path = "../auto_betting" }
 bankroll_manager = { path = "../bankroll_manager" }
 bonus_hunter = { path = "../bonus_hunter" }
@@ -23,3 +28,4 @@ thiserror.workspace = true
 chrono.workspace = true
 uuid.workspace = true
 futures.workspace = true
+reqwest.workspace = true

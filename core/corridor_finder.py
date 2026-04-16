@@ -48,19 +48,49 @@ class Corridor:
     odds: List[float]
     scenarios: List[CorridorScenario]
     ev_percent: float
+    home_team: str = ''
+    away_team: str = ''
+    league: str = ''
+    start_time: Optional[str] = None
+    is_live: bool = False
     total_stake: float = 10000.0
     found_at: str = field(default_factory=lambda: datetime.utcnow().isoformat())
 
     def to_dict(self) -> Dict:
+        bookmaker_a = self.markets[0].get('bookmaker') if len(self.markets) > 0 else None
+        bookmaker_b = self.markets[1].get('bookmaker') if len(self.markets) > 1 else None
+        line_a = self.markets[0].get('line') if len(self.markets) > 0 else None
+        line_b = self.markets[1].get('line') if len(self.markets) > 1 else None
+        double_win_probability = next(
+            (scenario.probability for scenario in self.scenarios if scenario.both_win),
+            0.0,
+        )
+
         return {
             'id': self.id,
             'event_name': self.event_name,
             'sport': self.sport,
             'corridor_type': self.corridor_type,
+            'home_team': self.home_team,
+            'away_team': self.away_team,
+            'league': self.league,
+            'start_time': self.start_time,
+            'is_live': self.is_live,
             'markets': self.markets,
             'odds': [round(o, 4) for o in self.odds],
             'scenarios': [s.to_dict() for s in self.scenarios],
             'ev_percent': round(self.ev_percent, 4),
+            'bookmaker_a': bookmaker_a,
+            'bookmaker_b': bookmaker_b,
+            'market': self.corridor_type,
+            'line_a': line_a,
+            'odds_a': round(self.odds[0], 4) if len(self.odds) > 0 else None,
+            'line_b': line_b,
+            'odds_b': round(self.odds[1], 4) if len(self.odds) > 1 else None,
+            'corridor_size': round(abs(line_b - line_a), 4) if line_a is not None and line_b is not None else None,
+            'double_win_probability': round(double_win_probability, 4),
+            'expected_roi': round(self.ev_percent, 4),
+            'detected_at': self.found_at,
             'total_stake': self.total_stake,
             'found_at': self.found_at,
         }
@@ -268,7 +298,8 @@ class CorridorFinder:
 
         for event_key, bk_events in grouped.items():
             sport = bk_events[0].get('sport', 'unknown') if bk_events else 'unknown'
-            event_name = f"{bk_events[0].get('home_team', '')} vs {bk_events[0].get('away_team', '')}" if bk_events else ''
+            primary_event = bk_events[0] if bk_events else {}
+            event_name = f"{primary_event.get('home_team', '')} vs {primary_event.get('away_team', '')}" if bk_events else ''
 
             over_by_line: Dict[float, List[Dict]] = defaultdict(list)
             under_by_line: Dict[float, List[Dict]] = defaultdict(list)
@@ -330,6 +361,11 @@ class CorridorFinder:
                                     event_name=event_name,
                                     sport=sport,
                                     corridor_type='totals',
+                                    home_team=primary_event.get('home_team', ''),
+                                    away_team=primary_event.get('away_team', ''),
+                                    league=primary_event.get('league', ''),
+                                    start_time=primary_event.get('start_time'),
+                                    is_live=bool(primary_event.get('is_live', False)),
                                     markets=[
                                         {
                                             'bookmaker': over_entry['bookmaker'],
@@ -360,7 +396,8 @@ class CorridorFinder:
 
         for event_key, bk_events in grouped.items():
             sport = bk_events[0].get('sport', 'unknown') if bk_events else 'unknown'
-            event_name = f"{bk_events[0].get('home_team', '')} vs {bk_events[0].get('away_team', '')}" if bk_events else ''
+            primary_event = bk_events[0] if bk_events else {}
+            event_name = f"{primary_event.get('home_team', '')} vs {primary_event.get('away_team', '')}" if bk_events else ''
 
             f1_entries: Dict[float, List[Dict]] = defaultdict(list)
             f2_entries: Dict[float, List[Dict]] = defaultdict(list)
@@ -419,6 +456,11 @@ class CorridorFinder:
                                     event_name=event_name,
                                     sport=sport,
                                     corridor_type='handicaps',
+                                    home_team=primary_event.get('home_team', ''),
+                                    away_team=primary_event.get('away_team', ''),
+                                    league=primary_event.get('league', ''),
+                                    start_time=primary_event.get('start_time'),
+                                    is_live=bool(primary_event.get('is_live', False)),
                                     markets=[
                                         {
                                             'bookmaker': f1_entry['bookmaker'],

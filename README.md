@@ -147,6 +147,13 @@ ghost_imperium/
 
 Базовый шаблон лежит в `.env.example`. Bootstrap копирует его в `.env` автоматически.
 
+Runtime config for Rust services is loaded from `config.yaml` if present and can be overridden via `FORK__...` environment variables.
+
+- `FORK__PROFILE=production` now enables strict startup validation.
+- Production rejects `features.offline_synced_events_fallback=enabled`.
+- Production rejects wildcard CORS (`server.cors_origins: ["*"]`).
+- Common invalid values also fail fast at startup: zero scan interval, broken profit range, empty proxy list with `proxies.enabled=true`, overlapping bookmaker allow/deny lists.
+
 ```env
 # Core scanner
 RUST_LOG=info

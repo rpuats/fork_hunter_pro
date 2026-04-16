@@ -82,7 +82,7 @@ Use git worktrees instead of letting multiple agents edit one checkout.
 
 ### Create worktrees
 ```powershell
-.\worktrees.ps1
+. .\worktrees.ps1
 New-ForkHunterSwarm -Bootstrap
 ```
 
@@ -111,6 +111,7 @@ Suggested split:
 ## Docs to read first
 - `OPENCLAW_WORKFLOW.md`
 - `OPENCLAW_STACK.md`
+- `docs/onboarding/AUTONOMOUS_SWARM.md`
 - `README.md` (historical; not fully aligned with the Rust workspace yet)
 - `Cargo.toml`
 

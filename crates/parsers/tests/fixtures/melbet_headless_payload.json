@@ -1,0 +1,61 @@
+[
+  {
+    "eventId": "7845123",
+    "home": "Liverpool",
+    "away": "Arsenal",
+    "league": "England. Premier League",
+    "sport": "football",
+    "href": "/line/football/7845123-liverpool-arsenal",
+    "sourceUrl": "https://melbet.ru/live",
+    "odds": [2.14, 3.52, 3.18]
+  },
+  {
+    "home": "Novak Djokovic",
+    "away": "Daniil Medvedev",
+    "league": "ATP Finals",
+    "sport": "tennis",
+    "href": "/line/tennis/novak-djokovic-daniil-medvedev",
+    "sourceUrl": "https://melbet.ru/line",
+    "odds": [1.73, 2.08]
+  },
+  {
+    "eventId": "991177",
+    "home": "Boston Celtics",
+    "away": "Miami Heat",
+    "league": "NBA",
+    "sport": "basketball",
+    "href": "/live/basketball/991177-boston-celtics-miami-heat",
+    "sourceUrl": "https://melbet.ru/live",
+    "odds": [1.64, 2.32]
+  },
+  {
+    "eventId": "36672593",
+    "home": "Atletico Madrid",
+    "away": "Barcelona",
+    "league": "UEFA Champions League",
+    "sport": "football",
+    "href": "javascript:$S.cp.addStake(36672593, 6484287952, 3.81, true, false, 14, null, null, 'Live Betting,');",
+    "sourceUrl": "https://sport.melbet.ru/partner/SportsBook/Home?initialRoute=%7B%22path%22%3A%22%2F%22%7D",
+    "odds": [3.81, 4.6, 1.77]
+  },
+  {
+    "eventId": "36649170",
+    "home": "Fleetwood Town(U21)",
+    "away": "Swansea City(U21)",
+    "league": "England. Development League. U21",
+    "sport": "Football",
+    "href": "",
+    "sourceUrl": "https://sport.melbet.ru/",
+    "odds": [33.0, 10.3, 1.02]
+  },
+  {
+    "eventId": "36526641",
+    "home": "Atletico Madrid",
+    "away": "Barcelona",
+    "league": "UEFA Champions League",
+    "sport": "Football",
+    "href": "",
+    "sourceUrl": "https://sport.melbet.ru/",
+    "odds": [3.8, 4.64, 1.76]
+  }
+]
