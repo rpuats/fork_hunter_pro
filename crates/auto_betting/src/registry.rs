@@ -4,6 +4,7 @@ use chrono::Utc;
 use dashmap::DashMap;
 use shared::{
     BetExecutionReceipt, BetExecutionRequest, BetExecutionStatus, BookmakerAccount,
+    BookmakerAdapterReadinessStage, BookmakerAuthSnapshot, BookmakerAuthState,
     BookmakerBalanceRefresh, BookmakerBalanceRefreshState, BookmakerBalanceSnapshot,
     BookmakerExecutionCapability, BookmakerExecutionMode, BookmakerSession, BookmakerSessionState,
     BookmakerSessionStatus, BookmakerSessionSyncState,
@@ -17,6 +18,7 @@ pub struct ExecutionRegistry {
     accounts: DashMap<String, BookmakerAccount>,
     sessions: DashMap<String, BookmakerSession>,
     balances: DashMap<String, BookmakerBalanceSnapshot>,
+    auth_snapshots: DashMap<String, BookmakerAuthSnapshot>,
     adapters: DashMap<String, Arc<dyn BookmakerExecutionAdapter>>,
     persistence: Option<Arc<dyn ExecutionRegistryPersistence>>,
 }
@@ -35,6 +37,7 @@ impl ExecutionRegistry {
             accounts: DashMap::new(),
             sessions: DashMap::new(),
             balances: DashMap::new(),
+            auth_snapshots: DashMap::new(),
             adapters: DashMap::new(),
             persistence,
         };
@@ -62,13 +65,20 @@ impl ExecutionRegistry {
             self.balances.insert(balance.bookmaker.clone(), balance);
         }
 
+        for auth_snapshot in snapshot.auth_snapshots {
+            self.auth_snapshots
+                .insert(auth_snapshot.bookmaker.clone(), auth_snapshot);
+        }
+
         Ok(())
     }
 
     pub fn register_account(&self, account: BookmakerAccount) {
+        let bookmaker = account.bookmaker.clone();
         self.accounts
             .insert(account.bookmaker.clone(), account.clone());
         self.persist_account(account);
+        self.refresh_auth_snapshot_for_bookmaker(&bookmaker);
     }
 
     pub fn get_account(&self, bookmaker: &str) -> Option<BookmakerAccount> {
@@ -113,6 +123,7 @@ impl ExecutionRegistry {
         drop(account);
 
         self.persist_account(updated.clone());
+        self.refresh_auth_snapshot_for_bookmaker(bookmaker);
         Ok(updated)
     }
 
@@ -131,6 +142,10 @@ impl ExecutionRegistry {
             bookmakers.insert(entry.key().clone());
         }
 
+        for entry in self.auth_snapshots.iter() {
+            bookmakers.insert(entry.key().clone());
+        }
+
         for entry in self.adapters.iter() {
             bookmakers.insert(entry.key().clone());
         }
@@ -139,9 +154,10 @@ impl ExecutionRegistry {
     }
 
     pub fn upsert_session(&self, session: BookmakerSession) {
-        self.sessions
-            .insert(session.bookmaker.clone(), session.clone());
+        let bookmaker = session.bookmaker.clone();
+        self.sessions.insert(bookmaker.clone(), session.clone());
         self.persist_session(session);
+        self.refresh_auth_snapshot_for_bookmaker(&bookmaker);
     }
 
     pub fn get_session(&self, bookmaker: &str) -> Option<BookmakerSession> {
@@ -149,9 +165,10 @@ impl ExecutionRegistry {
     }
 
     pub fn upsert_balance_snapshot(&self, snapshot: BookmakerBalanceSnapshot) {
-        self.balances
-            .insert(snapshot.bookmaker.clone(), snapshot.clone());
+        let bookmaker = snapshot.bookmaker.clone();
+        self.balances.insert(bookmaker.clone(), snapshot.clone());
         self.persist_balance_snapshot(snapshot);
+        self.refresh_auth_snapshot_for_bookmaker(&bookmaker);
     }
 
     pub fn get_balance_snapshot(&self, bookmaker: &str) -> Option<BookmakerBalanceSnapshot> {
@@ -162,6 +179,102 @@ impl ExecutionRegistry {
         let mut snapshots: Vec<_> = self.balances.iter().map(|entry| entry.clone()).collect();
         snapshots.sort_by(|left, right| left.bookmaker.cmp(&right.bookmaker));
         snapshots
+    }
+
+    pub fn get_auth_snapshot(&self, bookmaker: &str) -> Option<BookmakerAuthSnapshot> {
+        self.auth_snapshots
+            .get(bookmaker)
+            .map(|entry| entry.clone())
+    }
+
+    fn refresh_auth_snapshot_for_bookmaker(&self, bookmaker: &str) {
+        if bookmaker.trim().is_empty() {
+            return;
+        }
+
+        let snapshot = self.compute_auth_snapshot(bookmaker);
+        self.auth_snapshots
+            .insert(bookmaker.to_string(), snapshot.clone());
+        self.persist_auth_snapshot(snapshot);
+    }
+
+    fn compute_auth_snapshot(&self, bookmaker: &str) -> BookmakerAuthSnapshot {
+        let account = self.get_account(bookmaker);
+        let session = self.get_session(bookmaker);
+        let balance = self.get_balance_snapshot(bookmaker);
+        let capability = self.get_capability(bookmaker);
+        let captured_at = Utc::now();
+
+        let auth_state = match session.as_ref() {
+            None => BookmakerAuthState::NoSession,
+            Some(session)
+                if session
+                    .expires_at
+                    .is_some_and(|expires_at| expires_at <= captured_at) =>
+            {
+                BookmakerAuthState::Expired
+            }
+            Some(session) => match session.state {
+                BookmakerSessionState::Configured => BookmakerAuthState::Configured,
+                BookmakerSessionState::Active => BookmakerAuthState::Authenticated,
+                BookmakerSessionState::Expired => BookmakerAuthState::Expired,
+                BookmakerSessionState::Locked => BookmakerAuthState::Locked,
+                BookmakerSessionState::Disconnected => BookmakerAuthState::Disconnected,
+            },
+        };
+        let authenticated = matches!(auth_state, BookmakerAuthState::Authenticated);
+
+        let placement_mode_enabled = account
+            .as_ref()
+            .map(|item| item.enabled && item.mode.allows_submission_path())
+            .unwrap_or(false);
+        let real_money_enabled = placement_mode_enabled && capability.supports_real_money;
+        let safe_mode_blocked = placement_mode_enabled && !capability.supports_real_money;
+        let readiness_stage = if real_money_enabled {
+            BookmakerAdapterReadinessStage::RealMoneyReady
+        } else if safe_mode_blocked {
+            BookmakerAdapterReadinessStage::SafeModePlacementReady
+        } else if authenticated {
+            BookmakerAdapterReadinessStage::AuthenticatedReadOnly
+        } else {
+            BookmakerAdapterReadinessStage::SessionBootstrapPending
+        };
+
+        let detail = Some(match readiness_stage {
+            BookmakerAdapterReadinessStage::RealMoneyReady => {
+                format!("{bookmaker} adapter is authenticated and real-money capable")
+            }
+            BookmakerAdapterReadinessStage::SafeModePlacementReady => format!(
+                "{bookmaker} adapter reached safe-mode placement readiness; submit remains blocked"
+            ),
+            BookmakerAdapterReadinessStage::AuthenticatedReadOnly => format!(
+                "{bookmaker} adapter is authenticated for read-only checks with cached balance state"
+            ),
+            BookmakerAdapterReadinessStage::SessionBootstrapPending => format!(
+                "{bookmaker} adapter still requires operator-managed session/bootstrap readiness"
+            ),
+        });
+
+        BookmakerAuthSnapshot {
+            account_id: account.as_ref().map(|item| item.id),
+            bookmaker: bookmaker.to_string(),
+            auth_state,
+            readiness_stage,
+            mode: account.as_ref().map(|item| item.mode.clone()),
+            enabled: account.as_ref().map(|item| item.enabled).unwrap_or(false),
+            cached_balance_available: balance.is_some(),
+            submit_enabled: placement_mode_enabled,
+            real_money_enabled,
+            safe_mode_blocked,
+            session_last_synced_at: session.as_ref().map(|item| item.last_synced_at),
+            balance_captured_at: balance.as_ref().map(|item| item.captured_at),
+            last_authenticated_at: session
+                .as_ref()
+                .filter(|item| authenticated && matches!(item.state, BookmakerSessionState::Active))
+                .map(|item| item.last_synced_at),
+            detail,
+            captured_at,
+        }
     }
 
     pub fn register_adapter(
@@ -187,6 +300,7 @@ impl ExecutionRegistry {
         let session = self.get_session(bookmaker);
 
         let Some(account) = account else {
+            self.refresh_auth_snapshot_for_bookmaker(bookmaker);
             return Ok(BookmakerSessionStatus {
                 account_id: None,
                 bookmaker: bookmaker.to_string(),
@@ -216,6 +330,8 @@ impl ExecutionRegistry {
             existing_session.state = map_sync_state_to_session_state(&status.sync_state);
             existing_session.last_synced_at = status.checked_at;
             self.upsert_session(existing_session);
+        } else {
+            self.refresh_auth_snapshot_for_bookmaker(bookmaker);
         }
 
         Ok(status)
@@ -257,6 +373,8 @@ impl ExecutionRegistry {
 
         if let Some(snapshot) = refresh.snapshot.clone() {
             self.upsert_balance_snapshot(snapshot.clone());
+        } else {
+            self.refresh_auth_snapshot_for_bookmaker(bookmaker);
         }
 
         Ok(refresh)
@@ -393,6 +511,14 @@ impl ExecutionRegistry {
         };
 
         spawn_persistence_task(async move { persistence.save_balance_snapshot(&snapshot).await });
+    }
+
+    fn persist_auth_snapshot(&self, snapshot: BookmakerAuthSnapshot) {
+        let Some(persistence) = self.persistence.as_ref().map(Arc::clone) else {
+            return;
+        };
+
+        spawn_persistence_task(async move { persistence.save_auth_snapshot(&snapshot).await });
     }
 }
 
@@ -547,7 +673,10 @@ mod tests {
     use super::*;
     use crate::persistence::ExecutionRegistrySnapshot;
     use async_trait::async_trait;
-    use shared::{BetExecutionStatus, BookmakerExecutionMode, BookmakerSessionState};
+    use shared::{
+        BetExecutionStatus, BookmakerAdapterReadinessStage, BookmakerAuthState,
+        BookmakerExecutionMode, BookmakerSessionState,
+    };
     use std::sync::Mutex;
     use uuid::Uuid;
 
@@ -589,6 +718,18 @@ mod tests {
                 .balances
                 .retain(|item| item.bookmaker != balance.bookmaker);
             snapshot.balances.push(balance.clone());
+            Ok(())
+        }
+
+        async fn save_auth_snapshot(
+            &self,
+            auth_snapshot: &BookmakerAuthSnapshot,
+        ) -> Result<(), String> {
+            let mut snapshot = self.snapshot.lock().unwrap();
+            snapshot
+                .auth_snapshots
+                .retain(|item| item.bookmaker != auth_snapshot.bookmaker);
+            snapshot.auth_snapshots.push(auth_snapshot.clone());
             Ok(())
         }
     }
@@ -634,6 +775,13 @@ mod tests {
                 .unwrap()
                 .available_balance,
             7_500.0
+        );
+        assert_eq!(
+            registry
+                .get_auth_snapshot("pari")
+                .expect("auth snapshot should exist")
+                .auth_state,
+            BookmakerAuthState::Authenticated
         );
     }
 
@@ -953,6 +1101,8 @@ mod tests {
         assert!(pari.supports_bet_placement);
         assert!(!pari.supports_real_money);
         assert!(pari.account_metadata.supports_read_only_session_sync);
+        assert_eq!(pari.account_metadata.auth.flow, "manual_cookie_session");
+        assert!(pari.account_metadata.readiness.safe_mode_only);
         assert_eq!(
             pari.account_metadata.api_base_url.as_deref(),
             Some("https://api.pari.ru")
@@ -965,6 +1115,7 @@ mod tests {
         assert!(!fonbet.supports_bet_placement);
         assert!(!fonbet.supports_real_money);
         assert!(fonbet.account_metadata.supports_read_only_balance_refresh);
+        assert!(fonbet.account_metadata.auth.requires_human_bootstrap);
         assert_eq!(
             fonbet.account_metadata.api_base_url.as_deref(),
             Some("https://clientsapi24.fonbet.ru")
@@ -1016,6 +1167,13 @@ mod tests {
             BookmakerSessionSyncState::Authenticated
         );
         assert_eq!(refresh.snapshot.unwrap().available_balance, 7_500.0);
+        assert_eq!(
+            registry
+                .get_auth_snapshot("pari")
+                .expect("auth snapshot should exist")
+                .readiness_stage,
+            BookmakerAdapterReadinessStage::AuthenticatedReadOnly
+        );
     }
 
     #[test]
@@ -1122,6 +1280,23 @@ mod tests {
                 accounts: vec![account.clone()],
                 sessions: vec![session.clone()],
                 balances: vec![balance.clone()],
+                auth_snapshots: vec![BookmakerAuthSnapshot {
+                    account_id: Some(account.id),
+                    bookmaker: account.bookmaker.clone(),
+                    auth_state: BookmakerAuthState::Authenticated,
+                    readiness_stage: BookmakerAdapterReadinessStage::AuthenticatedReadOnly,
+                    mode: Some(BookmakerExecutionMode::DryRun),
+                    enabled: true,
+                    cached_balance_available: true,
+                    submit_enabled: false,
+                    real_money_enabled: false,
+                    safe_mode_blocked: false,
+                    session_last_synced_at: Some(session.last_synced_at),
+                    balance_captured_at: Some(balance.captured_at),
+                    last_authenticated_at: Some(session.last_synced_at),
+                    detail: Some("persisted auth snapshot".into()),
+                    captured_at: Utc::now(),
+                }],
             }),
         });
         let registry = ExecutionRegistry::with_persistence(store.clone());
@@ -1129,6 +1304,13 @@ mod tests {
         registry.restore_persisted_state().await.unwrap();
         assert_eq!(registry.get_account("pari").unwrap().id, account.id);
         assert_eq!(registry.get_session("pari").unwrap().account_id, account.id);
+        assert_eq!(
+            registry
+                .get_auth_snapshot("pari")
+                .expect("auth snapshot should restore")
+                .auth_state,
+            BookmakerAuthState::Authenticated
+        );
         assert_eq!(
             registry
                 .get_balance_snapshot("pari")
@@ -1145,5 +1327,6 @@ mod tests {
         let persisted = store.load_snapshot().await.unwrap();
         assert_eq!(persisted.accounts.len(), 1);
         assert_eq!(persisted.accounts[0].label, "updated");
+        assert_eq!(persisted.auth_snapshots.len(), 1);
     }
 }

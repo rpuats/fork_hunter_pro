@@ -34,8 +34,8 @@ These bookmakers have concrete discovery artifacts in the repo, but no active Ru
 
 | Bookmaker | Legacy evidence already in repo | Recommended class | Why this class |
 |---|---|---|---|
-| BetBoom | `scanner/parsers/betboom_intercept.py`, `temp_betboom_*`, `network_capture/betboom_api.json` | Browser interception → later HTTP API | Current evidence shows dynamic API calls behind page flow. Start by stabilizing intercepted JSON shapes, then promote to direct HTTP only after endpoint/auth pattern is proven. |
-| Liga Stavok | `scanner/parsers/ligastavok_api.py`, `scanner/parsers/ligastavok_playwright.py`, `network_capture/ligastavok_network.json` | Browser interception / bridge | Strong anti-bot/cookie gating (`qrator`, `lds-api-sites`). Sustainable path is browser-assisted bootstrap + intercepted API payloads, not raw bypass tricks. |
+| BetBoom | `scanner/parsers/betboom_intercept.py`, `temp_betboom_*`, `network_capture/betboom_api.json` | Browser interception / runtime-card fallback | Current evidence shows dynamic API calls behind page flow and compact runtime cards in rendered captures. Keep the Sporthub contract scaffold guarded, but now prefer the compact card fallback before declaring an empty result. |
+| Liga Stavok | `scanner/parsers/ligastavok_api.py`, `scanner/parsers/ligastavok_playwright.py`, `network_capture/ligastavok_network.json` | Browser interception / bridge | Strong anti-bot/cookie gating (`qrator`, `lds-api-sites`). Runtime diagnostics now classify `ready`, `protection_only`, `header_only`, and `bootstrap_unavailable` bootstrap states instead of pretending protection cookies are a usable session. Sustainable path is browser-assisted bootstrap + intercepted API payloads, not raw bypass tricks. |
 | 1xStavka | `scanner/parsers/onexstavka_parser.py`, `test_1xstavka_finder.py`, `1xstavka_*` artifacts | HTTP API if mirror/feed remains valid; otherwise browser interception | Legacy code already targets feed-style JSON. This looks like the best missing candidate for a direct parser if endpoint stability is confirmed. |
 | Melbet | `scanner/parsers/melbet_intercept.py`, `temp_melbet_*` | Browser interception | Legacy notes already describe SPA/network interception as the realistic path. Avoid DOM-first parser work. |
 | Pin-Up | `scanner/parsers/pinup_parser.py`, `explore_pinup.py` | Browser interception discovery first | Existing parser looks exploratory and assumes endpoint shapes. Needs real network capture before committing to HTTP API. |
@@ -93,6 +93,7 @@ Do not add scraper code whose only purpose is to defeat anti-bot systems. If bro
   - implemented only in legacy Python,
   - disabled due to payload complexity,
   - or still in discovery mode.
+- Liga Stavok still depends on browser-assisted bootstrap or captured session material; the Rust parser now reports the blocker state explicitly, but the external protection posture remains the operational gate.
 
 ## Suggested next implementation tickets
 

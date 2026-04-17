@@ -153,11 +153,46 @@ export interface ExecutionBookmakerStateSummary {
   latest_error: string | null
 }
 
+export type BookmakerExecutionMode = 'NoOp' | 'Disabled' | 'DryRun' | 'Armed' | 'SemiRealReady' | 'Real'
+
+export interface ExecutionStateReadinessSummary {
+  total_bookmakers: number
+  accounts_configured: number
+  accounts_enabled: number
+  auth_ready: number
+  sessions_authenticated: number
+  balances_cached: number
+  dry_run_ready: number
+  placement_ready: number
+  approval_required: number
+  submit_blocked_by_safe_mode: number
+  operator_attention_required: number
+}
+
+export interface ExecutionBookmakerReadinessRecord {
+  bookmaker: string
+  account_configured: boolean
+  account_enabled: boolean
+  execution_mode: BookmakerExecutionMode | null
+  requires_session: boolean
+  auth_ready: boolean
+  session_authenticated: boolean
+  balance_cached: boolean
+  dry_run_ready: boolean
+  placement_ready: boolean
+  approval_required: boolean
+  submit_blocked_by_safe_mode: boolean
+  operator_action: string | null
+  blocking_reasons: string[]
+}
+
 export interface ExecutionStateAudit {
   total_snapshots: number
   total_transitions: number
   latest_snapshot_at: string | null
   latest_transition_at: string | null
+  readiness: ExecutionStateReadinessSummary
+  bookmaker_readiness: ExecutionBookmakerReadinessRecord[]
   bookmaker_summaries: ExecutionBookmakerStateSummary[]
   recent_transitions: ExecutionStateTransitionRecord[]
   generated_at: string
@@ -461,6 +496,39 @@ export interface BackendGenerosityIndex {
 }
 
 export type GenerosityIndex = BackendGenerosityIndex
+
+export interface FreebetLifecycleLabelCount {
+  label: string
+  count: number
+}
+
+export interface FreebetLifecycleFundingGapLeader {
+  bookmaker: string
+  amount: number
+}
+
+export interface FreebetLifecycleSummary {
+  total_bookmakers: number
+  opportunities: number
+  active_bonuses: number
+  tracked_plans: number
+  deposit_required_bookmakers: number
+  blocked_states: number
+  total_funding_gap: number
+  largest_funding_gap: FreebetLifecycleFundingGapLeader | null
+  discovered: number
+  available: number
+  qualified: number
+  planned: number
+  rollover_in_progress: number
+  rollover_completed: number
+  next_milestones: FreebetLifecycleLabelCount[]
+  blockers: FreebetLifecycleLabelCount[]
+  read_only_focuses: FreebetLifecycleLabelCount[]
+  total_freebet_amount: number
+  total_estimated_profit: number
+  generated_at: string
+}
 
 export interface CorridorLeg {
   bookmaker: string

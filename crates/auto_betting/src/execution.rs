@@ -2,9 +2,10 @@ use async_trait::async_trait;
 use chrono::Utc;
 use shared::{
     BetExecutionReceipt, BetExecutionRequest, BetExecutionStatus, BookmakerAccount,
-    BookmakerAccountCapabilityMetadata, BookmakerBalanceRefresh, BookmakerBalanceSnapshot,
-    BookmakerExecutionCapability, BookmakerExecutionMode, BookmakerSession, BookmakerSessionStatus,
-    BookmakerSessionSyncState,
+    BookmakerAccountCapabilityMetadata, BookmakerAdapterAuthMetadata,
+    BookmakerAdapterReadinessMetadata, BookmakerAdapterReadinessStage, BookmakerBalanceRefresh,
+    BookmakerBalanceSnapshot, BookmakerExecutionCapability, BookmakerExecutionMode,
+    BookmakerSession, BookmakerSessionStatus, BookmakerSessionSyncState,
 };
 
 #[async_trait]
@@ -66,6 +67,19 @@ impl BookmakerExecutionAdapter for NoopExecutionAdapter {
                 supports_read_only_session_sync: true,
                 supports_read_only_balance_refresh: true,
                 remote_balance_fetch_enabled: false,
+                auth: BookmakerAdapterAuthMetadata {
+                    flow: "noop".into(),
+                    requires_human_bootstrap: false,
+                    session_bootstrap_enabled: false,
+                    session_refresh_enabled: false,
+                    persisted_snapshot_enabled: true,
+                },
+                readiness: BookmakerAdapterReadinessMetadata {
+                    stage: BookmakerAdapterReadinessStage::SessionBootstrapPending,
+                    safe_mode_only: true,
+                    approval_reference_required: false,
+                    operator_notes: vec!["noop adapter has no auth bootstrap path".into()],
+                },
                 notes: vec!["noop adapter exposes cached state only".into()],
             },
         }

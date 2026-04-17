@@ -15,12 +15,26 @@ use tracing::{debug, info, warn};
 const BOOKMAKER_SLUG: &str = "betboom";
 const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 const BASE_URL: &str = "https://betboom.ru";
-const HEADLESS_WAIT_MS: u64 = 5_000;
-const FILTER_WAIT_MS: u64 = 2_500;
-const SCROLL_STEPS: usize = 2;
+const HEADLESS_WAIT_MS: u64 = 1_500;
+const HEADLESS_NAVIGATION_TIMEOUT_MS: u64 = 12_000;
+const HEADLESS_KNOWN_BLOCKER_NAVIGATION_TIMEOUT_MS: u64 = 4_500;
+const FILTER_WAIT_MS: u64 = 800;
+const SCROLL_STEPS: usize = 1;
 const PREMATCH_FILTER_TEXT: &str = "1н";
 const MIN_SNAPSHOT_TEXT_LEN: usize = 80;
 const SNAPSHOT_PREVIEW_CHARS: usize = 96;
+const RUNTIME_PROBE_BUDGET_MS: u64 = 28_000;
+const RUNTIME_WALL_CLOCK_CUTOFF_MS: u64 = 45_000;
+const RUNTIME_SUCCESS_EVENT_THRESHOLD: usize = 2;
+const PRIMARY_FOCUSED_PROBE_EXIT_THRESHOLD: usize = 2;
+const EMPTY_RENDERED_DIAGNOSTIC_EXIT_THRESHOLD: usize = 4;
+const KNOWN_BLOCKER_LIVE_FOOTBALL_URL: &str = "https://betboom.ru/sport/live/football";
+const FOCUSED_RUNTIME_PROBE_URLS: &[&str] = &[
+    "https://betboom.ru/sport/football",
+    "https://betboom.ru/sport/live/tennis",
+    "https://betboom.ru/sport/tennis",
+    "https://betboom.ru/sport/live/football",
+];
 
 #[cfg_attr(not(test), allow(dead_code))]
 pub(crate) mod sporthub_helper {
@@ -446,6 +460,22 @@ struct RuntimeDiagnosticSummary {
     root_cause_counts: Vec<(String, usize)>,
 }
 
+#[derive(Debug)]
+struct RuntimeExecutionResult {
+    events: Vec<Event>,
+    odds: Vec<Odd>,
+    reports: Vec<ProbeReport>,
+    planned_probes: usize,
+    budget_exhausted: bool,
+}
+
+#[derive(Debug)]
+struct ProbeExecutionResult {
+    report: ProbeReport,
+    events: Vec<Event>,
+    odds: Vec<Odd>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct RenderedSnapshot {
     strategy: String,
@@ -459,6 +489,9 @@ struct RenderedTextAnalysis {
     market_labels: usize,
     price_lines: usize,
     market_price_pairs: usize,
+    inline_market_pairs: usize,
+    inline_status_markers: usize,
+    inline_form_markers: usize,
     block_count: usize,
     explicit_boundaries: usize,
     implicit_boundaries: usize,
@@ -633,14 +666,22 @@ impl BetboomParser {
     pub(crate) async fn fetch_runtime_data(
         &self,
     ) -> Result<(Vec<Event>, Vec<Odd>), Box<dyn std::error::Error + Send + Sync>> {
+        let probes = Self::runtime_probe_plan();
         info!(
-            probes = PROBES.len(),
+            probes = probes.len(),
             "BetBoom: collecting runtime data from rendered sport pages"
         );
 
-        let (events, odds, reports) = self.fetch_via_headless().await?;
+        let RuntimeExecutionResult {
+            events,
+            odds,
+            reports,
+            planned_probes,
+            budget_exhausted,
+        } = self.fetch_via_headless(probes).await?;
         if events.is_empty() && odds.is_empty() {
-            let diagnostic = Self::format_empty_runtime_diagnostic(&reports);
+            let diagnostic =
+                Self::format_empty_runtime_diagnostic(&reports, planned_probes, budget_exhausted);
             warn!(diagnostic = %diagnostic, "BetBoom: rendered runtime extraction returned no data");
             return Err(Self::boxed_error(diagnostic));
         }
@@ -658,116 +699,339 @@ impl BetboomParser {
         Ok((events, odds))
     }
 
+    fn runtime_probe_plan() -> Vec<Probe> {
+        let focused = FOCUSED_RUNTIME_PROBE_URLS
+            .iter()
+            .filter_map(|url| PROBES.iter().copied().find(|probe| probe.url == *url))
+            .collect::<Vec<_>>();
+
+        if focused.is_empty() {
+            return PROBES.to_vec();
+        }
+
+        focused
+    }
+
+    fn headless_navigation_timeout_ms(probe: &Probe) -> u64 {
+        if probe.url == KNOWN_BLOCKER_LIVE_FOOTBALL_URL {
+            HEADLESS_KNOWN_BLOCKER_NAVIGATION_TIMEOUT_MS
+        } else {
+            HEADLESS_NAVIGATION_TIMEOUT_MS
+        }
+    }
+
+    fn probe_wall_clock_timeout_ms(probe: &Probe) -> u64 {
+        Self::headless_navigation_timeout_ms(probe)
+            + HEADLESS_WAIT_MS
+            + if probe.prematch_filter.is_some() {
+                FILTER_WAIT_MS
+            } else {
+                0
+            }
+            + 4_000
+    }
+
+    fn is_navigation_readiness_timeout(error: &str) -> bool {
+        error.contains("headless navigation readiness timeout")
+    }
+
+    fn navigation_root_cause(error: &str) -> &'static str {
+        if Self::is_navigation_readiness_timeout(error) {
+            "navigation_readiness_timeout"
+        } else {
+            "navigation_failed"
+        }
+    }
+
     async fn fetch_via_headless(
         &self,
-    ) -> Result<(Vec<Event>, Vec<Odd>, Vec<ProbeReport>), Box<dyn std::error::Error + Send + Sync>>
-    {
-        let probes = PROBES.to_vec();
-        tokio::task::spawn_blocking(move || Self::fetch_headless_runtime_data_blocking(&probes))
-            .await
-            .map_err(|error| -> Box<dyn std::error::Error + Send + Sync> { Box::new(error) })?
+        probes: Vec<Probe>,
+    ) -> Result<RuntimeExecutionResult, Box<dyn std::error::Error + Send + Sync>> {
+        tokio::task::spawn_blocking(move || {
+            use std::sync::mpsc;
+            use std::time::Duration;
+
+            let planned_probes = probes.len();
+            let blocker_probe = probes.first().copied();
+            let (tx, rx) = mpsc::channel();
+
+            std::thread::spawn(move || {
+                let result = Self::fetch_headless_runtime_data_blocking(&probes);
+                let _ = tx.send(result);
+            });
+
+            match rx.recv_timeout(Duration::from_millis(RUNTIME_WALL_CLOCK_CUTOFF_MS)) {
+                Ok(result) => result,
+                Err(mpsc::RecvTimeoutError::Timeout) => {
+                    warn!(
+                        cutoff_ms = RUNTIME_WALL_CLOCK_CUTOFF_MS,
+                        planned_probes,
+                        "BetBoom: wall-clock cutoff reached before headless runtime completed"
+                    );
+                    Ok(Self::wall_clock_cutoff_result(
+                        blocker_probe,
+                        planned_probes,
+                        RUNTIME_WALL_CLOCK_CUTOFF_MS,
+                    ))
+                }
+                Err(mpsc::RecvTimeoutError::Disconnected) => Err(Self::boxed_error(
+                    "BetBoom headless runtime worker disconnected before returning a result",
+                )),
+            }
+        })
+        .await
+        .map_err(|error| -> Box<dyn std::error::Error + Send + Sync> { Box::new(error) })?
     }
 
     fn fetch_headless_runtime_data_blocking(
         probes: &[Probe],
-    ) -> Result<(Vec<Event>, Vec<Odd>, Vec<ProbeReport>), Box<dyn std::error::Error + Send + Sync>>
-    {
-        let helper = HeadlessChromeHelper::new()?;
+    ) -> Result<RuntimeExecutionResult, Box<dyn std::error::Error + Send + Sync>> {
         let mut all_events = Vec::new();
         let mut all_odds = Vec::new();
         let mut seen = HashSet::new();
         let mut reports = Vec::with_capacity(probes.len());
+        let mut budget_exhausted = false;
+        let started = std::time::Instant::now();
 
         for probe in probes {
-            let tab = match helper.navigate_and_wait(probe.url, HEADLESS_WAIT_MS) {
-                Ok(tab) => tab,
-                Err(error) => {
-                    warn!(url = probe.url, error = %error, "BetBoom: headless navigation failed");
-                    reports.push(ProbeReport {
-                        url: probe.url,
-                        sport: probe.sport,
-                        is_live: probe.is_live,
-                        navigation_ok: false,
-                        navigation_error: Some(error.to_string()),
-                        snapshots: 0,
-                        rendered_chars: 0,
-                        strategies: Vec::new(),
-                        events: 0,
-                        odds: 0,
-                        preview: None,
-                        rendered_probe: None,
-                        root_cause: Some("navigation_failed".to_string()),
-                    });
+            let elapsed_ms = started.elapsed().as_millis() as u64;
+            if elapsed_ms >= RUNTIME_PROBE_BUDGET_MS
+                || !Self::runtime_budget_allows_probe(elapsed_ms, probe)
+            {
+                budget_exhausted = true;
+                warn!(
+                    elapsed_ms,
+                    executed_probes = reports.len(),
+                    planned_probes = probes.len(),
+                    "BetBoom: runtime probe budget exhausted"
+                );
+                break;
+            }
+
+            let probe_timeout_ms = Self::probe_wall_clock_timeout_ms(probe);
+            let probe_result = match Self::execute_probe_with_timeout(*probe, probe_timeout_ms) {
+                Ok(result) => result,
+                Err(report) => {
+                    reports.push(report);
                     continue;
                 }
             };
 
-            if let Some(filter_text) = probe.prematch_filter {
-                let clicked = Self::click_visible_text(&tab, filter_text);
-                debug!(
-                    url = probe.url,
-                    filter = filter_text,
-                    clicked,
-                    "BetBoom: prematch filter attempt"
+            for event in probe_result.events {
+                if seen.insert(event.id.clone()) {
+                    all_events.push(event);
+                }
+            }
+            all_odds.extend(probe_result.odds);
+            reports.push(probe_result.report);
+
+            let has_live_data = reports
+                .iter()
+                .any(|report| report.is_live && report.events > 0);
+            let has_prematch_data = reports
+                .iter()
+                .any(|report| !report.is_live && report.events > 0);
+            if has_live_data
+                && has_prematch_data
+                && all_events.len() >= RUNTIME_SUCCESS_EVENT_THRESHOLD
+            {
+                info!(
+                    total_events = all_events.len(),
+                    total_odds = all_odds.len(),
+                    executed_probes = reports.len(),
+                    planned_probes = probes.len(),
+                    "BetBoom: stopping runtime probe loop after live and prematch signal"
                 );
-                std::thread::sleep(std::time::Duration::from_millis(FILTER_WAIT_MS));
+                break;
             }
 
-            let snapshots = Self::collect_text_snapshots(&tab);
+            if let Some(status) = Self::empty_rendered_probe_exit_status(&reports) {
+                warn!(
+                    status,
+                    executed_probes = reports.len(),
+                    planned_probes = probes.len(),
+                    "BetBoom: stopping runtime probe loop after empty rendered focused probes"
+                );
+                break;
+            }
+        }
+
+        Ok(RuntimeExecutionResult {
+            events: all_events,
+            odds: all_odds,
+            reports,
+            planned_probes: probes.len(),
+            budget_exhausted,
+        })
+    }
+
+    fn execute_probe_with_timeout(
+        probe: Probe,
+        timeout_ms: u64,
+    ) -> Result<ProbeExecutionResult, ProbeReport> {
+        use std::sync::mpsc;
+        use std::time::Duration;
+
+        let (tx, rx) = mpsc::channel();
+        std::thread::spawn(move || {
+            let result = Self::fetch_probe_runtime_data_blocking(probe);
+            let _ = tx.send(result);
+        });
+
+        match rx.recv_timeout(Duration::from_millis(timeout_ms.max(1))) {
+            Ok(Ok(result)) => Ok(result),
+            Ok(Err(report)) => Err(report),
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                warn!(url = probe.url, timeout_ms, "BetBoom: probe wall-clock timeout reached");
+                Err(ProbeReport {
+                    url: probe.url,
+                    sport: probe.sport,
+                    is_live: probe.is_live,
+                    navigation_ok: false,
+                    navigation_error: Some(format!(
+                        "probe wall clock timeout after {timeout_ms}ms before a useful runtime result"
+                    )),
+                    snapshots: 0,
+                    rendered_chars: 0,
+                    strategies: Vec::new(),
+                    events: 0,
+                    odds: 0,
+                    preview: None,
+                    rendered_probe: None,
+                    root_cause: Some(format!(
+                        "probe_wall_clock_cutoff[timeout_ms={timeout_ms}]"
+                    )),
+                })
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => Err(ProbeReport {
+                url: probe.url,
+                sport: probe.sport,
+                is_live: probe.is_live,
+                navigation_ok: false,
+                navigation_error: Some(
+                    "probe worker disconnected before returning a runtime result".to_string(),
+                ),
+                snapshots: 0,
+                rendered_chars: 0,
+                strategies: Vec::new(),
+                events: 0,
+                odds: 0,
+                preview: None,
+                rendered_probe: None,
+                root_cause: Some("probe_worker_disconnected".to_string()),
+            }),
+        }
+    }
+
+    fn fetch_probe_runtime_data_blocking(probe: Probe) -> Result<ProbeExecutionResult, ProbeReport> {
+        let helper = HeadlessChromeHelper::new().map_err(|error| ProbeReport {
+            url: probe.url,
+            sport: probe.sport,
+            is_live: probe.is_live,
+            navigation_ok: false,
+            navigation_error: Some(error.to_string()),
+            snapshots: 0,
+            rendered_chars: 0,
+            strategies: Vec::new(),
+            events: 0,
+            odds: 0,
+            preview: None,
+            rendered_probe: None,
+            root_cause: Some("headless_helper_init_failed".to_string()),
+        })?;
+
+        let tab = helper
+            .navigate_and_wait_with_timeout(
+                probe.url,
+                HEADLESS_WAIT_MS,
+                Self::headless_navigation_timeout_ms(&probe),
+            )
+            .map_err(|error| {
+                let error_message = error.to_string();
+                warn!(url = probe.url, error = %error_message, "BetBoom: headless navigation failed");
+                ProbeReport {
+                    url: probe.url,
+                    sport: probe.sport,
+                    is_live: probe.is_live,
+                    navigation_ok: false,
+                    navigation_error: Some(error_message.clone()),
+                    snapshots: 0,
+                    rendered_chars: 0,
+                    strategies: Vec::new(),
+                    events: 0,
+                    odds: 0,
+                    preview: None,
+                    rendered_probe: None,
+                    root_cause: Some(Self::navigation_root_cause(&error_message).to_string()),
+                }
+            })?;
+
+        if let Some(filter_text) = probe.prematch_filter {
+            let clicked = Self::click_visible_text(&tab, filter_text);
             debug!(
                 url = probe.url,
-                snapshots = snapshots.len(),
-                "BetBoom: text snapshots collected"
+                filter = filter_text,
+                clicked,
+                "BetBoom: prematch filter attempt"
             );
-
-            let mut probe_events = 0;
-            let mut probe_odds = 0;
-            let mut best_empty_root_cause = None;
-            let mut best_empty_root_cause_score = None;
-            let mut best_rendered_probe = None;
-            let mut best_rendered_score = None;
-            let snapshot_count = snapshots.len();
-            let rendered_chars = snapshots.iter().map(|snapshot| snapshot.text.len()).sum();
-            let preview = snapshots
-                .iter()
-                .map(|snapshot| Self::snapshot_preview(&snapshot.text))
-                .find(|preview| !preview.is_empty());
-            let strategies = snapshots
-                .iter()
-                .map(|snapshot| snapshot.strategy.to_string())
-                .collect::<Vec<_>>();
-
-            for snapshot in &snapshots {
-                if let Some(analysis) = Self::analyze_rendered_text(&snapshot.text) {
-                    let score = Self::rendered_probe_score(&analysis);
-                    if best_rendered_score.is_none_or(|current| score > current) {
-                        best_rendered_score = Some(score);
-                        best_rendered_probe = Some(format!(
-                            "{}:{}",
-                            snapshot.strategy,
-                            Self::format_rendered_analysis(&analysis)
-                        ));
-                    }
-                    if let Some(diagnostic) = Self::diagnose_empty_rendered_text(&snapshot.text) {
-                        if best_empty_root_cause_score.is_none_or(|current| score >= current) {
-                            best_empty_root_cause_score = Some(score);
-                            best_empty_root_cause =
-                                Some(format!("{}:{}", snapshot.strategy, diagnostic));
-                        }
-                    }
-                }
-                let (events, odds) = Self::parse_rendered_text(&snapshot.text, *probe);
-                for event in events {
-                    if seen.insert(event.id.clone()) {
-                        all_events.push(event);
-                        probe_events += 1;
-                    }
-                }
-                probe_odds += odds.len();
-                all_odds.extend(odds);
+            if clicked {
+                std::thread::sleep(std::time::Duration::from_millis(FILTER_WAIT_MS));
             }
+        }
 
-            reports.push(ProbeReport {
+        let snapshots = Self::collect_text_snapshots(&tab);
+        debug!(
+            url = probe.url,
+            snapshots = snapshots.len(),
+            "BetBoom: text snapshots collected"
+        );
+
+        let mut events = Vec::new();
+        let mut odds = Vec::new();
+        let mut probe_events = 0;
+        let mut probe_odds = 0;
+        let mut best_empty_root_cause = None;
+        let mut best_empty_root_cause_score = None;
+        let mut best_rendered_probe = None;
+        let mut best_rendered_score = None;
+        let snapshot_count = snapshots.len();
+        let rendered_chars = snapshots.iter().map(|snapshot| snapshot.text.len()).sum();
+        let preview = snapshots
+            .iter()
+            .map(|snapshot| Self::snapshot_preview(&snapshot.text))
+            .find(|preview| !preview.is_empty());
+        let strategies = snapshots
+            .iter()
+            .map(|snapshot| snapshot.strategy.to_string())
+            .collect::<Vec<_>>();
+
+        for snapshot in &snapshots {
+            if let Some(analysis) = Self::analyze_rendered_text(&snapshot.text) {
+                let score = Self::rendered_probe_score(&analysis);
+                if best_rendered_score.is_none_or(|current| score > current) {
+                    best_rendered_score = Some(score);
+                    best_rendered_probe = Some(format!(
+                        "{}:{}",
+                        snapshot.strategy,
+                        Self::format_rendered_analysis(&analysis)
+                    ));
+                }
+                if let Some(diagnostic) = Self::diagnose_empty_rendered_text(&snapshot.text) {
+                    if best_empty_root_cause_score.is_none_or(|current| score >= current) {
+                        best_empty_root_cause_score = Some(score);
+                        best_empty_root_cause = Some(format!("{}:{}", snapshot.strategy, diagnostic));
+                    }
+                }
+            }
+            let (snapshot_events, snapshot_odds) = Self::parse_rendered_text(&snapshot.text, probe);
+            probe_events += snapshot_events.len();
+            probe_odds += snapshot_odds.len();
+            events.extend(snapshot_events);
+            odds.extend(snapshot_odds);
+        }
+
+        Ok(ProbeExecutionResult {
+            report: ProbeReport {
                 url: probe.url,
                 sport: probe.sport,
                 is_live: probe.is_live,
@@ -789,16 +1053,73 @@ impl BetboomParser {
                 } else {
                     None
                 },
-            });
-        }
-
-        Ok((all_events, all_odds, reports))
+            },
+            events,
+            odds,
+        })
     }
 
-    fn format_empty_runtime_diagnostic(reports: &[ProbeReport]) -> String {
+    fn runtime_budget_allows_probe(elapsed_ms: u64, probe: &Probe) -> bool {
+        let remaining_ms = RUNTIME_PROBE_BUDGET_MS.saturating_sub(elapsed_ms);
+        let required_ms = Self::headless_navigation_timeout_ms(probe)
+            + HEADLESS_WAIT_MS
+            + if probe.prematch_filter.is_some() {
+                FILTER_WAIT_MS
+            } else {
+                0
+            };
+
+        remaining_ms >= required_ms
+    }
+
+    fn wall_clock_cutoff_result(
+        probe: Option<Probe>,
+        planned_probes: usize,
+        cutoff_ms: u64,
+    ) -> RuntimeExecutionResult {
+        let reports = probe
+            .map(|probe| ProbeReport {
+                url: probe.url,
+                sport: probe.sport,
+                is_live: probe.is_live,
+                navigation_ok: false,
+                navigation_error: Some(format!(
+                    "wall clock cutoff after {cutoff_ms}ms before a useful runtime result"
+                )),
+                snapshots: 0,
+                rendered_chars: 0,
+                strategies: Vec::new(),
+                events: 0,
+                odds: 0,
+                preview: None,
+                rendered_probe: None,
+                root_cause: Some(format!(
+                    "wall_clock_cutoff[cutoff_ms={cutoff_ms},planned_probes={planned_probes}]"
+                )),
+            })
+            .into_iter()
+            .collect();
+
+        RuntimeExecutionResult {
+            events: Vec::new(),
+            odds: Vec::new(),
+            reports,
+            planned_probes,
+            budget_exhausted: true,
+        }
+    }
+
+    fn format_empty_runtime_diagnostic(
+        reports: &[ProbeReport],
+        planned_probes: usize,
+        budget_exhausted: bool,
+    ) -> String {
         if reports.is_empty() {
-            return "BetBoom rendered runtime returned no events or odds; no probes were executed"
-                .to_string();
+            return format!(
+                "BetBoom rendered runtime returned no events or odds; no probes were executed (planned_probes={}, budget_exhausted={})",
+                planned_probes,
+                budget_exhausted
+            );
         }
 
         let summary = Self::summarize_runtime_diagnostics(reports);
@@ -830,8 +1151,10 @@ impl BetboomParser {
             .join("; ");
 
         format!(
-            "BetBoom rendered runtime returned no events or odds across {} probes: status={}, nav_ok={}/{}, nav_failed={}, snapshots_nonzero={}/{}, rendered_chars_nonzero={}/{}, rendered_probe_nonzero={}/{}, root_cause_nonzero={}/{}, root_cause_counts={}, probes=[{}]",
+            "BetBoom rendered runtime returned no events or odds across {} executed probes (planned={}, budget_exhausted={}): status={}, nav_ok={}/{}, nav_failed={}, snapshots_nonzero={}/{}, rendered_chars_nonzero={}/{}, rendered_probe_nonzero={}/{}, root_cause_nonzero={}/{}, root_cause_counts={}, probes=[{}]",
             summary.total_probes,
+            planned_probes,
+            budget_exhausted,
             summary.status,
             summary.navigation_ok,
             summary.total_probes,
@@ -847,6 +1170,104 @@ impl BetboomParser {
             Self::format_root_cause_counts(&summary.root_cause_counts),
             probe_details
         )
+    }
+
+    fn empty_rendered_probe_exit_status(reports: &[ProbeReport]) -> Option<&'static str> {
+        if let Some(status) = Self::primary_pair_empty_rendered_probe_exit_status(reports) {
+            return Some(status);
+        }
+
+        let threshold = EMPTY_RENDERED_DIAGNOSTIC_EXIT_THRESHOLD
+            .min(FOCUSED_RUNTIME_PROBE_URLS.len())
+            .min(reports.len());
+        if threshold < EMPTY_RENDERED_DIAGNOSTIC_EXIT_THRESHOLD {
+            return None;
+        }
+
+        let focused_reports = &reports[..threshold];
+        if focused_reports
+            .iter()
+            .any(|report| !report.navigation_ok || report.events > 0 || report.odds > 0)
+        {
+            return None;
+        }
+
+        if focused_reports.iter().all(|report| report.snapshots == 0) {
+            Some("no_rendered_snapshots")
+        } else if focused_reports
+            .iter()
+            .all(|report| report.rendered_chars == 0)
+        {
+            Some("rendered_signal_missing")
+        } else if focused_reports.iter().all(|report| {
+            report.events == 0
+                && report.odds == 0
+                && (report.rendered_probe.is_some() || report.root_cause.is_some())
+        }) {
+            Some("focused_probes_parse_empty")
+        } else {
+            None
+        }
+    }
+
+    fn primary_pair_empty_rendered_probe_exit_status(
+        reports: &[ProbeReport],
+    ) -> Option<&'static str> {
+        let threshold = PRIMARY_FOCUSED_PROBE_EXIT_THRESHOLD
+            .min(FOCUSED_RUNTIME_PROBE_URLS.len())
+            .min(reports.len());
+        if threshold < PRIMARY_FOCUSED_PROBE_EXIT_THRESHOLD {
+            return None;
+        }
+
+        let focused_reports = &reports[..threshold];
+        if focused_reports
+            .iter()
+            .any(|report| !report.navigation_ok || report.events > 0 || report.odds > 0)
+        {
+            return None;
+        }
+
+        if !focused_reports.iter().any(|report| report.is_live)
+            || !focused_reports.iter().any(|report| !report.is_live)
+        {
+            return None;
+        }
+
+        if focused_reports.iter().all(|report| report.snapshots == 0) {
+            Some("no_rendered_snapshots_after_primary_pair")
+        } else if focused_reports
+            .iter()
+            .all(|report| report.rendered_chars == 0)
+        {
+            Some("rendered_signal_missing_after_primary_pair")
+        } else if Self::has_stable_empty_parse_root_cause(focused_reports) {
+            Some("stable_parse_empty_after_primary_pair")
+        } else {
+            None
+        }
+    }
+
+    fn has_stable_empty_parse_root_cause(reports: &[ProbeReport]) -> bool {
+        if reports.is_empty() || reports.iter().any(|report| report.rendered_probe.is_none()) {
+            return false;
+        }
+
+        let Some(reference_root_cause) = reports
+            .first()
+            .and_then(|report| report.root_cause.as_deref())
+            .map(Self::normalize_root_cause)
+        else {
+            return false;
+        };
+
+        reports.iter().all(|report| {
+            report
+                .root_cause
+                .as_deref()
+                .map(Self::normalize_root_cause)
+                .is_some_and(|root_cause| root_cause == reference_root_cause)
+        })
     }
 
     fn summarize_runtime_diagnostics(reports: &[ProbeReport]) -> RuntimeDiagnosticSummary {
@@ -986,7 +1407,13 @@ impl BetboomParser {
         let Some(payload) = HeadlessChromeHelper::evaluate_json(
             tab,
             r#"(() => {
-                const normalize = (value) => (value || '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
+                const normalizeLine = (value) => (value || '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim();
+                const normalize = (value) => (value || '')
+                    .replace(/\r/g, '')
+                    .split('\n')
+                    .map(normalizeLine)
+                    .filter(Boolean)
+                    .join('\n');
                 const visible = (node) => !!(node && (node.offsetWidth || node.offsetHeight || node.getClientRects().length));
                 const results = [];
                 const seen = new Set();
@@ -1042,6 +1469,17 @@ impl BetboomParser {
                     push('structured_event_cards', structuredCards.join('\nЕщё\n'));
                 }
 
+                const compactCardTexts = Array.from(document.querySelectorAll(cardSelectors.join(',')))
+                    .filter(visible)
+                    .map((node) => normalize(node.innerText || node.textContent || ''))
+                    .filter((text) => text.length >= 24)
+                    .filter((text) => /(?:П1|П2|X|1|2)\s*\d+[.,]\d+/.test(text))
+                    .filter((text) => /(?:Сегодня|Завтра|Перерыв|Тайм|Матч начнется|\d{1,2}:\d{2}|\d+Т,\s*\d{1,2}\s*мин)/.test(text))
+                    .slice(0, 60);
+                if (compactCardTexts.length) {
+                    push('compact_event_cards', compactCardTexts.join('\nЕщё\n'));
+                }
+
                 const interactiveTexts = Array.from(document.querySelectorAll('main a, main button, main [role="button"], main span, main div'))
                     .filter(visible)
                     .map((node) => normalize(node.innerText || node.textContent || ''))
@@ -1068,13 +1506,35 @@ impl BetboomParser {
             let Some(strategy) = item.get("strategy").and_then(|value| value.as_str()) else {
                 continue;
             };
+            let strategy = strategy.to_string();
+            let text = text.to_string();
             Self::push_snapshot(
                 snapshots,
                 RenderedSnapshot {
-                    strategy: strategy.to_string(),
-                    text: text.to_string(),
+                    strategy: strategy.clone(),
+                    text: text.clone(),
                 },
             );
+            if let Some(rendered_runtime_text) =
+                Self::derive_rendered_runtime_snapshot(&strategy, &text)
+            {
+                Self::push_snapshot(
+                    snapshots,
+                    RenderedSnapshot {
+                        strategy: format!("{strategy}:rendered_runtime"),
+                        text: rendered_runtime_text,
+                    },
+                );
+            }
+            if let Some(compact_text) = Self::derive_compact_runtime_snapshot(&text) {
+                Self::push_snapshot(
+                    snapshots,
+                    RenderedSnapshot {
+                        strategy: format!("{strategy}:compact_fallback"),
+                        text: compact_text,
+                    },
+                );
+            }
         }
     }
 
@@ -1102,7 +1562,139 @@ impl BetboomParser {
             .collect::<String>()
     }
 
+    fn derive_rendered_runtime_snapshot(strategy: &str, text: &str) -> Option<String> {
+        if !matches!(
+            strategy,
+            "event_cards" | "compact_event_cards" | "structured_event_cards" | "interactive_rollup"
+        ) {
+            return None;
+        }
+
+        let blocks = Self::split_rendered_blocks(text);
+        let candidates = if blocks.is_empty() {
+            vec![vec![text.to_string()]]
+        } else {
+            blocks
+        };
+
+        let mut segments = Vec::new();
+        let validation_probe = Probe {
+            url: "https://betboom.ru/sport/live/football",
+            sport: Sport::Football,
+            is_live: true,
+            prematch_filter: None,
+        };
+
+        for block in candidates {
+            let compact = block.join(" ");
+            if compact.len() < 24 {
+                continue;
+            }
+
+            let Some(segment) = Self::derive_compact_runtime_snapshot(&compact) else {
+                continue;
+            };
+
+            let candidate_block = vec![segment.clone()];
+            if Self::parse_compact_event_block(
+                &candidate_block,
+                None,
+                validation_probe,
+                validation_probe.url,
+            )
+            .is_some()
+                && segments.iter().all(|previous| previous != &segment)
+            {
+                segments.push(segment);
+            }
+        }
+
+        if segments.is_empty() {
+            None
+        } else {
+            Some(segments.join("\nЕщё\n"))
+        }
+    }
+
+    fn derive_compact_runtime_snapshot(text: &str) -> Option<String> {
+        let normalized = text
+            .replace('\u{00a0}', " ")
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+        if normalized.len() < MIN_SNAPSHOT_TEXT_LEN {
+            return None;
+        }
+
+        let status_regex = regex::Regex::new(
+            r"(?:Сегодня|Завтра|Перерыв|Тайм|Матч начнется|\d{1,2}:\d{2}|\d+Т,\s*\d{1,2}\s*мин)",
+        )
+        .expect("compact runtime status regex");
+        let market_regex = regex::Regex::new(r"(?:П1|П2|X|1|2|ничья)\s*\d+[.,]\d+")
+            .expect("compact runtime market regex");
+        let validation_probe = Probe {
+            url: "https://betboom.ru/sport/live/football",
+            sport: Sport::Football,
+            is_live: true,
+            prematch_filter: None,
+        };
+
+        let mut segments = Vec::new();
+        let mut cursor = 0;
+
+        while let Some(status_match) = status_regex.find_at(&normalized, cursor) {
+            let tail = &normalized[status_match.end()..];
+            let market_matches = market_regex.find_iter(tail).take(3).collect::<Vec<_>>();
+            if market_matches.len() < 2 {
+                cursor = status_match.end();
+                continue;
+            }
+
+            let segment_end = status_match.end()
+                + market_matches
+                    .get(2)
+                    .or_else(|| market_matches.get(1))
+                    .expect("compact runtime market tail")
+                    .end();
+            let candidate = Self::trim_compact_runtime_candidate(&normalized[cursor..segment_end]);
+            let candidate = candidate.trim();
+            if candidate.len() < 24 {
+                cursor = segment_end;
+                continue;
+            }
+
+            let candidate_block = vec![candidate.to_string()];
+            if Self::parse_compact_event_block(
+                &candidate_block,
+                None,
+                validation_probe,
+                validation_probe.url,
+            )
+            .is_some()
+                && segments.last().is_none_or(|previous| previous != candidate)
+            {
+                segments.push(candidate.to_string());
+            }
+
+            cursor = segment_end;
+        }
+
+        if segments.is_empty() {
+            None
+        } else {
+            Some(segments.join("\nЕщё\n"))
+        }
+    }
+
     fn parse_rendered_text(text: &str, probe: Probe) -> (Vec<Event>, Vec<Odd>) {
+        Self::parse_rendered_text_with_compact_bridge(text, probe, true)
+    }
+
+    fn parse_rendered_text_with_compact_bridge(
+        text: &str,
+        probe: Probe,
+        allow_compact_bridge: bool,
+    ) -> (Vec<Event>, Vec<Odd>) {
         let mut events = Vec::new();
         let mut odds = Vec::new();
         let mut current_league: Option<String> = None;
@@ -1114,6 +1706,18 @@ impl BetboomParser {
                 current_league = Some(league);
                 events.push(event);
                 odds.append(&mut event_odds);
+            }
+        }
+
+        if allow_compact_bridge {
+            if let Some(compact_fallback) = Self::derive_compact_runtime_snapshot(text)
+                .filter(|compact_fallback| compact_fallback != text)
+            {
+                let (fallback_events, fallback_odds) =
+                    Self::parse_rendered_text_with_compact_bridge(&compact_fallback, probe, false);
+                if fallback_events.len() > events.len() || fallback_odds.len() > odds.len() {
+                    return (fallback_events, fallback_odds);
+                }
             }
         }
 
@@ -1184,6 +1788,19 @@ impl BetboomParser {
     }
 
     fn analyze_rendered_text_lines(lines: &[String]) -> RenderedTextAnalysis {
+        let inline_market_pairs = lines
+            .iter()
+            .map(|line| Self::count_inline_market_price_pairs(line))
+            .sum();
+        let inline_status_markers = lines
+            .iter()
+            .map(|line| Self::count_inline_status_markers(line))
+            .sum();
+        let inline_form_markers = lines
+            .iter()
+            .map(|line| Self::count_form_markers(line))
+            .sum();
+
         RenderedTextAnalysis {
             line_count: lines.len(),
             team_candidates: lines
@@ -1199,6 +1816,9 @@ impl BetboomParser {
                 .filter(|line| Self::parse_price(line).is_some())
                 .count(),
             market_price_pairs: Self::count_market_price_pairs(lines),
+            inline_market_pairs,
+            inline_status_markers,
+            inline_form_markers,
             block_count: 1,
             explicit_boundaries: lines
                 .iter()
@@ -1228,13 +1848,16 @@ impl BetboomParser {
 
     fn format_rendered_analysis(analysis: &RenderedTextAnalysis) -> String {
         format!(
-            "lines={},blocks={},teams={},markets={},prices={},pairs={},boundaries={},implicit={}",
+            "lines={},blocks={},teams={},markets={},prices={},pairs={},inline_pairs={},inline_status={},inline_forms={},boundaries={},implicit={}",
             analysis.line_count,
             analysis.block_count,
             analysis.team_candidates,
             analysis.market_labels,
             analysis.price_lines,
             analysis.market_price_pairs,
+            analysis.inline_market_pairs,
+            analysis.inline_status_markers,
+            analysis.inline_form_markers,
             analysis.explicit_boundaries,
             analysis.implicit_boundaries
         )
@@ -1243,6 +1866,7 @@ impl BetboomParser {
     fn rendered_probe_score(analysis: &RenderedTextAnalysis) -> usize {
         analysis.block_count * 100
             + analysis.market_price_pairs * 10
+            + analysis.inline_market_pairs * 10
             + analysis.team_candidates * 5
             + analysis.market_labels * 3
             + analysis.price_lines
@@ -1263,7 +1887,13 @@ impl BetboomParser {
         analysis.implicit_boundaries = analysis
             .block_count
             .saturating_sub(1 + analysis.explicit_boundaries);
-        let reason = if analysis.market_labels == 0 {
+        let reason = if analysis.market_labels == 0 && analysis.inline_market_pairs >= 2 {
+            if analysis.inline_form_markers >= 2 {
+                "compact_inline_card:form_guides_glued_teams"
+            } else {
+                "compact_inline_card:embedded_markets_without_team_boundaries"
+            }
+        } else if analysis.market_labels == 0 {
             "missing_market_labels"
         } else if analysis.team_candidates < 2 {
             "missing_team_pairs"
@@ -1282,13 +1912,16 @@ impl BetboomParser {
         };
 
         Some(format!(
-            "{}{}[lines={},teams={},markets={},prices={},boundaries={},implicit={},misclassified={}]",
+            "{}{}[lines={},teams={},markets={},prices={},inline_pairs={},inline_status={},inline_forms={},boundaries={},implicit={},misclassified={}]",
             reason,
             Self::format_misclassification_suffix(reason, &misclassification),
             analysis.line_count,
             analysis.team_candidates,
             analysis.market_labels,
             analysis.market_price_pairs,
+            analysis.inline_market_pairs,
+            analysis.inline_status_markers,
+            analysis.inline_form_markers,
             analysis.explicit_boundaries,
             analysis.implicit_boundaries,
             Self::format_misclassification_summary(&misclassification)
@@ -1331,7 +1964,9 @@ impl BetboomParser {
     fn team_slot_window(lines: &[String]) -> &[String] {
         let start = lines
             .iter()
-            .position(|line| !Self::is_structural_header_line(line))
+            .position(|line| {
+                !Self::is_structural_header_line(line) && !Self::is_structural_noise_line(line)
+            })
             .unwrap_or(lines.len());
         let end = lines[start..]
             .iter()
@@ -1379,11 +2014,53 @@ impl BetboomParser {
             .count()
     }
 
+    fn count_inline_market_price_pairs(line: &str) -> usize {
+        regex::Regex::new(r"(?:П1|П2|X|1|2)(\d+[.,]\d+)")
+            .expect("inline market price regex")
+            .captures_iter(line)
+            .count()
+    }
+
+    fn count_inline_status_markers(line: &str) -> usize {
+        regex::Regex::new(
+            r"(?:Сегодня|Завтра|\d{1,2} [а-я]+ в \d{1,2}:\d{2}|\d{1,2}:\d{2}|\d+Т,\s*\d{1,2}\s*мин)",
+        )
+            .expect("inline status regex")
+            .captures_iter(line)
+            .count()
+    }
+
+    fn count_form_markers(line: &str) -> usize {
+        regex::Regex::new(r"\d+-\d+-\d+")
+            .expect("form marker regex")
+            .captures_iter(line)
+            .count()
+    }
+
     fn is_block_boundary(line: &str) -> bool {
-        line == "Ещё" || line == "Еще"
+        regex::Regex::new(r"^(?:Ещё|Еще)(?:\s*\+\s*\d+)?$")
+            .expect("block boundary regex")
+            .is_match(line)
+    }
+
+    fn is_structural_noise_line(line: &str) -> bool {
+        matches!(
+            line,
+            "Live" | "LIVE" | "Лайв" | "Все" | "Популярные" | "Популярное"
+        )
     }
 
     fn parse_event_block(
+        block: &[String],
+        current_league: Option<&str>,
+        probe: Probe,
+        source_url: &str,
+    ) -> Option<(Event, Vec<Odd>, String)> {
+        Self::parse_block_lines(block, current_league, probe, source_url)
+            .or_else(|| Self::parse_compact_event_block(block, current_league, probe, source_url))
+    }
+
+    fn parse_block_lines(
         block: &[String],
         current_league: Option<&str>,
         probe: Probe,
@@ -1393,7 +2070,11 @@ impl BetboomParser {
             return None;
         }
 
-        let mut lines = block.to_vec();
+        let mut lines = block
+            .iter()
+            .filter(|line| !Self::is_structural_noise_line(line))
+            .cloned()
+            .collect::<Vec<_>>();
         while matches!(
             lines.first().map(String::as_str),
             Some(
@@ -1456,6 +2137,165 @@ impl BetboomParser {
             return None;
         }
 
+        Self::build_event_from_lines(
+            lines,
+            current_league,
+            probe,
+            source_url,
+            league,
+            teams,
+            status_index,
+        )
+    }
+
+    fn parse_compact_event_block(
+        block: &[String],
+        current_league: Option<&str>,
+        probe: Probe,
+        source_url: &str,
+    ) -> Option<(Event, Vec<Odd>, String)> {
+        let compact = block.join(" ");
+        let normalized = compact
+            .replace('\u{00a0}', " ")
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+        if normalized.is_empty() {
+            return None;
+        }
+
+        let market_pairs = Self::extract_market_pairs(&normalized);
+        if market_pairs.len() < 2 {
+            return None;
+        }
+
+        let (status_index, _status_marker_len) = Self::find_status_marker(&normalized)?;
+        let prefix = normalized[..status_index].trim();
+        let normalized_prefix = Self::normalize_compact_prefix(prefix);
+
+        let mut best_candidate: Option<(usize, String, String, String)> = None;
+
+        for candidate_prefix in [prefix, normalized_prefix.as_str()] {
+            for split_index in candidate_prefix
+                .char_indices()
+                .map(|(index, _)| index)
+                .chain(std::iter::once(candidate_prefix.len()))
+            {
+                if split_index == 0 || split_index >= candidate_prefix.len() {
+                    continue;
+                }
+
+                let league = candidate_prefix[..split_index].trim();
+                let teams = candidate_prefix[split_index..].trim();
+                if !Self::looks_like_league(league) {
+                    continue;
+                }
+
+                if let Some((home_team, away_team)) = Self::split_compact_team_pair(teams) {
+                    let score = league.chars().count();
+                    if best_candidate
+                        .as_ref()
+                        .is_none_or(|(best_score, ..)| score > *best_score)
+                    {
+                        best_candidate = Some((score, league.to_string(), home_team, away_team));
+                    }
+                }
+            }
+        }
+
+        if let Some((_, league, home_team, away_team)) = best_candidate {
+            return Self::build_event_from_compact_parts(
+                league,
+                home_team,
+                away_team,
+                market_pairs,
+                probe,
+                source_url,
+            );
+        }
+
+        let (league, home_team, away_team) = if let Some(current_league) = current_league {
+            let teams = normalized_prefix.trim();
+            let (home_team, away_team) = Self::split_compact_team_pair(teams)?;
+            (current_league.to_string(), home_team, away_team)
+        } else {
+            return None;
+        };
+
+        Self::build_event_from_compact_parts(
+            league,
+            home_team,
+            away_team,
+            market_pairs,
+            probe,
+            source_url,
+        )
+    }
+
+    fn build_event_from_compact_parts(
+        league: String,
+        home_team: String,
+        away_team: String,
+        market_pairs: Vec<(String, f64)>,
+        probe: Probe,
+        source_url: &str,
+    ) -> Option<(Event, Vec<Odd>, String)> {
+        if market_pairs.len() < 2 {
+            return None;
+        }
+
+        let home_team = Self::clean_compact_team_name(&home_team);
+        let away_team = Self::clean_compact_team_name(&away_team);
+
+        let event_id = format!(
+            "betboom-{}-{}-{}-{}",
+            if probe.is_live { "live" } else { "prematch" },
+            Self::slugify(&league),
+            Self::slugify(&home_team),
+            Self::slugify(&away_team)
+        );
+
+        let event = Event {
+            id: event_id.clone(),
+            sport: probe.sport,
+            league: league.clone(),
+            home_team,
+            away_team,
+            start_time: None,
+            is_live: probe.is_live,
+            bookmaker_slug: "betboom".to_string(),
+            raw_url: Some(source_url.to_string()),
+            extra: HashMap::new(),
+        };
+
+        let now = Utc::now();
+        let odds = market_pairs
+            .into_iter()
+            .map(|(selection, price)| Odd {
+                id: format!("{}-{}", event_id, Self::slugify(&selection)),
+                event_id: event_id.clone(),
+                bookmaker_slug: "betboom".to_string(),
+                market: "Main".to_string(),
+                selection: selection.clone(),
+                odds: price,
+                odds_type: Self::selection_to_odds_type(&selection),
+                line: None,
+                timestamp: now,
+            })
+            .collect::<Vec<_>>();
+
+        Some((event, odds, league))
+    }
+
+    fn build_event_from_lines(
+        lines: Vec<String>,
+        _current_league: Option<&str>,
+        probe: Probe,
+        source_url: &str,
+        league: String,
+        teams: Vec<String>,
+        status_index: usize,
+    ) -> Option<(Event, Vec<Odd>, String)> {
         let home_team = teams[0].clone();
         let away_team = teams[1].clone();
         let event_id = format!(
@@ -1509,6 +2349,157 @@ impl BetboomParser {
         }
 
         Some((event, odds, league))
+    }
+
+    fn split_compact_team_pair(text: &str) -> Option<(String, String)> {
+        let text = text.trim();
+        if text.is_empty() {
+            return None;
+        }
+
+        for split_index in text.char_indices().map(|(index, _)| index) {
+            if split_index == 0 || split_index >= text.len() {
+                continue;
+            }
+
+            let left = text[..split_index].trim();
+            let right = text[split_index..].trim();
+            if Self::looks_like_compact_team_name(left) && Self::looks_like_compact_team_name(right)
+            {
+                return Some((left.to_string(), right.to_string()));
+            }
+        }
+
+        None
+    }
+
+    fn normalize_compact_prefix(text: &str) -> String {
+        let without_rollup_tail = regex::Regex::new(r"^(?:Ещё|Еще)\s*(?:\+\s*\d+)?\s*")
+            .expect("compact rollup tail regex")
+            .replace_all(text, " ");
+        let with_form_boundaries = regex::Regex::new(r"\d+-\d+-\d+")
+            .expect("compact form regex")
+            .replace_all(&without_rollup_tail, " ");
+        let with_case_boundaries = regex::Regex::new(r"([[:lower:]])([[:upper:]])")
+            .expect("compact case boundary regex")
+            .replace_all(&with_form_boundaries, "$1 $2");
+        let without_score_suffix = regex::Regex::new(r"\d{1,2}:\d{1,2}\s*$")
+            .expect("compact score suffix regex")
+            .replace_all(&with_case_boundaries, " ");
+
+        without_score_suffix
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    fn trim_compact_runtime_candidate(text: &str) -> String {
+        regex::Regex::new(r"^(?:Ещё|Еще)\s*(?:\+\s*\d+)?\s*")
+            .expect("compact runtime candidate prefix regex")
+            .replace(text.trim(), "")
+            .to_string()
+    }
+
+    fn clean_compact_team_name(text: &str) -> String {
+        let without_form = regex::Regex::new(r"\d+-\d+-\d+")
+            .expect("compact team form regex")
+            .replace_all(text, " ");
+        let without_score_suffix = regex::Regex::new(r"\d{1,2}:\d{0,2}\s*$")
+            .expect("compact team score suffix regex")
+            .replace_all(&without_form, " ");
+
+        without_score_suffix
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
+    fn looks_like_compact_team_name(line: &str) -> bool {
+        let trimmed = line.trim();
+        if trimmed.len() < 3 || !Self::looks_like_team_name(trimmed) {
+            return false;
+        }
+
+        let compact = trimmed.replace(' ', "");
+        let lower = trimmed.to_lowercase();
+        let parts = trimmed.split_whitespace().collect::<Vec<_>>();
+        if [
+            "лига",
+            "серия",
+            "чемпион",
+            "кубок",
+            "турнир",
+            "матчи",
+            "сборные",
+            "топ",
+            "премьер",
+        ]
+        .iter()
+        .any(|needle| lower.contains(needle))
+        {
+            return false;
+        }
+
+        if parts.len() > 1
+            && parts[0].chars().count() == 1
+            && parts[0].chars().all(|ch| ch.is_ascii_alphabetic())
+        {
+            return false;
+        }
+
+        let mut chars = compact.chars();
+        let Some(first) = chars.next() else {
+            return false;
+        };
+
+        if compact.chars().all(|ch| ch.is_uppercase()) {
+            let len = compact.chars().count();
+            return (3..=5).contains(&len);
+        }
+
+        first.is_uppercase()
+            && compact.chars().any(|ch| ch.is_lowercase())
+            && compact.chars().count() >= 4
+    }
+
+    fn find_status_marker(text: &str) -> Option<(usize, usize)> {
+        let markers = ["Сегодня", "Завтра", "Перерыв", "Тайм", "Матч начнется"];
+        let mut best: Option<(usize, usize)> = None;
+
+        for marker in markers {
+            if let Some(index) = text.find(marker) {
+                if best.is_none_or(|(best_index, _)| index < best_index) {
+                    best = Some((index, marker.len()));
+                }
+            }
+        }
+
+        if let Some(status_match) = regex::Regex::new(r"\d+Т,\s*\d{1,2}\s*мин")
+            .expect("compact live status regex")
+            .find(text)
+        {
+            if best.is_none_or(|(best_index, _)| status_match.start() < best_index) {
+                best = Some((status_match.start(), status_match.as_str().len()));
+            }
+        }
+
+        best
+    }
+
+    fn extract_market_pairs(text: &str) -> Vec<(String, f64)> {
+        let regex = regex::Regex::new(r"(?P<label>П1|П2|X|1|2|ничья)\s*(?P<price>\d+[.,]\d+)")
+            .expect("compact market regex");
+
+        regex
+            .captures_iter(text)
+            .filter_map(|captures| {
+                let label = captures.name("label")?.as_str().to_string();
+                let price = captures
+                    .name("price")
+                    .and_then(|value| Self::parse_price(value.as_str()))?;
+                Some((label, price))
+            })
+            .collect()
     }
 
     fn looks_like_league(line: &str) -> bool {
@@ -1637,7 +2628,12 @@ impl BetboomParser {
 
 #[cfg(test)]
 mod tests {
-    use super::{sporthub_helper, BetboomParser, Probe, ProbeReport, PREMATCH_FILTER_TEXT, PROBES};
+    use super::{
+        sporthub_helper, BetboomParser, Probe, ProbeReport, FILTER_WAIT_MS,
+        FOCUSED_RUNTIME_PROBE_URLS, HEADLESS_KNOWN_BLOCKER_NAVIGATION_TIMEOUT_MS,
+        HEADLESS_NAVIGATION_TIMEOUT_MS, HEADLESS_WAIT_MS, KNOWN_BLOCKER_LIVE_FOOTBALL_URL,
+        PREMATCH_FILTER_TEXT, PROBES, RUNTIME_PROBE_BUDGET_MS, RUNTIME_WALL_CLOCK_CUTOFF_MS,
+    };
     use shared::Sport;
 
     fn decode_hex(input: &str) -> Vec<u8> {
@@ -1736,6 +2732,251 @@ mod tests {
     }
 
     #[test]
+    fn parses_compact_runtime_card_without_line_breaks() {
+        let text = include_str!("../tests/fixtures/betboom_compact_runtime_card_fixture.txt");
+        let probe = Probe {
+            url: "https://betboom.ru/sport/live/football",
+            sport: Sport::Football,
+            is_live: true,
+            prematch_filter: None,
+        };
+
+        let (events, odds) = BetboomParser::parse_rendered_text(text, probe);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].league, "Футбол. Товарищеские матчи. Топ Сборные");
+        assert_eq!(events[0].home_team, "США");
+        assert_eq!(events[0].away_team, "Португалия");
+        assert!(events[0].is_live);
+        assert_eq!(odds.len(), 3);
+    }
+
+    #[test]
+    fn parses_runtime_adjacent_compact_event_card_rollup() {
+        let text = include_str!("../tests/fixtures/betboom_compact_event_cards_rollup_fixture.txt");
+        let probe = Probe {
+            url: "https://betboom.ru/sport/live/football",
+            sport: Sport::Football,
+            is_live: true,
+            prematch_filter: None,
+        };
+
+        let (events, odds) = BetboomParser::parse_rendered_text(text, probe);
+        assert_eq!(events.len(), 2);
+        assert!(events.iter().all(|event| event.is_live));
+        assert!(events.iter().any(|event| {
+            event.league == "Футбол. Товарищеские матчи. Топ Сборные"
+                && event.home_team == "США"
+                && event.away_team == "Португалия"
+        }));
+        assert!(events.iter().any(|event| {
+            event.league == "Футбол. Товарищеские матчи. Топ Сборные"
+                && event.home_team == "Бразилия"
+                && event.away_team == "Аргентина"
+        }));
+        assert_eq!(odds.len(), 6);
+    }
+
+    #[test]
+    fn derives_compact_fallback_snapshot_from_merged_runtime_blob() {
+        let text = include_str!("../tests/fixtures/betboom_compact_runtime_merged_fixture.txt");
+        let derived = BetboomParser::derive_compact_runtime_snapshot(text).expect("snapshot");
+        let probe = Probe {
+            url: "https://betboom.ru/sport/live/football",
+            sport: Sport::Football,
+            is_live: true,
+            prematch_filter: None,
+        };
+
+        assert!(derived.contains("\nЕщё\n"));
+
+        let (events, odds) = BetboomParser::parse_rendered_text(&derived, probe);
+        assert_eq!(events.len(), 2);
+        assert_eq!(odds.len(), 6);
+        assert!(events.iter().all(|event| event.is_live));
+    }
+
+    #[test]
+    fn parses_merged_runtime_blob_via_compact_bridge() {
+        let text = include_str!("../tests/fixtures/betboom_compact_runtime_merged_fixture.txt");
+        let probe = Probe {
+            url: "https://betboom.ru/sport/live/football",
+            sport: Sport::Football,
+            is_live: true,
+            prematch_filter: None,
+        };
+
+        let (events, odds) = BetboomParser::parse_rendered_text(text, probe);
+
+        assert_eq!(events.len(), 2);
+        assert_eq!(odds.len(), 6);
+        assert!(events.iter().all(|event| event.is_live));
+        assert!(events.iter().any(|event| {
+            event.league == "Футбол. Товарищеские матчи. Топ Сборные"
+                && event.home_team == "США"
+                && event.away_team == "Португалия"
+        }));
+        assert!(events.iter().any(|event| {
+            event.league == "Футбол. Товарищеские матчи. Топ Сборные"
+                && event.home_team == "Бразилия"
+                && event.away_team == "Аргентина"
+        }));
+    }
+
+    #[test]
+    fn parses_merged_runtime_blob_with_inline_live_status_via_compact_bridge() {
+        let text =
+            include_str!("../tests/fixtures/betboom_compact_runtime_live_status_fixture.txt");
+        let probe = Probe {
+            url: "https://betboom.ru/sport/live/football",
+            sport: Sport::Football,
+            is_live: true,
+            prematch_filter: None,
+        };
+
+        let (events, odds) = BetboomParser::parse_rendered_text(text, probe);
+
+        assert_eq!(events.len(), 2);
+        assert_eq!(odds.len(), 6);
+        assert!(events.iter().all(|event| event.is_live));
+        assert!(events.iter().any(|event| {
+            event.league == "Футбол. Товарищеские матчи. Топ Сборные"
+                && event.home_team == "США"
+                && event.away_team == "Португалия"
+        }));
+        assert!(events.iter().any(|event| {
+            event.league == "Футбол. Товарищеские матчи. Топ Сборные"
+                && event.home_team == "Бразилия"
+                && event.away_team == "Аргентина"
+        }));
+    }
+
+    #[test]
+    fn parses_dirty_merged_runtime_blob_with_scores_and_rollup_tail() {
+        let text =
+            include_str!("../tests/fixtures/betboom_compact_runtime_dirty_scores_fixture.txt");
+        let probe = Probe {
+            url: "https://betboom.ru/sport/live/football",
+            sport: Sport::Football,
+            is_live: true,
+            prematch_filter: None,
+        };
+
+        let derived = BetboomParser::derive_compact_runtime_snapshot(text).expect("snapshot");
+        let (events, odds) = BetboomParser::parse_rendered_text(text, probe);
+
+        assert!(derived.contains("СШАПортугалия1:02Т, 67 минП15.11X4.52П21.54"));
+        assert!(derived.contains("БразилияАргентина0:11Т, 12 минП12.45X3.20П22.85"));
+        assert!(!derived.contains("Ещё + 3369"));
+        assert_eq!(events.len(), 2);
+        assert_eq!(odds.len(), 6);
+        assert!(events.iter().all(|event| event.is_live));
+        assert!(events.iter().any(|event| {
+            event.league == "Футбол. Товарищеские матчи. Топ Сборные"
+                && event.home_team == "США"
+                && event.away_team == "Португалия"
+        }));
+        assert!(events.iter().any(|event| {
+            event.league == "Футбол. Товарищеские матчи. Топ Сборные"
+                && event.home_team == "Бразилия"
+                && event.away_team == "Аргентина"
+        }));
+    }
+
+    #[test]
+    fn derives_rendered_runtime_snapshot_from_event_cards_rollup() {
+        let text = include_str!("../tests/fixtures/betboom_compact_event_cards_rollup_fixture.txt");
+        let derived = BetboomParser::derive_rendered_runtime_snapshot("event_cards", text)
+            .expect("rendered runtime snapshot");
+        let probe = Probe {
+            url: "https://betboom.ru/sport/live/football",
+            sport: Sport::Football,
+            is_live: true,
+            prematch_filter: None,
+        };
+
+        let (events, odds) = BetboomParser::parse_rendered_text(&derived, probe);
+        assert_eq!(events.len(), 2);
+        assert_eq!(odds.len(), 6);
+        assert!(events.iter().all(|event| event.is_live));
+        assert!(derived.contains("США"));
+        assert!(derived.contains("Аргентина"));
+    }
+
+    #[test]
+    fn derives_rendered_runtime_snapshot_from_single_runtime_card() {
+        let text = include_str!("../tests/fixtures/betboom_compact_runtime_card_fixture.txt");
+        let derived = BetboomParser::derive_rendered_runtime_snapshot("compact_event_cards", text)
+            .expect("rendered runtime snapshot");
+        let probe = Probe {
+            url: "https://betboom.ru/sport/live/football",
+            sport: Sport::Football,
+            is_live: true,
+            prematch_filter: None,
+        };
+
+        let (events, odds) = BetboomParser::parse_rendered_text(&derived, probe);
+        assert_eq!(events.len(), 1);
+        assert_eq!(odds.len(), 3);
+        assert_eq!(events[0].home_team, "США");
+        assert_eq!(events[0].away_team, "Португалия");
+    }
+
+    #[test]
+    fn derives_rendered_runtime_snapshot_from_interactive_rollup_live_blob() {
+        let text = include_str!("../tests/fixtures/betboom_interactive_rollup_runtime_fixture.txt");
+        let derived = BetboomParser::derive_rendered_runtime_snapshot("interactive_rollup", text)
+            .expect("rendered runtime snapshot");
+        let probe = Probe {
+            url: "https://betboom.ru/sport/live/football",
+            sport: Sport::Football,
+            is_live: true,
+            prematch_filter: None,
+        };
+
+        let (events, odds) = BetboomParser::parse_rendered_text(&derived, probe);
+        assert_eq!(events.len(), 2);
+        assert_eq!(odds.len(), 6);
+        assert!(events.iter().all(|event| event.is_live));
+        assert!(events.iter().any(|event| {
+            event.league == "Футбол. Товарищеские матчи. Топ Сборные"
+                && event.home_team == "США"
+                && event.away_team == "Португалия"
+        }));
+        assert!(events.iter().any(|event| {
+            event.league == "Футбол. Товарищеские матчи. Топ Сборные"
+                && event.home_team == "Бразилия"
+                && event.away_team == "Аргентина"
+        }));
+    }
+
+    #[test]
+    fn parses_rendered_body_snapshot_with_ui_noise_and_rollup_tail() {
+        let text = include_str!("../tests/fixtures/betboom_rendered_body_noise_fixture.txt");
+        let probe = Probe {
+            url: "https://betboom.ru/sport/live/football",
+            sport: Sport::Football,
+            is_live: true,
+            prematch_filter: None,
+        };
+
+        let (events, odds) = BetboomParser::parse_rendered_text(text, probe);
+
+        assert_eq!(events.len(), 2);
+        assert_eq!(odds.len(), 6);
+        assert!(events.iter().all(|event| event.is_live));
+        assert!(events.iter().any(|event| {
+            event.league == "Футбол. Товарищеские матчи. Топ Сборные"
+                && event.home_team == "США"
+                && event.away_team == "Португалия"
+        }));
+        assert!(events.iter().any(|event| {
+            event.league == "Футбол. Товарищеские матчи. Топ Сборные"
+                && event.home_team == "Бразилия"
+                && event.away_team == "Аргентина"
+        }));
+    }
+
+    #[test]
     fn diagnoses_flattened_single_block_empty_result_root_cause() {
         let diagnostic = BetboomParser::diagnose_empty_rendered_text(
             "Футбол\nИсход\nЛига 1\nАтлетико\nБарселона\nП1\n1.8\nX\n3.2\nП2\n4.1",
@@ -1744,6 +2985,7 @@ mod tests {
 
         assert!(diagnostic.starts_with("single_flattened_block"));
         assert!(diagnostic.contains("markets=3"));
+        assert!(diagnostic.contains("inline_pairs=0"));
         assert!(diagnostic.contains("implicit=0"));
         assert!(diagnostic.contains("misclassified=league=0,status=0,market=0,counter=0"));
     }
@@ -1780,8 +3022,51 @@ mod tests {
         let summary = BetboomParser::format_rendered_analysis(&analysis);
         assert_eq!(
             summary,
-            "lines=11,blocks=1,teams=2,markets=3,prices=3,pairs=3,boundaries=0,implicit=0"
+            "lines=11,blocks=1,teams=2,markets=3,prices=3,pairs=3,inline_pairs=0,inline_status=0,inline_forms=0,boundaries=0,implicit=0"
         );
+    }
+
+    #[test]
+    fn diagnoses_compact_inline_card_with_form_guides() {
+        let text = include_str!("../tests/fixtures/betboom_compact_inline_card_fixture.txt");
+
+        let diagnostic = BetboomParser::diagnose_empty_rendered_text(text).expect("diagnostic");
+
+        assert!(diagnostic.starts_with("compact_inline_card:form_guides_glued_teams"));
+        assert!(diagnostic.contains("lines=1"));
+        assert!(diagnostic.contains("teams=0"));
+        assert!(diagnostic.contains("markets=0"));
+        assert!(diagnostic.contains("inline_pairs=3"));
+        assert!(diagnostic.contains("inline_status=2"));
+        assert!(diagnostic.contains("inline_forms=2"));
+    }
+
+    #[test]
+    fn diagnoses_explicit_empty_rendered_probe_fixture() {
+        let text = include_str!("../tests/fixtures/betboom_empty_rendered_probe_fixture.txt");
+
+        let diagnostic = BetboomParser::diagnose_empty_rendered_text(text).expect("diagnostic");
+
+        assert_eq!(diagnostic, "empty_rendered_text");
+    }
+
+    #[test]
+    fn parses_compact_inline_card_with_form_guides() {
+        let text = include_str!("../tests/fixtures/betboom_compact_inline_card_fixture.txt");
+        let probe = Probe {
+            url: "https://betboom.ru/sport/football",
+            sport: Sport::Football,
+            is_live: false,
+            prematch_filter: Some(PREMATCH_FILTER_TEXT),
+        };
+
+        let (events, odds) = BetboomParser::parse_rendered_text(text, probe);
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].league, "Футбол. Бразилия. Серия A");
+        assert_eq!(events[0].home_team, "Интернасиональ");
+        assert_eq!(events[0].away_team, "Сан Пауло");
+        assert!(!events[0].is_live);
+        assert_eq!(odds.len(), 3);
     }
 
     #[test]
@@ -1944,48 +3229,108 @@ mod tests {
     }
 
     #[test]
+    fn prioritizes_focused_runtime_probe_plan() {
+        let plan = BetboomParser::runtime_probe_plan();
+
+        assert_eq!(plan.len(), FOCUSED_RUNTIME_PROBE_URLS.len());
+        assert_eq!(
+            plan.iter()
+                .take(FOCUSED_RUNTIME_PROBE_URLS.len())
+                .map(|probe| probe.url)
+                .collect::<Vec<_>>(),
+            FOCUSED_RUNTIME_PROBE_URLS
+        );
+        assert_eq!(plan[0].url, "https://betboom.ru/sport/football");
+        assert_eq!(plan[1].url, "https://betboom.ru/sport/live/tennis");
+        assert_eq!(plan[3].url, KNOWN_BLOCKER_LIVE_FOOTBALL_URL);
+    }
+
+    #[test]
+    fn uses_shorter_navigation_timeout_for_known_live_football_blocker() {
+        let blocker_probe = Probe {
+            url: KNOWN_BLOCKER_LIVE_FOOTBALL_URL,
+            sport: Sport::Football,
+            is_live: true,
+            prematch_filter: None,
+        };
+        let healthy_probe = Probe {
+            url: "https://betboom.ru/sport/live/tennis",
+            sport: Sport::Tennis,
+            is_live: true,
+            prematch_filter: None,
+        };
+
+        assert_eq!(
+            BetboomParser::headless_navigation_timeout_ms(&blocker_probe),
+            HEADLESS_KNOWN_BLOCKER_NAVIGATION_TIMEOUT_MS
+        );
+        assert_eq!(
+            BetboomParser::headless_navigation_timeout_ms(&healthy_probe),
+            HEADLESS_NAVIGATION_TIMEOUT_MS
+        );
+    }
+
+    #[test]
+    fn classifies_navigation_readiness_timeout_as_specific_blocker() {
+        assert_eq!(
+            BetboomParser::navigation_root_cause(
+                "headless navigation readiness timeout after 12000ms for https://betboom.ru/sport/live/football"
+            ),
+            "navigation_readiness_timeout"
+        );
+        assert_eq!(
+            BetboomParser::navigation_root_cause("connection reset by peer"),
+            "navigation_failed"
+        );
+    }
+
+    #[test]
     fn formats_explicit_empty_runtime_diagnostic() {
-        let diagnostic = BetboomParser::format_empty_runtime_diagnostic(&[
-            ProbeReport {
-                url: "https://betboom.ru/sport/live/football",
-                sport: Sport::Football,
-                is_live: true,
-                navigation_ok: true,
-                navigation_error: None,
-                snapshots: 2,
-                rendered_chars: 420,
-                strategies: vec!["sportbook_root".to_string(), "event_cards".to_string()],
-                events: 0,
-                odds: 0,
-                preview: Some("Футбол П1 1.54 X 4.7 П2 4.0".to_string()),
-                rendered_probe: Some(
-                    "structured_event_cards:lines=8,blocks=1,teams=2,markets=3,prices=3,pairs=3,boundaries=0,implicit=0"
-                        .to_string(),
-                ),
-                root_cause: Some(
-                    "structured_event_cards:single_flattened_block[lines=8,teams=2,markets=3,prices=3,boundaries=0,implicit=0,misclassified=league=0,status=0,market=0,counter=0]"
-                        .to_string(),
-                ),
-            },
-            ProbeReport {
-                url: "https://betboom.ru/sport/tennis",
-                sport: Sport::Tennis,
-                is_live: false,
-                navigation_ok: false,
-                navigation_error: Some("navigation timeout".to_string()),
-                snapshots: 0,
-                rendered_chars: 0,
-                strategies: Vec::new(),
-                events: 0,
-                odds: 0,
-                preview: None,
-                rendered_probe: None,
-                root_cause: Some("navigation_failed".to_string()),
-            },
-        ]);
+        let diagnostic = BetboomParser::format_empty_runtime_diagnostic(
+            &[
+                ProbeReport {
+                    url: "https://betboom.ru/sport/live/football",
+                    sport: Sport::Football,
+                    is_live: true,
+                    navigation_ok: true,
+                    navigation_error: None,
+                    snapshots: 2,
+                    rendered_chars: 420,
+                    strategies: vec!["sportbook_root".to_string(), "event_cards".to_string()],
+                    events: 0,
+                    odds: 0,
+                    preview: Some("Футбол П1 1.54 X 4.7 П2 4.0".to_string()),
+                    rendered_probe: Some(
+                        "structured_event_cards:lines=8,blocks=1,teams=2,markets=3,prices=3,pairs=3,inline_pairs=0,inline_status=0,inline_forms=0,boundaries=0,implicit=0"
+                            .to_string(),
+                    ),
+                    root_cause: Some(
+                        "structured_event_cards:single_flattened_block[lines=8,teams=2,markets=3,prices=3,inline_pairs=0,inline_status=0,inline_forms=0,boundaries=0,implicit=0,misclassified=league=0,status=0,market=0,counter=0]"
+                            .to_string(),
+                    ),
+                },
+                ProbeReport {
+                    url: "https://betboom.ru/sport/tennis",
+                    sport: Sport::Tennis,
+                    is_live: false,
+                    navigation_ok: false,
+                    navigation_error: Some("navigation timeout".to_string()),
+                    snapshots: 0,
+                    rendered_chars: 0,
+                    strategies: Vec::new(),
+                    events: 0,
+                    odds: 0,
+                    preview: None,
+                    rendered_probe: None,
+                    root_cause: Some("navigation_failed".to_string()),
+                },
+            ],
+            4,
+            true,
+        );
 
         assert!(diagnostic
-            .contains("BetBoom rendered runtime returned no events or odds across 2 probes"));
+            .contains("BetBoom rendered runtime returned no events or odds across 2 executed probes (planned=4, budget_exhausted=true)"));
         assert!(diagnostic.contains("status=rendered_visible_but_parse_empty"));
         assert!(diagnostic.contains("nav_ok=1/2"));
         assert!(diagnostic.contains("nav_failed=1"));
@@ -1993,13 +3338,13 @@ mod tests {
         assert!(diagnostic.contains("rendered_chars_nonzero=1/2"));
         assert!(diagnostic.contains("rendered_probe_nonzero=1/2"));
         assert!(diagnostic.contains("root_cause_nonzero=2/2"));
-        assert!(diagnostic.contains(
-            "root_cause_counts=navigation_failed:1|single_flattened_block:1"
-        ));
+        assert!(
+            diagnostic.contains("root_cause_counts=navigation_failed:1|single_flattened_block:1")
+        );
         assert!(diagnostic.contains("live:football: nav=true, snapshots=2, chars=420, strategies=sportbook_root|event_cards, events=0, odds=0"));
         assert!(diagnostic.contains("preview=Футбол П1 1.54 X 4.7 П2 4.0"));
         assert!(diagnostic.contains(
-            "rendered_probe=structured_event_cards:lines=8,blocks=1,teams=2,markets=3,prices=3,pairs=3,boundaries=0,implicit=0"
+            "rendered_probe=structured_event_cards:lines=8,blocks=1,teams=2,markets=3,prices=3,pairs=3,inline_pairs=0,inline_status=0,inline_forms=0,boundaries=0,implicit=0"
         ));
         assert!(diagnostic.contains("root_cause=structured_event_cards:single_flattened_block"));
         assert!(diagnostic.contains("misclassified=league=0,status=0,market=0,counter=0"));
@@ -2034,7 +3379,199 @@ mod tests {
         assert_eq!(summary.navigation_failed, 1);
         assert_eq!(summary.snapshot_nonzero, 0);
         assert_eq!(summary.rendered_probe_nonzero, 0);
-        assert_eq!(summary.root_cause_counts, vec![("navigation_failed".to_string(), 1)]);
+        assert_eq!(
+            summary.root_cause_counts,
+            vec![("navigation_failed".to_string(), 1)]
+        );
+    }
+
+    #[test]
+    fn stops_after_empty_focused_rendered_probes() {
+        let reports = FOCUSED_RUNTIME_PROBE_URLS
+            .iter()
+            .map(|url| ProbeReport {
+                url,
+                sport: Sport::Football,
+                is_live: url.contains("/live/"),
+                navigation_ok: true,
+                navigation_error: None,
+                snapshots: 0,
+                rendered_chars: 0,
+                strategies: Vec::new(),
+                events: 0,
+                odds: 0,
+                preview: None,
+                rendered_probe: None,
+                root_cause: Some("no_rendered_snapshots".to_string()),
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            BetboomParser::empty_rendered_probe_exit_status(&reports),
+            Some("no_rendered_snapshots_after_primary_pair")
+        );
+    }
+
+    #[test]
+    fn stops_after_focused_parse_empty_blocker() {
+        let reports = FOCUSED_RUNTIME_PROBE_URLS
+            .iter()
+            .enumerate()
+            .map(|(index, url)| ProbeReport {
+                url,
+                sport: if url.contains("tennis") {
+                    Sport::Tennis
+                } else {
+                    Sport::Football
+                },
+                is_live: url.contains("/live/"),
+                navigation_ok: true,
+                navigation_error: None,
+                snapshots: 2,
+                rendered_chars: 320 + index,
+                strategies: vec!["structured_event_cards".to_string()],
+                events: 0,
+                odds: 0,
+                preview: Some("Футбол П1 1.54 X 4.7 П2 4.0".to_string()),
+                rendered_probe: Some(
+                    "structured_event_cards:lines=8,blocks=1,teams=2,markets=3,prices=3,pairs=3"
+                        .to_string(),
+                ),
+                root_cause: Some(if index % 2 == 0 {
+                    format!("structured_event_cards:single_flattened_block[{index}]")
+                } else {
+                    format!("structured_event_cards:team_name_signal_dropped[{index}]")
+                }),
+            })
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            BetboomParser::empty_rendered_probe_exit_status(&reports),
+            Some("focused_probes_parse_empty")
+        );
+    }
+
+    #[test]
+    fn runtime_budget_rejects_probe_without_useful_remaining_window() {
+        let live_probe = Probe {
+            url: "https://betboom.ru/sport/live/football",
+            sport: Sport::Football,
+            is_live: true,
+            prematch_filter: None,
+        };
+        let prematch_probe = Probe {
+            url: "https://betboom.ru/sport/football",
+            sport: Sport::Football,
+            is_live: false,
+            prematch_filter: Some(PREMATCH_FILTER_TEXT),
+        };
+
+        assert!(BetboomParser::runtime_budget_allows_probe(0, &live_probe));
+        assert!(!BetboomParser::runtime_budget_allows_probe(
+            RUNTIME_PROBE_BUDGET_MS - HEADLESS_KNOWN_BLOCKER_NAVIGATION_TIMEOUT_MS,
+            &live_probe,
+        ));
+        assert!(!BetboomParser::runtime_budget_allows_probe(
+            RUNTIME_PROBE_BUDGET_MS
+                - (HEADLESS_NAVIGATION_TIMEOUT_MS + HEADLESS_WAIT_MS + FILTER_WAIT_MS)
+                + 1,
+            &prematch_probe,
+        ));
+    }
+
+    #[test]
+    fn stops_after_stable_empty_primary_pair() {
+        let reports = vec![
+            ProbeReport {
+                url: "https://betboom.ru/sport/live/football",
+                sport: Sport::Football,
+                is_live: true,
+                navigation_ok: true,
+                navigation_error: None,
+                snapshots: 2,
+                rendered_chars: 320,
+                strategies: vec!["structured_event_cards".to_string()],
+                events: 0,
+                odds: 0,
+                preview: Some("Футбол П1 1.54 X 4.7 П2 4.0".to_string()),
+                rendered_probe: Some(
+                    "structured_event_cards:lines=8,blocks=1,teams=2,markets=3,prices=3,pairs=3,inline_pairs=0,inline_status=0,inline_forms=0,boundaries=0,implicit=0"
+                        .to_string(),
+                ),
+                root_cause: Some(
+                    "structured_event_cards:single_flattened_block[lines=8,teams=2,markets=3,prices=3,inline_pairs=0,inline_status=0,inline_forms=0,boundaries=0,implicit=0,misclassified=league=0,status=0,market=0,counter=0]"
+                        .to_string(),
+                ),
+            },
+            ProbeReport {
+                url: "https://betboom.ru/sport/football",
+                sport: Sport::Football,
+                is_live: false,
+                navigation_ok: true,
+                navigation_error: None,
+                snapshots: 3,
+                rendered_chars: 410,
+                strategies: vec!["compact_event_cards".to_string()],
+                events: 0,
+                odds: 0,
+                preview: Some("Футбол П1 1.91 X 3.25 П2 4.5".to_string()),
+                rendered_probe: Some(
+                    "compact_event_cards:lines=8,blocks=1,teams=2,markets=3,prices=3,pairs=3,inline_pairs=0,inline_status=0,inline_forms=0,boundaries=0,implicit=0"
+                        .to_string(),
+                ),
+                root_cause: Some(
+                    "compact_event_cards:single_flattened_block[lines=8,teams=2,markets=3,prices=3,inline_pairs=0,inline_status=0,inline_forms=0,boundaries=0,implicit=0,misclassified=league=0,status=0,market=0,counter=0]"
+                        .to_string(),
+                ),
+            },
+        ];
+
+        assert_eq!(
+            BetboomParser::empty_rendered_probe_exit_status(&reports),
+            Some("stable_parse_empty_after_primary_pair")
+        );
+    }
+
+    #[test]
+    fn formats_wall_clock_cutoff_runtime_blocker() {
+        let result = BetboomParser::wall_clock_cutoff_result(
+            Some(Probe {
+                url: "https://betboom.ru/sport/live/football",
+                sport: Sport::Football,
+                is_live: true,
+                prematch_filter: None,
+            }),
+            FOCUSED_RUNTIME_PROBE_URLS.len(),
+            RUNTIME_WALL_CLOCK_CUTOFF_MS,
+        );
+
+        assert!(result.events.is_empty());
+        assert!(result.odds.is_empty());
+        assert!(result.budget_exhausted);
+        assert_eq!(result.planned_probes, FOCUSED_RUNTIME_PROBE_URLS.len());
+        assert_eq!(result.reports.len(), 1);
+        assert_eq!(
+            result.reports[0].navigation_error.as_deref(),
+            Some("wall clock cutoff after 45000ms before a useful runtime result")
+        );
+        assert_eq!(
+            result.reports[0].root_cause.as_deref(),
+            Some("wall_clock_cutoff[cutoff_ms=45000,planned_probes=4]")
+        );
+
+        let diagnostic = BetboomParser::format_empty_runtime_diagnostic(
+            &result.reports,
+            result.planned_probes,
+            result.budget_exhausted,
+        );
+        assert!(diagnostic.contains("planned=4, budget_exhausted=true"));
+        assert!(diagnostic.contains("status=navigation_blocked"));
+        assert!(diagnostic.contains("root_cause_counts=wall_clock_cutoff:1"));
+        assert!(diagnostic
+            .contains("nav_error=wall clock cutoff after 45000ms before a useful runtime result"));
+        assert!(
+            diagnostic.contains("root_cause=wall_clock_cutoff[cutoff_ms=45000,planned_probes=4]")
+        );
     }
 }
 

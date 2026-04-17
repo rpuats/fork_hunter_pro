@@ -80,6 +80,13 @@ Keep long-lived project context in compact files instead of relying on broad cha
 
 - `DEV_SETUP.md` for environment bootstrap
 - `docs/onboarding/AUTONOMOUS_SWARM.md` for agent guardrails
+- `docs/onboarding/SWARM_STATUS.md` for current wave/priority state
+- `docs/memory/README.md` for repo-native memory map
+- `docs/memory/PROJECT_STATE.md` for compact product state
+- `docs/memory/BOOKMAKER_BOARD.md` for bookmaker status/blockers
+- `docs/memory/ACTIVE_LANES.md` for current lane model and rotation
+- `docs/memory/DECISIONS.md` for accepted decisions
+- `docs/memory/BACKLOG.md` for prioritized next work
 - `desktop-ui/README.md` for frontend loop
 - `config.yaml.example` for runtime defaults
-
+- `COMPRESSION.md` for context/token budget rules

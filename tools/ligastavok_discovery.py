@@ -40,9 +40,121 @@ DEFAULT_PAYLOAD = {
 }
 
 
+def normalize_accept_language(value: str):
+    normalized = " ".join(str(value).split()).strip()
+    return normalized or None
+
+
+def build_cookie_header(cookies):
+    pairs = []
+    seen = set()
+
+    for cookie in cookies or []:
+        if not isinstance(cookie, dict):
+            continue
+        name = str(cookie.get("name", "")).strip()
+        value = str(cookie.get("value", "")).strip()
+        if not name or not value:
+            continue
+        lowered = name.lower()
+        if lowered in seen:
+            continue
+        seen.add(lowered)
+        pairs.append(f"{name}={value}")
+
+    return "; ".join(pairs) or None
+
+
 def preview_json(value, limit=2000):
     text = json.dumps(value, ensure_ascii=False, default=str)
     return text[:limit]
+
+
+def summarize_api_request_headers(captured_requests):
+    preferred_order = ["events_list", "filter", "tournament_tree", "action_lines"]
+    request_by_kind = {}
+
+    for request in captured_requests:
+        endpoint_kind = request.get("endpoint_kind")
+        if endpoint_kind and endpoint_kind not in request_by_kind:
+            request_by_kind[endpoint_kind] = request
+
+    for endpoint_kind in preferred_order:
+        request = request_by_kind.get(endpoint_kind)
+        if not request:
+            continue
+        headers = request.get("headers") or {}
+        return {
+            "Accept-Language": headers.get("accept-language") or headers.get("Accept-Language"),
+            "Origin": headers.get("origin") or headers.get("Origin") or BASE_URL,
+            "Referer": headers.get("referer") or headers.get("Referer") or ROOT_REFERER,
+            "User-Agent": headers.get("user-agent") or headers.get("User-Agent"),
+            "Sec-CH-UA": headers.get("sec-ch-ua") or headers.get("Sec-CH-UA"),
+            "Sec-CH-UA-Mobile": headers.get("sec-ch-ua-mobile") or headers.get("Sec-CH-UA-Mobile"),
+            "Sec-CH-UA-Platform": headers.get("sec-ch-ua-platform") or headers.get("Sec-CH-UA-Platform"),
+            "X-Application-Name": headers.get("x-application-name") or headers.get("X-Application-Name"),
+        }
+
+    return None
+
+
+def summarize_browser_verified_api_probe(captured_responses):
+    preferred_order = ["events_list", "filter", "tournament_tree", "action_lines"]
+
+    for endpoint_kind in preferred_order:
+        for response in captured_responses:
+            if response.get("capture_phase") != "navigation":
+                continue
+            if response.get("endpoint_kind") != endpoint_kind:
+                continue
+            status = int(response.get("status") or 0)
+            if status < 200 or status >= 400:
+                continue
+            return {
+                "endpoint_kind": endpoint_kind,
+                "url": response.get("url"),
+                "status": status,
+                "content_type": response.get("content_type"),
+                "body_length": response.get("body_length"),
+                "timestamp": response.get("timestamp"),
+            }
+
+    return None
+
+
+async def capture_storage_snapshot(page):
+    return await page.evaluate(
+        """
+        () => {
+            const collect = (storage) => {
+                try {
+                    const entries = [];
+                    for (let index = 0; index < storage.length; index += 1) {
+                        const key = storage.key(index);
+                        if (!key) {
+                            continue;
+                        }
+                        const value = storage.getItem(key);
+                        entries.push({
+                            key,
+                            value,
+                            valuePreview: typeof value === 'string' ? value.slice(0, 200) : null,
+                            valueLength: typeof value === 'string' ? value.length : 0,
+                        });
+                    }
+                    return entries;
+                } catch (error) {
+                    return [{ key: '__error__', value: String(error), valuePreview: String(error), valueLength: 0 }];
+                }
+            };
+
+            return {
+                localStorage: collect(window.localStorage),
+                sessionStorage: collect(window.sessionStorage),
+            };
+        }
+        """
+    )
 
 
 async def maybe_load_cookies(context, cookies_path: Path):
@@ -60,10 +172,36 @@ async def maybe_load_cookies(context, cookies_path: Path):
     return False
 
 
+def build_header_profile(final_url: str, direct_probe_status: int, api_headers=None, browser_verified_api_probe=None):
+    accept_language = normalize_accept_language("ru-RU,ru;q=0.9,en;q=0.8")
+    api_headers = {key: value for key, value in (api_headers or {}).items() if value}
+    return {
+        "accept_language": accept_language,
+        "origin": BASE_URL,
+        "referer": final_url or ROOT_REFERER,
+        "final_url": final_url,
+        "browser_verified_api_probe": browser_verified_api_probe,
+        "browser_verified_api_probe_status": (
+            browser_verified_api_probe.get("status") if browser_verified_api_probe else 0
+        ),
+        "direct_probe_status": direct_probe_status,
+        "api_headers": api_headers,
+        "extraHTTPHeaders": {
+            "Accept-Language": accept_language,
+            "Origin": BASE_URL,
+            "Referer": final_url or ROOT_REFERER,
+        },
+    }
+
+
+ROOT_REFERER = f"{BASE_URL}/"
+
+
 async def run_discovery(headless: bool, wait_after_nav: float, output_dir: Path, cookies_path: Path):
     output_dir.mkdir(parents=True, exist_ok=True)
     captured_requests = []
     captured_responses = []
+    capture_phase = "navigation"
 
     async with async_playwright() as playwright:
         browser = await playwright.chromium.launch(
@@ -101,6 +239,8 @@ async def run_discovery(headless: bool, wait_after_nav: float, output_dir: Path,
 
             request_info = {
                 "url": url,
+                "endpoint_kind": next((name for name, endpoint in KNOWN_ENDPOINTS.items() if url.startswith(endpoint)), None),
+                "capture_phase": capture_phase,
                 "method": request.method,
                 "resource_type": request.resource_type,
                 "headers": await request.all_headers(),
@@ -129,6 +269,7 @@ async def run_discovery(headless: bool, wait_after_nav: float, output_dir: Path,
                 {
                     "url": url,
                     "endpoint_kind": endpoint_kind,
+                    "capture_phase": capture_phase,
                     "status": response.status,
                     "content_type": content_type,
                     "body_length": body_length,
@@ -170,6 +311,7 @@ async def run_discovery(headless: bool, wait_after_nav: float, output_dir: Path,
             "x-application-name": "mobile",
             "x-req-id": str(uuid.uuid4()),
         }
+        capture_phase = "direct_probe"
 
         direct_probe = await page.evaluate(
             """
@@ -201,6 +343,7 @@ async def run_discovery(headless: bool, wait_after_nav: float, output_dir: Path,
         await page.wait_for_timeout(3000)
         title = await page.title()
         final_url = page.url
+        storage_snapshot = await capture_storage_snapshot(page)
         cookies = await context.cookies()
         await browser.close()
 
@@ -219,6 +362,7 @@ async def run_discovery(headless: bool, wait_after_nav: float, output_dir: Path,
             "payload": direct_probe_payload,
             "result": direct_probe,
         },
+        "browser_storage": storage_snapshot,
         "requests": captured_requests,
         "responses": captured_responses,
         "cookies": cookies,
@@ -227,13 +371,82 @@ async def run_discovery(headless: bool, wait_after_nav: float, output_dir: Path,
     output_file = output_dir / f"ligastavok_discovery_{timestamp}.json"
     output_file.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
 
+    latest_file = output_dir / "ligastavok_discovery_latest.json"
+    latest_file.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    repo_root = Path(__file__).resolve().parents[1]
+    storage_state = {
+        "cookies": cookies,
+        "cookieHeader": build_cookie_header(cookies),
+        "origins": [
+            {
+                "origin": BASE_URL,
+                "localStorage": [
+                    {
+                        "name": "i18nextLng",
+                        "value": "ru-RU",
+                    }
+                ],
+            }
+        ],
+    }
+    storage_state_file = repo_root / "ligastavok_storage_state.json"
+    storage_state_file.write_text(
+        json.dumps(storage_state, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    api_headers = summarize_api_request_headers(captured_requests)
+    browser_verified_api_probe = summarize_browser_verified_api_probe(captured_responses)
+    header_profile = build_header_profile(
+        final_url,
+        direct_probe.get("status", 0),
+        api_headers,
+        browser_verified_api_probe,
+    )
+    header_profile_file = repo_root / "ligastavok_header_profile.json"
+    header_profile_file.write_text(
+        json.dumps(header_profile, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    bootstrap_bundle = {
+        "bookmaker": "ligastavok",
+        "captured_at": result["captured_at"],
+        "source": str(latest_file),
+        "storageState": storage_state,
+        "headerProfile": header_profile,
+        "runtimeBootstrap": {
+            "api_headers": api_headers,
+            "browser_storage": storage_snapshot,
+            "browser_verified_api_probe": browser_verified_api_probe,
+            "browser_verified_api_probe_status": (
+                browser_verified_api_probe.get("status") if browser_verified_api_probe else 0
+            ),
+            "direct_probe_status": direct_probe.get("status", 0),
+        },
+        "final_url": final_url,
+        "cookies": cookies,
+        "cookieHeader": storage_state["cookieHeader"],
+    }
+    bootstrap_bundle_file = repo_root / "ligastavok_bootstrap.json"
+    bootstrap_bundle_file.write_text(
+        json.dumps(bootstrap_bundle, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
     summary = {
         "output_file": str(output_file),
+        "latest_file": str(latest_file),
+        "storage_state_file": str(storage_state_file),
+        "header_profile_file": str(header_profile_file),
+        "bootstrap_bundle_file": str(bootstrap_bundle_file),
         "page_title": title,
         "final_url": final_url,
         "cookies_loaded": cookies_loaded,
         "captured_request_count": len(captured_requests),
         "captured_response_count": len(captured_responses),
+        "browser_verified_api_probe_status": (
+            browser_verified_api_probe.get("status", 0) if browser_verified_api_probe else 0
+        ),
         "direct_probe_status": direct_probe.get("status", 0),
     }
     print(json.dumps(summary, ensure_ascii=False, indent=2))

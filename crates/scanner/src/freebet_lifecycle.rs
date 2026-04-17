@@ -6,8 +6,8 @@ use persistence::freebet_lifecycle::FreebetLifecycleStore;
 use shared::models::{
     BonusInfo, BookmakerBalance, FreebetAutoRolloverDraft, FreebetAutoRolloverStatus,
     FreebetBookmakerAllocation, FreebetConversionPlan, FreebetFundingReadiness,
-    FreebetLifecycleStage, FreebetLifecycleState, FreebetOpportunity, FreebetProgressStatus,
-    FreebetRolloverProgress,
+    FreebetLifecycleAction, FreebetLifecycleActionStatus, FreebetLifecycleStage,
+    FreebetLifecycleState, FreebetOpportunity, FreebetProgressStatus, FreebetRolloverProgress,
 };
 use std::collections::HashMap;
 
@@ -234,6 +234,109 @@ fn infer_read_only_focus(
         FreebetLifecycleStage::RolloverInProgress => "turnover_progress".into(),
         FreebetLifecycleStage::RolloverCompleted => "completion_audit".into(),
     }
+}
+
+pub fn build_staged_rollover_actions(
+    lifecycle_stage: &FreebetLifecycleStage,
+    auto_rollover: Option<&FreebetAutoRolloverDraft>,
+) -> Vec<FreebetLifecycleAction> {
+    let funding_status = match auto_rollover.map(|item| &item.status) {
+        Some(FreebetAutoRolloverStatus::AwaitingFunding) => FreebetLifecycleActionStatus::Ready,
+        Some(FreebetAutoRolloverStatus::AwaitingTrigger)
+        | Some(FreebetAutoRolloverStatus::Monitoring)
+        | Some(FreebetAutoRolloverStatus::Completed) => FreebetLifecycleActionStatus::Completed,
+        Some(FreebetAutoRolloverStatus::DraftOnly) => FreebetLifecycleActionStatus::Pending,
+        None => match lifecycle_stage {
+            FreebetLifecycleStage::Discovered | FreebetLifecycleStage::Available => {
+                FreebetLifecycleActionStatus::Pending
+            }
+            FreebetLifecycleStage::Qualified | FreebetLifecycleStage::Planned => {
+                FreebetLifecycleActionStatus::Ready
+            }
+            FreebetLifecycleStage::RolloverInProgress => FreebetLifecycleActionStatus::Completed,
+            FreebetLifecycleStage::RolloverCompleted => FreebetLifecycleActionStatus::Completed,
+        },
+    };
+    let trigger_status = match auto_rollover.map(|item| &item.status) {
+        Some(FreebetAutoRolloverStatus::AwaitingFunding)
+        | Some(FreebetAutoRolloverStatus::DraftOnly) => FreebetLifecycleActionStatus::Pending,
+        Some(FreebetAutoRolloverStatus::AwaitingTrigger) => FreebetLifecycleActionStatus::Ready,
+        Some(FreebetAutoRolloverStatus::Monitoring)
+        | Some(FreebetAutoRolloverStatus::Completed) => FreebetLifecycleActionStatus::Completed,
+        None => match lifecycle_stage {
+            FreebetLifecycleStage::Discovered | FreebetLifecycleStage::Available => {
+                FreebetLifecycleActionStatus::Pending
+            }
+            FreebetLifecycleStage::Qualified | FreebetLifecycleStage::Planned => {
+                FreebetLifecycleActionStatus::Ready
+            }
+            FreebetLifecycleStage::RolloverInProgress
+            | FreebetLifecycleStage::RolloverCompleted => FreebetLifecycleActionStatus::Completed,
+        },
+    };
+    let monitoring_status = match auto_rollover.map(|item| &item.status) {
+        Some(FreebetAutoRolloverStatus::Monitoring) => FreebetLifecycleActionStatus::Monitoring,
+        Some(FreebetAutoRolloverStatus::Completed) => FreebetLifecycleActionStatus::Completed,
+        _ => match lifecycle_stage {
+            FreebetLifecycleStage::RolloverInProgress => FreebetLifecycleActionStatus::Monitoring,
+            FreebetLifecycleStage::RolloverCompleted => FreebetLifecycleActionStatus::Completed,
+            _ => FreebetLifecycleActionStatus::Pending,
+        },
+    };
+    let audit_status = if matches!(lifecycle_stage, FreebetLifecycleStage::RolloverCompleted)
+        || matches!(
+            auto_rollover.map(|item| &item.status),
+            Some(FreebetAutoRolloverStatus::Completed)
+        ) {
+        FreebetLifecycleActionStatus::Ready
+    } else {
+        FreebetLifecycleActionStatus::Pending
+    };
+
+    vec![
+        FreebetLifecycleAction {
+            key: "funding_check".into(),
+            label: "Refresh funding coverage".into(),
+            status: funding_status,
+            detail: auto_rollover
+                .map(|item| item.funding_recommendation.clone())
+                .filter(|item| !item.trim().is_empty())
+                .unwrap_or_else(|| {
+                    "Confirm balances still cover the planned qualifying and hedge cash legs."
+                        .into()
+                }),
+        },
+        FreebetLifecycleAction {
+            key: "manual_trigger".into(),
+            label: "Wait for manual qualifying trigger".into(),
+            status: trigger_status,
+            detail: auto_rollover
+                .map(|item| item.trigger.clone())
+                .filter(|item| !item.trim().is_empty())
+                .unwrap_or_else(|| {
+                    "Manual qualifying/freebet placement must appear before execution tracking can advance."
+                        .into()
+                }),
+        },
+        FreebetLifecycleAction {
+            key: "turnover_monitoring".into(),
+            label: "Monitor rollover turnover".into(),
+            status: monitoring_status,
+            detail: auto_rollover
+                .map(|item| item.read_only_check.clone())
+                .filter(|item| !item.trim().is_empty())
+                .unwrap_or_else(|| {
+                    "Track turnover progress as a read-only workflow; no coupon submit path is armed."
+                        .into()
+                }),
+        },
+        FreebetLifecycleAction {
+            key: "completion_audit".into(),
+            label: "Audit completed rollover snapshot".into(),
+            status: audit_status,
+            detail: infer_read_only_follow_up(lifecycle_stage, auto_rollover),
+        },
+    ]
 }
 
 fn build_auto_rollover_draft(
@@ -476,6 +579,8 @@ pub fn collect_freebet_lifecycle(
         let read_only_follow_up =
             infer_read_only_follow_up(&lifecycle_stage, auto_rollover.as_ref());
         let read_only_focus = infer_read_only_focus(&lifecycle_stage, auto_rollover.as_ref());
+        let rollover_actions =
+            build_staged_rollover_actions(&lifecycle_stage, auto_rollover.as_ref());
 
         states.push(FreebetLifecycleState {
             bookmaker,
@@ -490,6 +595,8 @@ pub fn collect_freebet_lifecycle(
             rollover,
             allocation,
             auto_rollover,
+            rollover_actions,
+            execution_readiness: None,
             updated_at,
         });
     }
@@ -635,6 +742,18 @@ mod tests {
         assert!(auto_rollover
             .read_only_check
             .contains("confirm the draft leaves awaiting_funding"));
+        assert_eq!(states[0].rollover_actions.len(), 4);
+        assert_eq!(states[0].rollover_actions[0].key, "funding_check");
+        assert_eq!(
+            states[0].rollover_actions[0].status,
+            FreebetLifecycleActionStatus::Ready
+        );
+        assert_eq!(states[0].rollover_actions[1].key, "manual_trigger");
+        assert_eq!(
+            states[0].rollover_actions[1].status,
+            FreebetLifecycleActionStatus::Pending
+        );
+        assert!(states[0].execution_readiness.is_none());
     }
 
     #[test]
@@ -697,6 +816,12 @@ mod tests {
         assert!(auto_rollover
             .read_only_check
             .contains("remaining requirement keeps falling"));
+        assert_eq!(states[0].rollover_actions.len(), 4);
+        assert_eq!(states[0].rollover_actions[2].key, "turnover_monitoring");
+        assert_eq!(
+            states[0].rollover_actions[2].status,
+            FreebetLifecycleActionStatus::Monitoring
+        );
     }
 
     #[tokio::test]
@@ -717,6 +842,8 @@ mod tests {
             rollover: None,
             allocation: None,
             auto_rollover: None,
+            rollover_actions: Vec::new(),
+            execution_readiness: None,
             updated_at: Utc::now(),
         };
 

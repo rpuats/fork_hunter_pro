@@ -22,5 +22,16 @@
     "away": "Bet-M",
     "odds": [1.5, 2.5],
     "sourceUrl": "https://bet-m.net/live"
+  },
+  {
+    "home": "Спартак Москва",
+    "away": "Зенит",
+    "odds": [2.18, 3.55, 3.12],
+    "sourceUrl": "https://betm.ru/live"
+  },
+  {
+    "home": "Реал Мадрид - Барселона",
+    "odds": [1.91, 3.62, 4.1],
+    "sourceUrl": "https://betm.ru/live"
   }
 ]

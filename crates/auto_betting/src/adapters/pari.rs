@@ -2,9 +2,11 @@ use async_trait::async_trait;
 use chrono::Utc;
 use shared::{
     BetExecutionReceipt, BetExecutionRequest, BetExecutionStatus, BookmakerAccount,
-    BookmakerAccountCapabilityMetadata, BookmakerBalanceRefresh, BookmakerBalanceRefreshState,
-    BookmakerBalanceSnapshot, BookmakerExecutionCapability, BookmakerExecutionMode,
-    BookmakerSession, BookmakerSessionState, BookmakerSessionStatus, BookmakerSessionSyncState,
+    BookmakerAccountCapabilityMetadata, BookmakerAdapterAuthMetadata,
+    BookmakerAdapterReadinessMetadata, BookmakerAdapterReadinessStage, BookmakerBalanceRefresh,
+    BookmakerBalanceRefreshState, BookmakerBalanceSnapshot, BookmakerExecutionCapability,
+    BookmakerExecutionMode, BookmakerSession, BookmakerSessionState, BookmakerSessionStatus,
+    BookmakerSessionSyncState,
 };
 
 use crate::execution::BookmakerExecutionAdapter;
@@ -116,6 +118,24 @@ impl BookmakerExecutionAdapter for PariExecutionAdapter {
                 supports_read_only_session_sync: true,
                 supports_read_only_balance_refresh: true,
                 remote_balance_fetch_enabled: false,
+                auth: BookmakerAdapterAuthMetadata {
+                    flow: "manual_cookie_session".into(),
+                    requires_human_bootstrap: true,
+                    session_bootstrap_enabled: false,
+                    session_refresh_enabled: false,
+                    persisted_snapshot_enabled: true,
+                },
+                readiness: BookmakerAdapterReadinessMetadata {
+                    stage: BookmakerAdapterReadinessStage::SafeModePlacementReady,
+                    safe_mode_only: true,
+                    approval_reference_required: true,
+                    operator_notes: vec![
+                        "session/bootstrap remains operator-managed until auth flow is audited"
+                            .into(),
+                        "semi-real orchestration is allowed for rollout checks without remote submit"
+                            .into(),
+                    ],
+                },
                 notes: vec![
                     "safe-mode adapter exposes cached account state only".into(),
                     "semi-real submission path is enabled for arming and orchestration tests"

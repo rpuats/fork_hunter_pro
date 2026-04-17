@@ -14,6 +14,7 @@ This repo is easiest to drive in Kilo when the session follows the actual projec
 Use these first:
 
 - `/bootstrap-fast` - provision `.env`, install what is needed, and get to a usable local state quickly;
+- `/bookmaker-memory-preflight <slug>` - read the current bookmaker lessons, blockers, and reusable patterns before a bounded parser task;
 - `/bounded-rust-return <goal>` - keep short bounded Rust tasks on a single slice and return immediately on the first real blocker;
 - `/rust-slice-check rust-core` - validate core crates only;
 - `/rust-slice-check parsers` - validate parser-only work;
@@ -27,11 +28,13 @@ Use `@fork-hunter-rust-mainline` when the task is in the Rust workspace, needs t
 ## Default operating loop
 
 1. Run `/bootstrap-fast` on fresh clones or stale environments.
-2. For short bounded asks, start with `/bounded-rust-return <goal>` so the session stays inside one slice and fails fast.
-3. Keep implementation work inside the narrowest crate or role boundary.
-4. Run `/rust-slice-check <role>` before expanding to broader validation.
-5. Use `/nightly-runtime-kpi` only for parser quality gates or nightly regression checks.
-6. Escalate to workspace-wide checks only after the focused slice is green.
+2. For bookmaker work, run `/bookmaker-memory-preflight <slug>` before implementation so the session starts from the latest local lessons and blockers.
+3. For short bounded asks, start with `/bounded-rust-return <goal>` so the session stays inside one slice and fails fast.
+4. Keep implementation work inside the narrowest crate or role boundary.
+5. Run `/rust-slice-check <role>` before expanding to broader validation.
+6. Use `/nightly-runtime-kpi` only for parser quality gates or nightly regression checks.
+7. After a bounded bookmaker task, capture the new lesson with `/bookmaker-memory-capture <slug> <kind> <summary>`.
+8. Escalate to workspace-wide checks only after the focused slice is green.
 
 ## Blocker-first return rule
 

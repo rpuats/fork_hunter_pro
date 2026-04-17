@@ -51,9 +51,8 @@ impl ParserRuntimeStats {
         validation_checks: Vec<ParserDiagnosticCheck>,
     ) {
         self.total_runs += 1;
-        self.successful_runs += 1;
+        let is_healthy = matches!(result_status, ParserResultStatus::Healthy);
         self.last_attempt = Some(timestamp);
-        self.last_success = Some(timestamp);
         self.last_error = None;
         self.last_result_status = result_status;
         self.last_result_message = result_message;
@@ -61,6 +60,10 @@ impl ParserRuntimeStats {
         self.consecutive_failures = 0;
         self.events_parsed = events_parsed;
         self.odds_parsed = odds_parsed;
+        if is_healthy {
+            self.successful_runs += 1;
+        }
+        self.last_success = Some(timestamp);
         self.avg_response_time_ms = rolling_average(
             self.avg_response_time_ms,
             self.total_runs - 1,
@@ -222,5 +225,29 @@ mod tests {
         assert_eq!(snapshot.events_parsed, 45);
         assert_eq!(snapshot.odds_parsed, 120);
         assert_eq!(snapshot.successful_runs, 1);
+    }
+
+    #[test]
+    fn degraded_results_do_not_increment_successful_runs() {
+        let mut stats = ParserRuntimeStats::new("olimp");
+        let now = Utc::now();
+
+        stats.record_success(
+            now,
+            18.0,
+            12,
+            24,
+            ParserResultStatus::Degraded,
+            Some("parser returned events without odds".into()),
+            Vec::new(),
+        );
+
+        let snapshot = stats.snapshot(RuntimeCircuitState::Closed);
+
+        assert_eq!(snapshot.total_runs, 1);
+        assert_eq!(snapshot.successful_runs, 0);
+        assert_eq!(snapshot.last_result_status, ParserResultStatus::Degraded);
+        assert_eq!(snapshot.last_success, Some(now));
+        assert!((snapshot.uptime_percent - 0.0).abs() < f64::EPSILON);
     }
 }

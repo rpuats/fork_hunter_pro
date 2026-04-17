@@ -554,7 +554,10 @@ pub struct AccountSessionSummary {
     pub accounts_with_control_issues: usize,
     pub sessions_configured: usize,
     pub sessions_authenticated: usize,
+    pub sessions_stale: usize,
     pub balances_cached: usize,
+    pub balances_stale: usize,
+    pub auth_snapshots_stale: usize,
     pub ready_for_execution: usize,
     pub ready_for_dry_run: usize,
 }
@@ -623,12 +626,54 @@ pub struct ExecutionBookmakerStateSummary {
     pub latest_error: Option<String>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ExecutionStateReadinessSummary {
+    pub total_bookmakers: usize,
+    pub accounts_configured: usize,
+    pub accounts_enabled: usize,
+    pub auth_ready: usize,
+    pub sessions_authenticated: usize,
+    pub sessions_stale: usize,
+    pub balances_cached: usize,
+    pub balances_stale: usize,
+    pub auth_snapshots_stale: usize,
+    pub dry_run_ready: usize,
+    pub placement_ready: usize,
+    pub approval_required: usize,
+    pub submit_blocked_by_safe_mode: usize,
+    pub operator_attention_required: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExecutionBookmakerReadinessRecord {
+    pub bookmaker: String,
+    pub account_configured: bool,
+    pub account_enabled: bool,
+    pub execution_mode: Option<BookmakerExecutionMode>,
+    pub requires_session: bool,
+    pub auth_ready: bool,
+    pub session_authenticated: bool,
+    pub session_stale: bool,
+    pub balance_cached: bool,
+    pub balance_stale: bool,
+    pub auth_snapshot_stale: bool,
+    pub dry_run_ready: bool,
+    pub placement_ready: bool,
+    pub approval_required: bool,
+    pub submit_blocked_by_safe_mode: bool,
+    pub persistence_warnings: Vec<String>,
+    pub operator_action: Option<String>,
+    pub blocking_reasons: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExecutionStateAudit {
     pub total_snapshots: usize,
     pub total_transitions: usize,
     pub latest_snapshot_at: Option<DateTime<Utc>>,
     pub latest_transition_at: Option<DateTime<Utc>>,
+    pub readiness: ExecutionStateReadinessSummary,
+    pub bookmaker_readiness: Vec<ExecutionBookmakerReadinessRecord>,
     pub bookmaker_summaries: Vec<ExecutionBookmakerStateSummary>,
     pub recent_transitions: Vec<ExecutionStateTransitionRecord>,
     pub generated_at: DateTime<Utc>,
@@ -701,7 +746,46 @@ pub struct BookmakerAccountCapabilityMetadata {
     pub supports_read_only_session_sync: bool,
     pub supports_read_only_balance_refresh: bool,
     pub remote_balance_fetch_enabled: bool,
+    pub auth: BookmakerAdapterAuthMetadata,
+    pub readiness: BookmakerAdapterReadinessMetadata,
     pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum BookmakerAuthState {
+    NoSession,
+    Configured,
+    Authenticated,
+    Expired,
+    Locked,
+    Disconnected,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BookmakerAdapterAuthMetadata {
+    pub flow: String,
+    pub requires_human_bootstrap: bool,
+    pub session_bootstrap_enabled: bool,
+    pub session_refresh_enabled: bool,
+    pub persisted_snapshot_enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum BookmakerAdapterReadinessStage {
+    SessionBootstrapPending,
+    AuthenticatedReadOnly,
+    SafeModePlacementReady,
+    RealMoneyReady,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BookmakerAdapterReadinessMetadata {
+    pub stage: BookmakerAdapterReadinessStage,
+    pub safe_mode_only: bool,
+    pub approval_reference_required: bool,
+    pub operator_notes: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -776,6 +860,25 @@ pub struct BookmakerBalanceRefresh {
     pub snapshot: Option<BookmakerBalanceSnapshot>,
     pub detail: Option<String>,
     pub checked_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BookmakerAuthSnapshot {
+    pub account_id: Option<Uuid>,
+    pub bookmaker: String,
+    pub auth_state: BookmakerAuthState,
+    pub readiness_stage: BookmakerAdapterReadinessStage,
+    pub mode: Option<BookmakerExecutionMode>,
+    pub enabled: bool,
+    pub cached_balance_available: bool,
+    pub submit_enabled: bool,
+    pub real_money_enabled: bool,
+    pub safe_mode_blocked: bool,
+    pub session_last_synced_at: Option<DateTime<Utc>>,
+    pub balance_captured_at: Option<DateTime<Utc>>,
+    pub last_authenticated_at: Option<DateTime<Utc>>,
+    pub detail: Option<String>,
+    pub captured_at: DateTime<Utc>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -897,6 +1000,9 @@ pub struct StakeValidationPreflightResponse {
     pub armed_for_execution: bool,
     pub placement_ready: bool,
     pub real_money_enabled: bool,
+    pub rollout_gate_active: bool,
+    pub approval_required: bool,
+    pub submit_blocked_by_safe_mode: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1050,6 +1156,51 @@ pub enum FreebetAutoRolloverStatus {
     Completed,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum FreebetLifecycleActionStatus {
+    Pending,
+    Ready,
+    Monitoring,
+    Completed,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FreebetLifecycleAction {
+    pub key: String,
+    pub label: String,
+    pub status: FreebetLifecycleActionStatus,
+    pub detail: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum FreebetExecutionReadinessStage {
+    Untracked,
+    FundingBlocked,
+    AwaitingManualTrigger,
+    ReadOnlyReady,
+    MonitoringOnly,
+    Completed,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FreebetExecutionReadiness {
+    pub stage: FreebetExecutionReadinessStage,
+    pub account_configured: bool,
+    pub session_required: bool,
+    pub session_ready: bool,
+    pub balance_snapshot_available: bool,
+    pub dry_run_ready: bool,
+    pub funding_ready: bool,
+    pub manual_trigger_required: bool,
+    pub monitoring_only: bool,
+    pub real_money_enabled: bool,
+    pub submit_blocked_by_safe_mode: bool,
+    #[serde(default)]
+    pub blocking_reasons: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct FreebetFundingReadiness {
     pub ready: bool,
@@ -1120,6 +1271,10 @@ pub struct FreebetLifecycleState {
     pub allocation: Option<FreebetBookmakerAllocation>,
     #[serde(default)]
     pub auto_rollover: Option<FreebetAutoRolloverDraft>,
+    #[serde(default)]
+    pub rollover_actions: Vec<FreebetLifecycleAction>,
+    #[serde(default)]
+    pub execution_readiness: Option<FreebetExecutionReadiness>,
     pub updated_at: DateTime<Utc>,
 }
 

@@ -1943,9 +1943,10 @@ mod tests {
             .next()
             .expect("runtime snapshot");
         assert_eq!(snapshot.last_result_status, ParserResultStatus::Degraded);
-        assert_eq!(snapshot.successful_runs, 1);
+        assert_eq!(snapshot.successful_runs, 0);
         assert_eq!(snapshot.total_runs, 1);
         assert_eq!(snapshot.last_error, None);
+        assert!((snapshot.uptime_percent - 0.0).abs() < f64::EPSILON);
         assert!(snapshot
             .validation_checks
             .iter()

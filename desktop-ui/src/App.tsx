@@ -16,7 +16,7 @@ function App() {
   const [activeTab, setActiveTab] = useState<TabType>('dashboard')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [accountFocus, setAccountFocus] = useState<string | null>(null)
-  const { connected, scannerStatus, surebets, metrics, bookmakers, corridors, expressForks, valueBets, generosityIndices, executionOverview, executionLedger, executionState, parserCoverage, parserHealth, accounts, accountsSummary, bankrollState, bankrollRecommendations } = useScanner()
+  const { connected, scannerStatus, surebets, metrics, bookmakers, corridors, expressForks, valueBets, generosityIndices, executionOverview, executionLedger, executionState, parserCoverage, parserHealth, accounts, accountsSummary, bankrollState, bankrollRecommendations, freebetSummary } = useScanner()
 
   const openAccountsFocus = (bookmaker: string) => {
     setAccountFocus(bookmaker)
@@ -54,9 +54,9 @@ function App() {
       case 'express':
         return <ExpressPage expressForks={expressForks} />
       case 'operator':
-        return <OperatorPage executionOverview={executionOverview} executionLedger={executionLedger} executionState={executionState} parserCoverage={parserCoverage} parserHealth={parserHealth} bookmakers={bookmakers} accountStates={accounts} onOpenAccount={openAccountsFocus} />
+        return <OperatorPage executionOverview={executionOverview} executionLedger={executionLedger} executionState={executionState} parserCoverage={parserCoverage} parserHealth={parserHealth} bookmakers={bookmakers} accountStates={accounts} freebetSummary={freebetSummary} onOpenAccount={openAccountsFocus} />
       case 'accounts':
-        return <AccountsPage accounts={accounts} accountsSummary={accountsSummary} bankrollState={bankrollState} bankrollRecommendations={bankrollRecommendations} focusedBookmaker={accountFocus} />
+        return <AccountsPage accounts={accounts} accountsSummary={accountsSummary} bankrollState={bankrollState} bankrollRecommendations={bankrollRecommendations} executionState={executionState} focusedBookmaker={accountFocus} />
       case 'history':
         return <HistoryPage surebets={surebets} corridors={corridors} expressForks={expressForks} valueBets={valueBets} executionLedger={executionLedger} />
       case 'settings':

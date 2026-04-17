@@ -247,6 +247,8 @@ mod tests {
                         .into(),
                 ],
             }),
+            rollover_actions: Vec::new(),
+            execution_readiness: None,
             updated_at: Utc::now(),
         }
     }

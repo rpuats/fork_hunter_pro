@@ -12,6 +12,8 @@ What it does:
 
 - runs `runtime_parser_diagnostics` with strict nightly exit semantics;
 - uses default runtime-only slugs from `crates/parsers/src/diagnostics.rs`;
+- clears poisoned localhost proxy env (`127.0.0.1:9`) before invoking `cargo`, so nightly runtime checks are not zeroed by sandbox proxy poisoning;
+- accepts `-Slugs` as either a PowerShell array or a comma-delimited list;
 - writes machine-readable artifacts under `artifacts/nightly/runtime/`.
 
 ## Artifacts

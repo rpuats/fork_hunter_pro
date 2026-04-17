@@ -1,6 +1,9 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use shared::{BetPlacement, BookmakerAccount, BookmakerBalanceSnapshot, BookmakerSession};
+use shared::{
+    BetPlacement, BookmakerAccount, BookmakerAuthSnapshot, BookmakerBalanceSnapshot,
+    BookmakerSession,
+};
 
 use crate::state_machine::{ExecutionStateSnapshot, ExecutionStateTransition};
 
@@ -9,6 +12,7 @@ pub struct ExecutionRegistrySnapshot {
     pub accounts: Vec<BookmakerAccount>,
     pub sessions: Vec<BookmakerSession>,
     pub balances: Vec<BookmakerBalanceSnapshot>,
+    pub auth_snapshots: Vec<BookmakerAuthSnapshot>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
@@ -36,6 +40,8 @@ pub trait ExecutionRegistryPersistence: Send + Sync {
         &self,
         snapshot: &BookmakerBalanceSnapshot,
     ) -> Result<(), String>;
+
+    async fn save_auth_snapshot(&self, snapshot: &BookmakerAuthSnapshot) -> Result<(), String>;
 }
 
 pub trait ExecutionLedgerPersistence: Send + Sync {

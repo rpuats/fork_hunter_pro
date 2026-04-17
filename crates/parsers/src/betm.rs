@@ -56,6 +56,17 @@ const HEADLESS_EXTRACT_JS: &str = r#"(() => {
         if (/^\d+[.,]?\d*$/.test(value)) return false;
         return true;
     };
+    const splitPair = (value) => {
+        const normalized = normalizeText(value);
+        for (const separator of [' - ', ' -', '- ', ' – ', ' — ', ' vs ', ' VS ', ' v ']) {
+            const index = normalized.indexOf(separator);
+            if (index <= 0) continue;
+            const home = normalizeText(normalized.slice(0, index));
+            const away = normalizeText(normalized.slice(index + separator.length));
+            if (isName(home) && isName(away) && home !== away) return [home, away];
+        }
+        return null;
+    };
     const seen = new Set();
     const results = [];
     const selectors = [
@@ -79,6 +90,11 @@ const HEADLESS_EXTRACT_JS: &str = r#"(() => {
             let home = '';
             let away = '';
             for (const line of lines) {
+                const pair = splitPair(line);
+                if (pair) {
+                    [home, away] = pair;
+                    break;
+                }
                 if (!isName(line) || /live/i.test(line)) continue;
                 if (!home) home = line;
                 else if (line !== home && !away) away = line;
@@ -155,6 +171,22 @@ impl BetMParser {
             && !normalized.contains("bet-m")
     }
 
+    fn split_match_title(value: &str) -> Option<(String, String)> {
+        for separator in [" - ", " -", "- ", " – ", " — ", " vs ", " VS ", " v "] {
+            let Some(position) = value.find(separator) else {
+                continue;
+            };
+
+            let home = value[..position].trim();
+            let away = value[position + separator.len()..].trim();
+            if Self::is_plausible_team(home) && Self::is_plausible_team(away) && home != away {
+                return Some((home.to_string(), away.to_string()));
+            }
+        }
+
+        None
+    }
+
     fn build_event_id(home: &str, away: &str, is_live: bool) -> String {
         let normalize = |value: &str| {
             value
@@ -183,18 +215,44 @@ impl BetMParser {
         )
     }
 
+    fn detect_live_state(source_url: &str, fallback_live: bool) -> bool {
+        let normalized = source_url.trim().to_ascii_lowercase();
+        if normalized.is_empty() {
+            return fallback_live;
+        }
+
+        if normalized.contains("/live") {
+            true
+        } else if normalized.contains("/line") {
+            false
+        } else {
+            fallback_live
+        }
+    }
+
     fn parse_headless_item(
         item: &serde_json::Value,
         fallback_live: bool,
     ) -> Option<(Event, Vec<Odd>)> {
-        let home_team = item.get("home").and_then(|value| value.as_str())?.trim();
-        let away_team = item.get("away").and_then(|value| value.as_str())?.trim();
-        if !Self::is_plausible_team(home_team)
-            || !Self::is_plausible_team(away_team)
-            || home_team == away_team
-        {
-            return None;
-        }
+        let home_team = item
+            .get("home")
+            .and_then(|value| value.as_str())
+            .map(str::trim);
+        let away_team = item
+            .get("away")
+            .and_then(|value| value.as_str())
+            .map(str::trim);
+        let (home_team, away_team) = match (home_team, away_team) {
+            (Some(home_team), Some(away_team))
+                if Self::is_plausible_team(home_team)
+                    && Self::is_plausible_team(away_team)
+                    && home_team != away_team =>
+            {
+                (home_team.to_string(), away_team.to_string())
+            }
+            (Some(home_team), _) | (_, Some(home_team)) => Self::split_match_title(home_team)?,
+            _ => return None,
+        };
 
         let odds_values = item
             .get("odds")
@@ -217,20 +275,16 @@ impl BetMParser {
             .get("sourceUrl")
             .and_then(|value| value.as_str())
             .unwrap_or("");
-        let is_live = if source_url.is_empty() {
-            fallback_live
-        } else {
-            source_url.contains("/live")
-        };
-        let event_id = Self::build_event_id(home_team, away_team, is_live);
+        let is_live = Self::detect_live_state(source_url, fallback_live);
+        let event_id = Self::build_event_id(&home_team, &away_team, is_live);
         let league = if is_live { "Live" } else { "Pre-match" }.to_string();
 
         let event = Event {
             id: event_id.clone(),
             sport: Sport::Football,
             league,
-            home_team: home_team.to_string(),
-            away_team: away_team.to_string(),
+            home_team: home_team.clone(),
+            away_team: away_team.clone(),
             start_time: None,
             is_live,
             bookmaker_slug: BOOKMAKER_SLUG.to_string(),
@@ -306,6 +360,7 @@ impl BetMParser {
         let mut all_events = Vec::new();
         let mut all_odds = Vec::new();
         let mut seen_event_ids = HashSet::new();
+        let mut seen_odd_ids = HashSet::new();
 
         for probe in PROBES {
             let tab = match helper.navigate_and_wait(probe.url, HEADLESS_WAIT_MS) {
@@ -347,11 +402,21 @@ impl BetMParser {
             }
 
             let (events, odds) = Self::parse_headless_payload(&payload, probe.is_live);
+            let new_events = events
+                .iter()
+                .filter(|event| !seen_event_ids.contains(&event.id))
+                .count();
+            let new_odds = odds
+                .iter()
+                .filter(|odd| !seen_odd_ids.contains(&odd.id))
+                .count();
             debug!(
                 url = probe.url,
                 items = payload.len(),
                 events = events.len(),
                 odds = odds.len(),
+                new_events,
+                new_odds,
                 "BetM: headless payload parsed"
             );
 
@@ -360,7 +425,11 @@ impl BetMParser {
                     all_events.push(event);
                 }
             }
-            all_odds.extend(odds);
+            for odd in odds {
+                if seen_odd_ids.insert(odd.id.clone()) {
+                    all_odds.push(odd);
+                }
+            }
         }
 
         Ok((all_events, all_odds))
@@ -443,8 +512,8 @@ mod tests {
 
         let (events, odds) = BetMParser::parse_headless_payload(&payload, true);
 
-        assert_eq!(events.len(), 2);
-        assert_eq!(odds.len(), 5);
+        assert_eq!(events.len(), 3);
+        assert_eq!(odds.len(), 8);
 
         let football = events
             .iter()
@@ -467,6 +536,30 @@ mod tests {
                 && odd.odds_type == OddsType::Away
                 && (odd.odds - 2.08).abs() < f64::EPSILON
         }));
+        assert!(events.iter().any(|event| {
+            event.home_team == "Реал Мадрид" && event.away_team == "Барселона" && event.is_live
+        }));
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| event.home_team == "Спартак Москва" && event.away_team == "Зенит")
+                .count(),
+            1
+        );
+    }
+
+    #[test]
+    fn detects_live_state_from_source_url_with_fallback_for_unknown_routes() {
+        assert!(BetMParser::detect_live_state(
+            "https://bet-m.net/live",
+            false
+        ));
+        assert!(!BetMParser::detect_live_state("https://betm.ru/line", true));
+        assert!(BetMParser::detect_live_state(
+            "https://betm.ru/sports",
+            true
+        ));
+        assert!(!BetMParser::detect_live_state("", false));
     }
 
     #[test]

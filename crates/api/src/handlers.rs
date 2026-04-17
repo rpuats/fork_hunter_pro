@@ -23,16 +23,18 @@ use serde::{Deserialize, Serialize};
 use shared::models::{
     AccountSessionSummary, AutoBetDryRunLegRequest, AutoBetDryRunLegResponse, AutoBetDryRunRequest,
     AutoBetDryRunResponse, AutoBetStatus, BankrollState, BetExecutionRequest, BetPlacement,
-    BetStatus, BonusInfo, BookmakerAccount, BookmakerBalance, BookmakerBalanceRefresh,
-    BookmakerBalanceSnapshot, BookmakerExecutionCapability, BookmakerExecutionMode,
-    BookmakerMetadata, BookmakerSession, DepositAllocationGuidance, DiagnosticSeverity,
-    ExecutionBookmakerStateSummary, ExecutionLedgerAudit, ExecutionLedgerRecord, ExecutionOverview,
-    ExecutionPlacementSummary, ExecutionStateAudit, ExecutionStateMachineMetadata,
-    ExecutionStatePhaseSummary, ExecutionStateSnapshotRecord, ExecutionStateTransitionRecord,
-    FreebetConversionPlan, FreebetLifecycleFundingGapLeader, FreebetLifecycleLabelCount,
-    FreebetLifecycleStage, FreebetLifecycleState, FreebetLifecycleSummary, FreebetOpportunity,
-    FreebetPlanRequest, FreebetProgressStatus, FreebetRolloverProgress, GenerosityIndex, OddsError,
-    ParserCoverage, ParserDiagnosticCheck, ParserHealth, ParserResultStatus, ParserRuntimeSnapshot,
+    BetStatus, BonusInfo, BookmakerAccount, BookmakerAuthSnapshot, BookmakerBalance,
+    BookmakerBalanceRefresh, BookmakerBalanceSnapshot, BookmakerExecutionCapability,
+    BookmakerExecutionMode, BookmakerMetadata, BookmakerSession, DepositAllocationGuidance,
+    DiagnosticSeverity, ExecutionBookmakerReadinessRecord, ExecutionBookmakerStateSummary,
+    ExecutionLedgerAudit, ExecutionLedgerRecord, ExecutionOverview, ExecutionPlacementSummary,
+    ExecutionStateAudit, ExecutionStateMachineMetadata, ExecutionStatePhaseSummary,
+    ExecutionStateReadinessSummary, ExecutionStateSnapshotRecord, ExecutionStateTransitionRecord,
+    FreebetConversionPlan, FreebetExecutionReadiness, FreebetExecutionReadinessStage,
+    FreebetLifecycleFundingGapLeader, FreebetLifecycleLabelCount, FreebetLifecycleStage,
+    FreebetLifecycleState, FreebetLifecycleSummary, FreebetOpportunity, FreebetPlanRequest,
+    FreebetProgressStatus, FreebetRolloverProgress, GenerosityIndex, OddsError, ParserCoverage,
+    ParserDiagnosticCheck, ParserHealth, ParserResultStatus, ParserRuntimeSnapshot,
     RuntimeCircuitState, ScannerMetrics, StakeValidationDecision, StakeValidationPreflightRequest,
     StakeValidationPreflightResponse, StakeValidationRequest, Surebet, ValueBet,
 };
@@ -41,6 +43,9 @@ use std::collections::{HashMap, HashSet};
 
 const STATIC_PARSER_HEALTH_NOTE: &str =
     "Static factory snapshot only; runtime fetch has not been executed yet.";
+const SESSION_SNAPSHOT_STALE_AFTER_SECS: i64 = 15 * 60;
+const BALANCE_SNAPSHOT_STALE_AFTER_SECS: i64 = 5 * 60;
+const AUTH_SNAPSHOT_STALE_AFTER_SECS: i64 = 5 * 60;
 
 #[derive(Deserialize, Debug, Clone, Default)]
 pub struct SurebetsQuery {
@@ -111,8 +116,22 @@ pub struct AccountStateResponse {
     pub account: Option<BookmakerAccount>,
     pub session: Option<BookmakerSession>,
     pub balance: Option<BookmakerBalanceSnapshot>,
+    pub auth_snapshot: Option<BookmakerAuthSnapshot>,
+    pub persistence_status: AccountPersistenceStatusResponse,
     pub readiness: AccountReadinessResponse,
     pub control_issues: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AccountPersistenceStatusResponse {
+    pub session_age_secs: Option<i64>,
+    pub session_expires_in_secs: Option<i64>,
+    pub session_stale: bool,
+    pub balance_age_secs: Option<i64>,
+    pub balance_stale: bool,
+    pub auth_snapshot_age_secs: Option<i64>,
+    pub auth_snapshot_stale: bool,
+    pub warnings: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -456,7 +475,7 @@ fn build_live_parsers_coverage(
     fallback_coverage: Vec<ParserCoverage>,
     live_health: Vec<ParserHealth>,
 ) -> Vec<ParserCoverage> {
-    let live_health = live_health
+    let mut live_health = live_health
         .into_iter()
         .map(|item| (item.bookmaker.clone(), item))
         .collect::<std::collections::HashMap<_, _>>();
@@ -464,12 +483,77 @@ fn build_live_parsers_coverage(
     let mut items = fallback_coverage
         .into_iter()
         .map(|mut coverage| {
-            coverage.runtime_health = live_health.get(&coverage.slug).cloned();
+            coverage.runtime_health = live_health.remove(&coverage.slug);
             coverage
         })
         .collect::<Vec<_>>();
+    items.extend(
+        live_health
+            .into_values()
+            .map(|runtime_health| ParserCoverage {
+                slug: runtime_health.bookmaker.clone(),
+                name: runtime_health.bookmaker.clone(),
+                enabled: true,
+                scan_supported: true,
+                execution_supported: false,
+                status: shared::BookmakerStatus::ScanOnly,
+                parser_type: "runtime".into(),
+                source: "runtime".into(),
+                notes: Some(
+                    "Runtime-only parser slug is missing from static parser coverage registry."
+                        .into(),
+                ),
+                readiness: runtime_health.readiness.clone(),
+                runtime_health: Some(runtime_health),
+            }),
+    );
     items.sort_by(|left, right| left.slug.cmp(&right.slug));
     items
+}
+
+fn merge_freebet_lifecycle_state(
+    primary: FreebetLifecycleState,
+    secondary: FreebetLifecycleState,
+) -> FreebetLifecycleState {
+    FreebetLifecycleState {
+        bookmaker: primary.bookmaker,
+        lifecycle_stage: primary.lifecycle_stage,
+        next_milestone: if primary.next_milestone.trim().is_empty() {
+            secondary.next_milestone
+        } else {
+            primary.next_milestone
+        },
+        blocked_by: if primary.blocked_by.is_empty() {
+            secondary.blocked_by
+        } else {
+            primary.blocked_by
+        },
+        read_only_follow_up: if primary.read_only_follow_up.trim().is_empty() {
+            secondary.read_only_follow_up
+        } else {
+            primary.read_only_follow_up
+        },
+        read_only_focus: if primary.read_only_focus.trim().is_empty() {
+            secondary.read_only_focus
+        } else {
+            primary.read_only_focus
+        },
+        opportunity: primary.opportunity.or(secondary.opportunity),
+        bonus: primary.bonus.or(secondary.bonus),
+        plan: primary.plan.or(secondary.plan),
+        rollover: primary.rollover.or(secondary.rollover),
+        allocation: primary.allocation.or(secondary.allocation),
+        auto_rollover: primary.auto_rollover.or(secondary.auto_rollover),
+        rollover_actions: if primary.rollover_actions.is_empty() {
+            secondary.rollover_actions
+        } else {
+            primary.rollover_actions
+        },
+        execution_readiness: primary
+            .execution_readiness
+            .or(secondary.execution_readiness),
+        updated_at: primary.updated_at.max(secondary.updated_at),
+    }
 }
 
 fn live_parsers_coverage(state: &AppState) -> Vec<ParserCoverage> {
@@ -588,25 +672,144 @@ fn select_freebet_lifecycle_snapshot(
     live: Vec<FreebetLifecycleState>,
     persisted: Vec<FreebetLifecycleState>,
 ) -> Vec<FreebetLifecycleState> {
-    if live.is_empty() {
-        persisted
-    } else {
-        live
+    let mut states = persisted
+        .into_iter()
+        .map(|state| (state.bookmaker.clone(), state))
+        .collect::<HashMap<_, _>>();
+
+    for live_state in live {
+        match states.remove(&live_state.bookmaker) {
+            Some(persisted_state) => {
+                let merged = if live_state.updated_at >= persisted_state.updated_at {
+                    merge_freebet_lifecycle_state(live_state, persisted_state)
+                } else {
+                    merge_freebet_lifecycle_state(persisted_state, live_state)
+                };
+                states.insert(merged.bookmaker.clone(), merged);
+            }
+            None => {
+                states.insert(live_state.bookmaker.clone(), live_state);
+            }
+        }
     }
+
+    let mut items = states.into_values().collect::<Vec<_>>();
+    items.sort_by(|left, right| left.bookmaker.cmp(&right.bookmaker));
+    items
 }
 
 async fn load_freebet_lifecycle(state: &AppState) -> Vec<FreebetLifecycleState> {
     let live = collect_live_freebet_lifecycle(state);
-    if !live.is_empty() {
-        return live;
-    }
-
     let persisted = match &state.freebet_lifecycle_store {
         Some(store) => store.list_states().await,
         None => Vec::new(),
     };
 
-    select_freebet_lifecycle_snapshot(live, persisted)
+    enrich_freebet_lifecycle_bridge(
+        execution_registry(state).as_ref(),
+        select_freebet_lifecycle_snapshot(live, persisted),
+    )
+}
+
+fn enrich_freebet_lifecycle_bridge(
+    registry: &ExecutionRegistry,
+    states: Vec<FreebetLifecycleState>,
+) -> Vec<FreebetLifecycleState> {
+    states
+        .into_iter()
+        .map(|state| enrich_freebet_lifecycle_state(registry, state))
+        .collect()
+}
+
+fn enrich_freebet_lifecycle_state(
+    registry: &ExecutionRegistry,
+    mut state: FreebetLifecycleState,
+) -> FreebetLifecycleState {
+    if state.rollover_actions.is_empty() {
+        state.rollover_actions = scanner::freebet_lifecycle::build_staged_rollover_actions(
+            &state.lifecycle_stage,
+            state.auto_rollover.as_ref(),
+        );
+    }
+
+    state.execution_readiness = Some(build_freebet_execution_readiness(registry, &state));
+    state
+}
+
+fn build_freebet_execution_readiness(
+    registry: &ExecutionRegistry,
+    state: &FreebetLifecycleState,
+) -> FreebetExecutionReadiness {
+    let capability = registry.get_capability(&state.bookmaker);
+    let account = registry.get_account(&state.bookmaker);
+    let session = registry.get_session(&state.bookmaker);
+    let balance = registry.get_balance_snapshot(&state.bookmaker);
+    let readiness = build_account_readiness(
+        &state.bookmaker,
+        &capability,
+        account.as_ref(),
+        session.as_ref(),
+        balance.as_ref(),
+    );
+    let auto_rollover = state.auto_rollover.as_ref();
+    let funding_ready = auto_rollover
+        .map(|item| item.funding_readiness.ready)
+        .unwrap_or(true);
+    let manual_trigger_required = matches!(
+        auto_rollover.map(|item| &item.status),
+        Some(shared::FreebetAutoRolloverStatus::AwaitingTrigger)
+    );
+    let monitoring_only = matches!(
+        auto_rollover.map(|item| &item.status),
+        Some(shared::FreebetAutoRolloverStatus::Monitoring)
+    ) || matches!(
+        state.lifecycle_stage,
+        FreebetLifecycleStage::RolloverInProgress
+    );
+    let completed = matches!(
+        auto_rollover.map(|item| &item.status),
+        Some(shared::FreebetAutoRolloverStatus::Completed)
+    ) || matches!(
+        state.lifecycle_stage,
+        FreebetLifecycleStage::RolloverCompleted
+    );
+
+    let mut blocking_reasons = readiness.blocking_reasons.clone();
+    if !funding_ready {
+        blocking_reasons.push("freebet rollover funding gap is still open".into());
+    }
+    if manual_trigger_required {
+        blocking_reasons.push("manual qualifying/freebet trigger is still pending".into());
+    }
+
+    let stage = if completed {
+        FreebetExecutionReadinessStage::Completed
+    } else if !funding_ready {
+        FreebetExecutionReadinessStage::FundingBlocked
+    } else if manual_trigger_required {
+        FreebetExecutionReadinessStage::AwaitingManualTrigger
+    } else if monitoring_only {
+        FreebetExecutionReadinessStage::MonitoringOnly
+    } else if account.is_some() || capability.supports_dry_run {
+        FreebetExecutionReadinessStage::ReadOnlyReady
+    } else {
+        FreebetExecutionReadinessStage::Untracked
+    };
+
+    FreebetExecutionReadiness {
+        stage,
+        account_configured: account.is_some(),
+        session_required: capability.requires_session,
+        session_ready: readiness.session_ready,
+        balance_snapshot_available: balance.is_some(),
+        dry_run_ready: readiness.dry_run_ready && funding_ready && !manual_trigger_required,
+        funding_ready,
+        manual_trigger_required,
+        monitoring_only,
+        real_money_enabled: readiness.real_money_enabled,
+        submit_blocked_by_safe_mode: readiness.submit_blocked_by_safe_mode,
+        blocking_reasons,
+    }
 }
 
 fn get_account_state(
@@ -622,6 +825,14 @@ fn get_account_state(
     let account = registry.get_account(bookmaker);
     let session = registry.get_session(bookmaker);
     let balance = registry.get_balance_snapshot(bookmaker);
+    let auth_snapshot = registry.get_auth_snapshot(bookmaker);
+    let persistence_status = build_account_persistence_status(
+        bookmaker,
+        session.as_ref(),
+        balance.as_ref(),
+        auth_snapshot.as_ref(),
+        Utc::now(),
+    );
     let readiness = build_account_readiness(
         bookmaker,
         &capability,
@@ -643,7 +854,109 @@ fn get_account_state(
         account,
         session,
         balance,
+        auth_snapshot,
+        persistence_status,
     })
+}
+
+fn age_secs_since(timestamp: chrono::DateTime<Utc>, now: chrono::DateTime<Utc>) -> i64 {
+    now.signed_duration_since(timestamp).num_seconds().max(0)
+}
+
+fn expires_in_secs(
+    expires_at: Option<chrono::DateTime<Utc>>,
+    now: chrono::DateTime<Utc>,
+) -> Option<i64> {
+    expires_at.map(|timestamp| timestamp.signed_duration_since(now).num_seconds())
+}
+
+fn build_account_persistence_status(
+    bookmaker: &str,
+    session: Option<&BookmakerSession>,
+    balance: Option<&BookmakerBalanceSnapshot>,
+    auth_snapshot: Option<&BookmakerAuthSnapshot>,
+    now: chrono::DateTime<Utc>,
+) -> AccountPersistenceStatusResponse {
+    let session_age_secs = session.map(|item| age_secs_since(item.last_synced_at, now));
+    let session_expires_in_secs = expires_in_secs(session.and_then(|item| item.expires_at), now);
+    let balance_age_secs = balance.map(|item| age_secs_since(item.captured_at, now));
+    let auth_snapshot_age_secs = auth_snapshot.map(|item| age_secs_since(item.captured_at, now));
+
+    let session_stale = session_age_secs
+        .map(|age| age > SESSION_SNAPSHOT_STALE_AFTER_SECS)
+        .unwrap_or(false)
+        || session_expired_locally(session, now);
+    let balance_stale = balance_age_secs
+        .map(|age| age > BALANCE_SNAPSHOT_STALE_AFTER_SECS)
+        .unwrap_or(false);
+    let auth_snapshot_stale_by_age = auth_snapshot_age_secs
+        .map(|age| age > AUTH_SNAPSHOT_STALE_AFTER_SECS)
+        .unwrap_or(false);
+    let auth_snapshot_behind_session = auth_snapshot
+        .zip(session)
+        .map(|(auth_snapshot, session)| auth_snapshot.captured_at < session.last_synced_at)
+        .unwrap_or(false);
+    let auth_snapshot_behind_balance = auth_snapshot
+        .zip(balance)
+        .map(|(auth_snapshot, balance)| auth_snapshot.captured_at < balance.captured_at)
+        .unwrap_or(false);
+    let auth_snapshot_stale =
+        auth_snapshot_stale_by_age || auth_snapshot_behind_session || auth_snapshot_behind_balance;
+
+    let mut warnings = Vec::new();
+
+    if session_stale {
+        warnings.push(format!(
+            "{bookmaker} persisted session snapshot is stale; refresh auth/session sync before relying on cached readiness"
+        ));
+    }
+
+    if balance_stale {
+        warnings.push(format!(
+            "{bookmaker} persisted balance snapshot is stale; refresh balance-dependent operator checks"
+        ));
+    }
+
+    if auth_snapshot_behind_session || auth_snapshot_behind_balance {
+        warnings.push(format!(
+            "{bookmaker} auth readiness snapshot lags behind newer persisted session/balance state"
+        ));
+    } else if auth_snapshot_stale_by_age {
+        warnings.push(format!(
+            "{bookmaker} auth readiness snapshot is stale; recompute operator readiness before arming"
+        ));
+    }
+
+    AccountPersistenceStatusResponse {
+        session_age_secs,
+        session_expires_in_secs,
+        session_stale,
+        balance_age_secs,
+        balance_stale,
+        auth_snapshot_age_secs,
+        auth_snapshot_stale,
+        warnings,
+    }
+}
+
+fn session_expired_locally(session: Option<&BookmakerSession>, now: chrono::DateTime<Utc>) -> bool {
+    session
+        .and_then(|item| {
+            matches!(item.state, shared::BookmakerSessionState::Active).then_some(item.expires_at)
+        })
+        .flatten()
+        .map(|expires_at| expires_at <= now)
+        .unwrap_or(false)
+}
+
+fn session_is_authenticated_now(
+    session: Option<&BookmakerSession>,
+    now: chrono::DateTime<Utc>,
+) -> bool {
+    session
+        .map(|item| matches!(item.state, shared::BookmakerSessionState::Active))
+        .unwrap_or(false)
+        && !session_expired_locally(session, now)
 }
 
 fn build_account_readiness(
@@ -653,10 +966,8 @@ fn build_account_readiness(
     session: Option<&BookmakerSession>,
     balance: Option<&BookmakerBalanceSnapshot>,
 ) -> AccountReadinessResponse {
-    let session_ready = !capability.requires_session
-        || session
-            .map(|item| matches!(item.state, shared::BookmakerSessionState::Active))
-            .unwrap_or(false);
+    let now = Utc::now();
+    let session_ready = !capability.requires_session || session_is_authenticated_now(session, now);
     let balance_ready = !capability.supports_balance_snapshot || balance.is_some();
     let dry_run_ready = account
         .map(|item| item.enabled && item.mode.allows_dry_run())
@@ -702,6 +1013,10 @@ fn build_account_readiness(
         blocking_reasons.push("active bookmaker session is required".into());
     }
 
+    if capability.requires_session && session_expired_locally(session, now) {
+        blocking_reasons.push("bookmaker session expiry timestamp has passed".into());
+    }
+
     if capability.supports_balance_snapshot && !balance_ready {
         blocking_reasons.push("cached bookmaker balance snapshot is required".into());
     }
@@ -717,7 +1032,11 @@ fn build_account_readiness(
         );
     }
 
-    let operator_action = if submit_blocked_by_safe_mode {
+    let operator_action = if capability.requires_session && session_expired_locally(session, now) {
+        Some(format!(
+            "refresh the {bookmaker} session before enabling dry-run or balance-dependent checks"
+        ))
+    } else if submit_blocked_by_safe_mode {
         Some(
             "record operator approval for pari rollout monitoring; coupon submit remains disabled in safe mode"
                 .into(),
@@ -756,6 +1075,7 @@ fn collect_account_control_issues(
     };
 
     let mut issues = Vec::new();
+    let now = Utc::now();
 
     if account.enabled && matches!(account.mode, BookmakerExecutionMode::Disabled) {
         issues.push("account is enabled but execution mode is disabled".into());
@@ -769,13 +1089,13 @@ fn collect_account_control_issues(
         issues.push("account is armed but bookmaker adapter cannot place bets".into());
     }
 
-    if account.enabled
-        && capability.requires_session
-        && !session
-            .map(|item| matches!(item.state, shared::BookmakerSessionState::Active))
-            .unwrap_or(false)
+    if account.enabled && capability.requires_session && !session_is_authenticated_now(session, now)
     {
         issues.push("enabled account requires an active session".into());
+    }
+
+    if account.enabled && capability.requires_session && session_expired_locally(session, now) {
+        issues.push("enabled account has a locally expired session timestamp".into());
     }
 
     if account.enabled && capability.supports_balance_snapshot && balance.is_none() {
@@ -860,10 +1180,15 @@ fn build_account_session_summary(registry: &ExecutionRegistry) -> AccountSession
         accounts_with_control_issues: 0,
         sessions_configured: 0,
         sessions_authenticated: 0,
+        sessions_stale: 0,
         balances_cached: 0,
+        balances_stale: 0,
+        auth_snapshots_stale: 0,
         ready_for_execution: 0,
         ready_for_dry_run: 0,
     };
+
+    let now = Utc::now();
 
     for bookmaker in registry.list_bookmakers() {
         summary.total_bookmakers += 1;
@@ -872,6 +1197,14 @@ fn build_account_session_summary(registry: &ExecutionRegistry) -> AccountSession
         let account = registry.get_account(&bookmaker);
         let session = registry.get_session(&bookmaker);
         let balance = registry.get_balance_snapshot(&bookmaker);
+        let auth_snapshot = registry.get_auth_snapshot(&bookmaker);
+        let persistence_status = build_account_persistence_status(
+            &bookmaker,
+            session.as_ref(),
+            balance.as_ref(),
+            auth_snapshot.as_ref(),
+            now,
+        );
         let control_issues = collect_account_control_issues(
             account.as_ref(),
             &capability,
@@ -896,16 +1229,24 @@ fn build_account_session_summary(registry: &ExecutionRegistry) -> AccountSession
             summary.sessions_configured += 1;
         }
 
-        if session
-            .as_ref()
-            .map(|item| matches!(item.state, shared::BookmakerSessionState::Active))
-            .unwrap_or(false)
-        {
+        if session_is_authenticated_now(session.as_ref(), now) {
             summary.sessions_authenticated += 1;
+        }
+
+        if persistence_status.session_stale {
+            summary.sessions_stale += 1;
         }
 
         if balance.is_some() {
             summary.balances_cached += 1;
+        }
+
+        if persistence_status.balance_stale {
+            summary.balances_stale += 1;
+        }
+
+        if persistence_status.auth_snapshot_stale {
+            summary.auth_snapshots_stale += 1;
         }
 
         let executable = account
@@ -914,11 +1255,8 @@ fn build_account_session_summary(registry: &ExecutionRegistry) -> AccountSession
                 item.enabled && !matches!(item.mode, shared::BookmakerExecutionMode::Disabled)
             })
             .unwrap_or(false);
-        let session_ready = !capability.requires_session
-            || session
-                .as_ref()
-                .map(|item| matches!(item.state, shared::BookmakerSessionState::Active))
-                .unwrap_or(false);
+        let session_ready =
+            !capability.requires_session || session_is_authenticated_now(session.as_ref(), now);
         let balance_ready = !capability.supports_balance_snapshot || balance.is_some();
 
         if executable && session_ready && balance_ready {
@@ -1102,7 +1440,89 @@ fn increment_execution_phase(summary: &mut ExecutionStatePhaseSummary, phase: Ex
     }
 }
 
+fn build_execution_state_readiness(
+    registry: &ExecutionRegistry,
+) -> (
+    ExecutionStateReadinessSummary,
+    Vec<ExecutionBookmakerReadinessRecord>,
+) {
+    let mut summary = ExecutionStateReadinessSummary::default();
+    let mut bookmaker_readiness = Vec::new();
+
+    for bookmaker in registry.list_bookmakers() {
+        let Some(state) = get_account_state(registry, &bookmaker) else {
+            continue;
+        };
+
+        summary.total_bookmakers += 1;
+        summary.accounts_configured += usize::from(state.account.is_some());
+        summary.accounts_enabled += usize::from(
+            state
+                .account
+                .as_ref()
+                .map(|account| account.enabled)
+                .unwrap_or(false),
+        );
+        let session_authenticated = state
+            .session
+            .as_ref()
+            .map(|session| session_is_authenticated_now(Some(session), Utc::now()))
+            .unwrap_or(false);
+
+        summary.auth_ready += usize::from(state.readiness.session_ready);
+        summary.sessions_authenticated += usize::from(session_authenticated);
+        summary.sessions_stale += usize::from(state.persistence_status.session_stale);
+        summary.balances_cached += usize::from(state.balance.is_some());
+        summary.balances_stale += usize::from(state.persistence_status.balance_stale);
+        summary.auth_snapshots_stale += usize::from(state.persistence_status.auth_snapshot_stale);
+        summary.dry_run_ready += usize::from(state.readiness.dry_run_ready);
+        summary.placement_ready += usize::from(state.readiness.placement_ready);
+        summary.approval_required += usize::from(state.readiness.approval_required);
+        summary.submit_blocked_by_safe_mode +=
+            usize::from(state.readiness.submit_blocked_by_safe_mode);
+        summary.operator_attention_required += usize::from(
+            state.readiness.approval_required || state.readiness.operator_action.is_some(),
+        );
+
+        bookmaker_readiness.push(ExecutionBookmakerReadinessRecord {
+            bookmaker: state.bookmaker,
+            account_configured: state.account.is_some(),
+            account_enabled: state
+                .account
+                .as_ref()
+                .map(|account| account.enabled)
+                .unwrap_or(false),
+            execution_mode: state.account.as_ref().map(|account| account.mode.clone()),
+            requires_session: state.capability.requires_session,
+            auth_ready: state.readiness.session_ready,
+            session_authenticated,
+            session_stale: state.persistence_status.session_stale,
+            balance_cached: state.balance.is_some(),
+            balance_stale: state.persistence_status.balance_stale,
+            auth_snapshot_stale: state.persistence_status.auth_snapshot_stale,
+            dry_run_ready: state.readiness.dry_run_ready,
+            placement_ready: state.readiness.placement_ready,
+            approval_required: state.readiness.approval_required,
+            submit_blocked_by_safe_mode: state.readiness.submit_blocked_by_safe_mode,
+            persistence_warnings: state.persistence_status.warnings.clone(),
+            operator_action: state.readiness.operator_action.clone(),
+            blocking_reasons: state.readiness.blocking_reasons.clone(),
+        });
+    }
+
+    bookmaker_readiness.sort_by(|left, right| {
+        right
+            .approval_required
+            .cmp(&left.approval_required)
+            .then_with(|| right.auth_ready.cmp(&left.auth_ready))
+            .then_with(|| left.bookmaker.cmp(&right.bookmaker))
+    });
+
+    (summary, bookmaker_readiness)
+}
+
 fn build_execution_state_audit(
+    registry: &ExecutionRegistry,
     replay: ExecutionStateReplay,
     recent_limit: usize,
 ) -> ExecutionStateAudit {
@@ -1110,6 +1530,8 @@ fn build_execution_state_audit(
     let latest_transition_at = replay.transitions.iter().map(|item| item.occurred_at).max();
     let total_transitions = replay.transitions.len();
     let mut bookmaker_summaries = HashMap::<String, ExecutionBookmakerStateSummary>::new();
+    let mut bookmaker_latest_error_at = HashMap::<String, chrono::DateTime<Utc>>::new();
+    let (readiness, bookmaker_readiness) = build_execution_state_readiness(registry);
 
     for snapshot in &replay.snapshots {
         let summary = bookmaker_summaries
@@ -1127,8 +1549,15 @@ fn build_execution_state_audit(
                 .unwrap_or(snapshot.updated_at),
         );
 
-        if summary.latest_error.is_none() {
-            summary.latest_error = snapshot.last_error.clone();
+        if let Some(last_error) = &snapshot.last_error {
+            let replace = bookmaker_latest_error_at
+                .get(&snapshot.bookmaker)
+                .map(|current| snapshot.updated_at >= *current)
+                .unwrap_or(true);
+            if replace {
+                summary.latest_error = Some(last_error.clone());
+                bookmaker_latest_error_at.insert(snapshot.bookmaker.clone(), snapshot.updated_at);
+            }
         }
     }
 
@@ -1146,8 +1575,16 @@ fn build_execution_state_audit(
                 .unwrap_or(transition.occurred_at),
         );
 
-        if transition.error.is_some() {
-            summary.latest_error = transition.error.clone();
+        if let Some(error) = &transition.error {
+            let replace = bookmaker_latest_error_at
+                .get(&transition.bookmaker)
+                .map(|current| transition.occurred_at >= *current)
+                .unwrap_or(true);
+            if replace {
+                summary.latest_error = Some(error.clone());
+                bookmaker_latest_error_at
+                    .insert(transition.bookmaker.clone(), transition.occurred_at);
+            }
         }
     }
 
@@ -1169,6 +1606,8 @@ fn build_execution_state_audit(
         total_transitions,
         latest_snapshot_at,
         latest_transition_at,
+        readiness,
+        bookmaker_readiness,
         bookmaker_summaries,
         recent_transitions: recent_transitions
             .into_iter()
@@ -1440,6 +1879,11 @@ async fn build_stake_preflight(
             .unwrap_or(false)
         && capability.supports_bet_placement;
     let real_money_enabled = placement_ready && capability.supports_real_money;
+    let rollout_gate_active = bookmaker == PARI_ROLLOUT_BOOKMAKER
+        && capability.supports_bet_placement
+        && !capability.supports_real_money;
+    let approval_required = rollout_gate_active && placement_ready;
+    let submit_blocked_by_safe_mode = approval_required && !real_money_enabled;
     let dry_run_ready = executable
         && capability.supports_dry_run
         && account
@@ -1459,6 +1903,9 @@ async fn build_stake_preflight(
         armed_for_execution,
         placement_ready,
         real_money_enabled,
+        rollout_gate_active,
+        approval_required,
+        submit_blocked_by_safe_mode,
     })
 }
 
@@ -1688,7 +2135,12 @@ pub async fn get_execution_state(
 ) -> Json<ApiResponse<ExecutionStateAudit>> {
     let limit = params.limit.unwrap_or(50).max(1) as usize;
     let replay = load_execution_state_replay(&state).await;
-    Json(ApiResponse::ok(build_execution_state_audit(replay, limit)))
+    let registry = execution_registry(&state);
+    Json(ApiResponse::ok(build_execution_state_audit(
+        registry.as_ref(),
+        replay,
+        limit,
+    )))
 }
 
 pub async fn start_autobet(
@@ -2247,6 +2699,7 @@ mod tests {
         let now = Utc::now();
         let pari_id = Uuid::new_v4();
         let fonbet_id = Uuid::new_v4();
+        let registry = ExecutionRegistry::new();
         let replay = ExecutionStateReplay {
             snapshots: vec![
                 make_execution_snapshot(
@@ -2292,10 +2745,28 @@ mod tests {
             ],
         };
 
-        let audit = build_execution_state_audit(replay, 1);
+        audit_ready_bookmaker(&registry, "pari", BookmakerExecutionMode::SemiRealReady);
+        audit_ready_bookmaker(&registry, "fonbet", BookmakerExecutionMode::DryRun);
+
+        let audit = build_execution_state_audit(&registry, replay, 1);
 
         assert_eq!(audit.total_snapshots, 2);
         assert_eq!(audit.total_transitions, 2);
+        assert_eq!(audit.readiness.total_bookmakers, 2);
+        assert_eq!(audit.readiness.approval_required, 1);
+        assert_eq!(audit.readiness.submit_blocked_by_safe_mode, 1);
+        assert_eq!(audit.readiness.sessions_authenticated, 2);
+        assert_eq!(audit.readiness.sessions_stale, 0);
+        assert_eq!(audit.readiness.balances_stale, 0);
+        assert_eq!(audit.readiness.auth_snapshots_stale, 0);
+        assert_eq!(audit.bookmaker_readiness.len(), 2);
+        assert_eq!(audit.bookmaker_readiness[0].bookmaker, "pari");
+        assert!(audit.bookmaker_readiness[0].approval_required);
+        assert!(audit.bookmaker_readiness[0].session_authenticated);
+        assert!(!audit.bookmaker_readiness[0].session_stale);
+        assert!(!audit.bookmaker_readiness[0].balance_stale);
+        assert!(!audit.bookmaker_readiness[0].auth_snapshot_stale);
+        assert!(audit.bookmaker_readiness[0].persistence_warnings.is_empty());
         assert_eq!(audit.recent_transitions.len(), 1);
         assert_eq!(audit.recent_transitions[0].bookmaker, "pari");
         assert_eq!(audit.recent_transitions[0].to_phase, "Failed");
@@ -2308,6 +2779,88 @@ mod tests {
         );
         assert_eq!(audit.bookmaker_summaries[1].bookmaker, "fonbet");
         assert_eq!(audit.bookmaker_summaries[1].phases.settled, 1);
+    }
+
+    #[test]
+    fn execution_state_audit_uses_latest_error_timestamp_across_snapshots_and_transitions() {
+        let now = Utc::now();
+        let placement_id = Uuid::new_v4();
+        let registry = ExecutionRegistry::new();
+        let replay = ExecutionStateReplay {
+            snapshots: vec![
+                make_execution_snapshot(
+                    placement_id,
+                    "pari",
+                    ExecutionStatePhase::Failed,
+                    BetStatus::Error,
+                    1,
+                    now - Duration::seconds(30),
+                    Some("stale snapshot error"),
+                ),
+                make_execution_snapshot(
+                    placement_id,
+                    "pari",
+                    ExecutionStatePhase::Failed,
+                    BetStatus::Error,
+                    2,
+                    now - Duration::seconds(5),
+                    Some("fresh snapshot error"),
+                ),
+            ],
+            transitions: vec![make_execution_transition(
+                placement_id,
+                "pari",
+                Some(ExecutionStatePhase::ConfirmedPlacement),
+                ExecutionStatePhase::Failed,
+                BetStatus::Error,
+                3,
+                now - Duration::seconds(10),
+                Some("older transition error"),
+            )],
+        };
+
+        let audit = build_execution_state_audit(&registry, replay, 5);
+
+        assert_eq!(audit.bookmaker_summaries.len(), 1);
+        assert_eq!(
+            audit.bookmaker_summaries[0].latest_error.as_deref(),
+            Some("fresh snapshot error")
+        );
+    }
+
+    fn audit_ready_bookmaker(
+        registry: &ExecutionRegistry,
+        bookmaker: &str,
+        mode: BookmakerExecutionMode,
+    ) {
+        let account_id = Uuid::new_v4();
+        registry.register_account(BookmakerAccount {
+            id: account_id,
+            bookmaker: bookmaker.into(),
+            label: "main".into(),
+            currency: "RUB".into(),
+            enabled: true,
+            mode,
+            created_at: Utc::now(),
+            last_used_at: None,
+        });
+        registry.upsert_session(BookmakerSession {
+            account_id,
+            bookmaker: bookmaker.into(),
+            state: BookmakerSessionState::Active,
+            token_hint: Some("sess...".into()),
+            last_synced_at: Utc::now(),
+            expires_at: None,
+        });
+        registry.upsert_balance_snapshot(BookmakerBalanceSnapshot {
+            account_id,
+            bookmaker: bookmaker.into(),
+            currency: "RUB".into(),
+            total_balance: 10_000.0,
+            available_balance: 7_500.0,
+            exposure: 2_500.0,
+            captured_at: Utc::now(),
+        });
     }
 
     #[test]
@@ -2638,6 +3191,37 @@ mod tests {
             .any(|check| check.code == "runtime_state"));
     }
 
+    #[test]
+    fn build_live_parsers_coverage_keeps_runtime_only_slugs() {
+        let live = build_live_parsers_coverage(
+            Vec::new(),
+            vec![ParserHealth {
+                bookmaker: "runtime-book".into(),
+                status: HealthStatus::Healthy,
+                last_success: Some(Utc::now()),
+                last_error: None,
+                consecutive_failures: 0,
+                avg_response_time_ms: 14.0,
+                events_parsed: 12,
+                uptime_percent: 100.0,
+                readiness: None,
+                diagnostics: Vec::new(),
+            }],
+        );
+
+        assert_eq!(live.len(), 1);
+        assert_eq!(live[0].slug, "runtime-book");
+        assert_eq!(live[0].name, "runtime-book");
+        assert!(live[0].enabled);
+        assert!(live[0].scan_supported);
+        assert_eq!(live[0].source, "runtime");
+        assert!(matches!(live[0].status, shared::BookmakerStatus::ScanOnly));
+        assert!(matches!(
+            live[0].runtime_health.as_ref().map(|item| &item.status),
+            Some(HealthStatus::Healthy)
+        ));
+    }
+
     fn make_bet_placement(status: BetStatus) -> BetPlacement {
         BetPlacement {
             id: Uuid::new_v4(),
@@ -2782,9 +3366,122 @@ mod tests {
         assert_eq!(summary.disabled_accounts, 1);
         assert_eq!(summary.accounts_with_control_issues, 0);
         assert_eq!(summary.sessions_authenticated, 1);
+        assert_eq!(summary.sessions_stale, 0);
         assert_eq!(summary.balances_cached, 1);
+        assert_eq!(summary.balances_stale, 0);
+        assert_eq!(summary.auth_snapshots_stale, 0);
         assert_eq!(summary.ready_for_dry_run, 1);
         assert_eq!(summary.ready_for_execution, 1);
+    }
+
+    #[test]
+    fn account_summary_counts_stale_persisted_readiness_snapshots() {
+        let registry = ExecutionRegistry::new();
+        let account = BookmakerAccount {
+            id: Uuid::new_v4(),
+            bookmaker: "fonbet".into(),
+            label: "main".into(),
+            currency: "RUB".into(),
+            enabled: true,
+            mode: BookmakerExecutionMode::DryRun,
+            created_at: Utc::now(),
+            last_used_at: None,
+        };
+
+        registry.register_account(account.clone());
+        registry.upsert_session(BookmakerSession {
+            account_id: account.id,
+            bookmaker: account.bookmaker.clone(),
+            state: BookmakerSessionState::Active,
+            token_hint: Some("sess...".into()),
+            last_synced_at: Utc::now() - Duration::minutes(20),
+            expires_at: None,
+        });
+        registry.upsert_balance_snapshot(BookmakerBalanceSnapshot {
+            account_id: account.id,
+            bookmaker: account.bookmaker.clone(),
+            currency: account.currency.clone(),
+            total_balance: 10_000.0,
+            available_balance: 8_500.0,
+            exposure: 1_500.0,
+            captured_at: Utc::now() - Duration::minutes(7),
+        });
+
+        let summary = build_account_session_summary(&registry);
+        let state = get_account_state(&registry, "fonbet").expect("account state should exist");
+
+        assert_eq!(summary.sessions_stale, 1);
+        assert_eq!(summary.balances_stale, 1);
+        assert_eq!(summary.auth_snapshots_stale, 0);
+        assert!(state.persistence_status.session_stale);
+        assert!(state.persistence_status.balance_stale);
+        assert!(!state.persistence_status.auth_snapshot_stale);
+        assert!(state
+            .persistence_status
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("session snapshot is stale")));
+        assert!(state
+            .persistence_status
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("balance snapshot is stale")));
+    }
+
+    #[test]
+    fn persistence_status_marks_auth_snapshot_behind_newer_persisted_state() {
+        let now = Utc::now();
+        let account_id = Uuid::new_v4();
+        let session = BookmakerSession {
+            account_id,
+            bookmaker: "pari".into(),
+            state: BookmakerSessionState::Active,
+            token_hint: Some("sess...".into()),
+            last_synced_at: now - Duration::minutes(2),
+            expires_at: Some(now + Duration::minutes(10)),
+        };
+        let balance = BookmakerBalanceSnapshot {
+            account_id,
+            bookmaker: "pari".into(),
+            currency: "RUB".into(),
+            total_balance: 10_000.0,
+            available_balance: 9_000.0,
+            exposure: 1_000.0,
+            captured_at: now - Duration::minutes(1),
+        };
+        let auth_snapshot = BookmakerAuthSnapshot {
+            account_id: Some(account_id),
+            bookmaker: "pari".into(),
+            auth_state: shared::BookmakerAuthState::Authenticated,
+            readiness_stage: shared::BookmakerAdapterReadinessStage::AuthenticatedReadOnly,
+            mode: Some(BookmakerExecutionMode::DryRun),
+            enabled: true,
+            cached_balance_available: true,
+            submit_enabled: false,
+            real_money_enabled: false,
+            safe_mode_blocked: false,
+            session_last_synced_at: Some(session.last_synced_at),
+            balance_captured_at: Some(balance.captured_at),
+            last_authenticated_at: Some(session.last_synced_at),
+            detail: Some("persisted auth snapshot".into()),
+            captured_at: now - Duration::minutes(3),
+        };
+
+        let status = build_account_persistence_status(
+            "pari",
+            Some(&session),
+            Some(&balance),
+            Some(&auth_snapshot),
+            now,
+        );
+
+        assert!(!status.session_stale);
+        assert!(!status.balance_stale);
+        assert!(status.auth_snapshot_stale);
+        assert!(status
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("lags behind newer persisted session/balance state")));
     }
 
     #[test]
@@ -2909,6 +3606,15 @@ mod tests {
             .control_issues
             .iter()
             .any(|issue| issue.contains("cached balance snapshot")));
+        assert_eq!(
+            state
+                .auth_snapshot
+                .as_ref()
+                .expect("auth snapshot should exist")
+                .detail
+                .as_deref(),
+            Some("pari adapter still requires operator-managed session/bootstrap readiness")
+        );
     }
 
     #[test]
@@ -3185,6 +3891,176 @@ mod tests {
             .as_deref()
             .unwrap_or_default()
             .contains("coupon submit remains disabled"));
+        let auth_snapshot = state.auth_snapshot.expect("auth snapshot should exist");
+        assert!(auth_snapshot.safe_mode_blocked);
+        assert_eq!(
+            auth_snapshot.readiness_stage,
+            shared::BookmakerAdapterReadinessStage::SafeModePlacementReady
+        );
+    }
+
+    #[test]
+    fn account_state_marks_expired_fonbet_session_as_not_ready() {
+        let registry = ExecutionRegistry::new();
+        let account = BookmakerAccount {
+            id: Uuid::new_v4(),
+            bookmaker: "fonbet".into(),
+            label: "main".into(),
+            currency: "RUB".into(),
+            enabled: true,
+            mode: BookmakerExecutionMode::DryRun,
+            created_at: Utc::now(),
+            last_used_at: None,
+        };
+
+        registry.register_account(account.clone());
+        registry.upsert_session(BookmakerSession {
+            account_id: account.id,
+            bookmaker: account.bookmaker.clone(),
+            state: BookmakerSessionState::Active,
+            token_hint: Some("sess...".into()),
+            last_synced_at: Utc::now(),
+            expires_at: Some(Utc::now() - Duration::minutes(5)),
+        });
+        registry.upsert_balance_snapshot(BookmakerBalanceSnapshot {
+            account_id: account.id,
+            bookmaker: account.bookmaker.clone(),
+            currency: account.currency.clone(),
+            total_balance: 10_000.0,
+            available_balance: 7_500.0,
+            exposure: 2_500.0,
+            captured_at: Utc::now(),
+        });
+
+        let state = get_account_state(&registry, "fonbet").expect("account state should exist");
+
+        assert!(!state.readiness.session_ready);
+        assert!(!state.readiness.dry_run_ready);
+        assert!(state
+            .readiness
+            .blocking_reasons
+            .iter()
+            .any(|reason| reason.contains("expiry timestamp has passed")));
+        assert!(state
+            .readiness
+            .operator_action
+            .as_deref()
+            .unwrap_or_default()
+            .contains("refresh the fonbet session"));
+        assert!(state
+            .control_issues
+            .iter()
+            .any(|issue| issue.contains("locally expired session timestamp")));
+        assert_eq!(
+            state
+                .auth_snapshot
+                .as_ref()
+                .expect("auth snapshot should exist")
+                .auth_state,
+            shared::BookmakerAuthState::Expired
+        );
+    }
+
+    #[test]
+    fn execution_state_readiness_does_not_count_expired_sessions_as_authenticated() {
+        let registry = ExecutionRegistry::new();
+        let account_id = Uuid::new_v4();
+
+        registry.register_account(BookmakerAccount {
+            id: account_id,
+            bookmaker: "fonbet".into(),
+            label: "main".into(),
+            currency: "RUB".into(),
+            enabled: true,
+            mode: BookmakerExecutionMode::DryRun,
+            created_at: Utc::now(),
+            last_used_at: None,
+        });
+        registry.upsert_session(BookmakerSession {
+            account_id,
+            bookmaker: "fonbet".into(),
+            state: BookmakerSessionState::Active,
+            token_hint: Some("sess...".into()),
+            last_synced_at: Utc::now(),
+            expires_at: Some(Utc::now() - Duration::minutes(5)),
+        });
+        registry.upsert_balance_snapshot(BookmakerBalanceSnapshot {
+            account_id,
+            bookmaker: "fonbet".into(),
+            currency: "RUB".into(),
+            total_balance: 10_000.0,
+            available_balance: 8_000.0,
+            exposure: 2_000.0,
+            captured_at: Utc::now(),
+        });
+
+        let (summary, bookmaker_readiness) = build_execution_state_readiness(&registry);
+        let fonbet = bookmaker_readiness
+            .iter()
+            .find(|item| item.bookmaker == "fonbet")
+            .expect("fonbet readiness");
+
+        assert_eq!(summary.sessions_authenticated, 0);
+        assert_eq!(summary.sessions_stale, 1);
+        assert!(!fonbet.session_authenticated);
+        assert!(!fonbet.auth_ready);
+        assert!(fonbet.session_stale);
+        assert!(!fonbet.balance_stale);
+        assert!(!fonbet.auth_snapshot_stale);
+        assert!(fonbet
+            .persistence_warnings
+            .iter()
+            .any(|warning| warning.contains("persisted session snapshot is stale")));
+    }
+
+    #[test]
+    fn execution_state_readiness_surfaces_stale_balance_snapshots() {
+        let registry = ExecutionRegistry::new();
+        let account_id = Uuid::new_v4();
+
+        registry.register_account(BookmakerAccount {
+            id: account_id,
+            bookmaker: "pari".into(),
+            label: "main".into(),
+            currency: "RUB".into(),
+            enabled: true,
+            mode: BookmakerExecutionMode::DryRun,
+            created_at: Utc::now(),
+            last_used_at: None,
+        });
+        registry.upsert_session(BookmakerSession {
+            account_id,
+            bookmaker: "pari".into(),
+            state: BookmakerSessionState::Active,
+            token_hint: Some("sess...".into()),
+            last_synced_at: Utc::now(),
+            expires_at: Some(Utc::now() + Duration::minutes(30)),
+        });
+        registry.upsert_balance_snapshot(BookmakerBalanceSnapshot {
+            account_id,
+            bookmaker: "pari".into(),
+            currency: "RUB".into(),
+            total_balance: 10_000.0,
+            available_balance: 8_000.0,
+            exposure: 2_000.0,
+            captured_at: Utc::now() - Duration::minutes(10),
+        });
+
+        let (summary, bookmaker_readiness) = build_execution_state_readiness(&registry);
+        let pari = bookmaker_readiness
+            .iter()
+            .find(|item| item.bookmaker == "pari")
+            .expect("pari readiness");
+
+        assert_eq!(summary.balances_stale, 1);
+        assert!(pari.balance_cached);
+        assert!(pari.balance_stale);
+        assert!(!pari.session_stale);
+        assert!(!pari.auth_snapshot_stale);
+        assert!(pari
+            .persistence_warnings
+            .iter()
+            .any(|warning| warning.contains("persisted balance snapshot is stale")));
     }
 
     #[test]
@@ -3262,6 +4138,8 @@ mod tests {
                             .into(),
                     notes: vec!["draft only".into()],
                 }),
+                rollover_actions: Vec::new(),
+                execution_readiness: None,
                 updated_at: Utc::now(),
             },
             FreebetLifecycleState {
@@ -3279,6 +4157,8 @@ mod tests {
                 rollover: None,
                 allocation: None,
                 auto_rollover: None,
+                rollover_actions: Vec::new(),
+                execution_readiness: None,
                 updated_at: Utc::now(),
             },
         ];
@@ -3350,6 +4230,8 @@ mod tests {
                     read_only_check: String::new(),
                     notes: Vec::new(),
                 }),
+                rollover_actions: Vec::new(),
+                execution_readiness: None,
                 updated_at: Utc::now(),
             },
             FreebetLifecycleState {
@@ -3383,6 +4265,8 @@ mod tests {
                     read_only_check: String::new(),
                     notes: Vec::new(),
                 }),
+                rollover_actions: Vec::new(),
+                execution_readiness: None,
                 updated_at: Utc::now(),
             },
             FreebetLifecycleState {
@@ -3398,6 +4282,8 @@ mod tests {
                 rollover: None,
                 allocation: None,
                 auto_rollover: None,
+                rollover_actions: Vec::new(),
+                execution_readiness: None,
                 updated_at: Utc::now(),
             },
         ];
@@ -3429,6 +4315,8 @@ mod tests {
             rollover: None,
             allocation: None,
             auto_rollover: None,
+            rollover_actions: Vec::new(),
+            execution_readiness: None,
             updated_at: Utc::now(),
         }]);
 
@@ -3477,6 +4365,8 @@ mod tests {
                         .into(),
                 notes: vec!["draft only".into()],
             }),
+            rollover_actions: Vec::new(),
+            execution_readiness: None,
             updated_at: Utc::now(),
         };
 
@@ -3490,50 +4380,236 @@ mod tests {
     }
 
     #[test]
-    fn freebet_lifecycle_prefers_live_snapshot_when_available() {
+    fn freebet_lifecycle_merges_live_and_persisted_snapshots() {
         let live = vec![FreebetLifecycleState {
-            bookmaker: "live".into(),
+            bookmaker: "pari".into(),
             lifecycle_stage: FreebetLifecycleStage::Discovered,
-            next_milestone: "review_opportunity".into(),
+            next_milestone: String::new(),
             blocked_by: Vec::new(),
-            read_only_follow_up:
-                "Refresh lifecycle after the next odds sync and confirm the opportunity still qualifies."
-                    .into(),
-            read_only_focus: "odds_sync".into(),
+            read_only_follow_up: String::new(),
+            read_only_focus: String::new(),
             opportunity: Some(make_freebet_opportunity()),
             bonus: None,
             plan: None,
             rollover: None,
             allocation: None,
             auto_rollover: None,
+            rollover_actions: Vec::new(),
+            execution_readiness: None,
             updated_at: Utc::now(),
         }];
-        let persisted = vec![FreebetLifecycleState {
-            bookmaker: "persisted".into(),
-            lifecycle_stage: FreebetLifecycleStage::Planned,
-            next_milestone: "place_manual_legs".into(),
-            blocked_by: vec!["manual_trigger".into()],
-            read_only_follow_up:
-                "Refresh lifecycle after manual placement and confirm the draft is still aligned."
-                    .into(),
-            read_only_focus: "manual_placement".into(),
-            opportunity: None,
-            bonus: Some(make_freebet_bonus(BonusStatus::Claimed, 0.0)),
-            plan: None,
-            rollover: None,
-            allocation: None,
-            auto_rollover: None,
-            updated_at: Utc::now(),
-        }];
+        let persisted = vec![
+            FreebetLifecycleState {
+                bookmaker: "pari".into(),
+                lifecycle_stage: FreebetLifecycleStage::Planned,
+                next_milestone: "place_manual_legs".into(),
+                blocked_by: vec!["manual_trigger".into()],
+                read_only_follow_up:
+                    "Refresh lifecycle after manual placement and confirm the draft is still aligned."
+                        .into(),
+                read_only_focus: "manual_placement".into(),
+                opportunity: None,
+                bonus: Some(make_freebet_bonus(BonusStatus::Claimed, 0.0)),
+                plan: None,
+                rollover: None,
+                allocation: None,
+                auto_rollover: None,
+                rollover_actions: Vec::new(),
+                execution_readiness: None,
+                updated_at: Utc::now() - Duration::seconds(10),
+            },
+            FreebetLifecycleState {
+                bookmaker: "fonbet".into(),
+                lifecycle_stage: FreebetLifecycleStage::Qualified,
+                next_milestone: "prepare_conversion_plan".into(),
+                blocked_by: vec!["manual_trigger".into()],
+                read_only_follow_up: "persisted follow-up".into(),
+                read_only_focus: "manual_placement".into(),
+                opportunity: None,
+                bonus: Some(make_freebet_bonus(BonusStatus::Claimed, 0.0)),
+                plan: None,
+                rollover: None,
+                allocation: None,
+                auto_rollover: None,
+                rollover_actions: Vec::new(),
+                execution_readiness: None,
+                updated_at: Utc::now(),
+            },
+        ];
 
         let selected = select_freebet_lifecycle_snapshot(live, persisted);
 
-        assert_eq!(selected.len(), 1);
-        assert_eq!(selected[0].bookmaker, "live");
-        assert_eq!(
-            selected[0].lifecycle_stage,
-            FreebetLifecycleStage::Discovered
+        assert_eq!(selected.len(), 2);
+        let fonbet = selected
+            .iter()
+            .find(|item| item.bookmaker == "fonbet")
+            .expect("persisted bookmaker");
+        assert_eq!(fonbet.lifecycle_stage, FreebetLifecycleStage::Qualified);
+
+        let pari = selected
+            .iter()
+            .find(|item| item.bookmaker == "pari")
+            .expect("merged bookmaker");
+        assert_eq!(pari.lifecycle_stage, FreebetLifecycleStage::Discovered);
+        assert!(pari.opportunity.is_some());
+        assert!(pari.bonus.is_some());
+        assert_eq!(pari.next_milestone, "place_manual_legs");
+        assert_eq!(pari.read_only_focus, "manual_placement");
+        assert_eq!(pari.blocked_by, vec!["manual_trigger"]);
+    }
+
+    #[test]
+    fn enriches_freebet_lifecycle_with_execution_bridge_metadata() {
+        let registry = ExecutionRegistry::new();
+        let account_id = Uuid::new_v4();
+        registry.register_account(BookmakerAccount {
+            id: account_id,
+            bookmaker: "pari".into(),
+            label: "Pari main".into(),
+            currency: "RUB".into(),
+            enabled: true,
+            mode: BookmakerExecutionMode::DryRun,
+            created_at: Utc::now(),
+            last_used_at: None,
+        });
+        registry.upsert_session(BookmakerSession {
+            account_id,
+            bookmaker: "pari".into(),
+            state: BookmakerSessionState::Active,
+            token_hint: Some("cached".into()),
+            last_synced_at: Utc::now(),
+            expires_at: None,
+        });
+        registry.upsert_balance_snapshot(shared::BookmakerBalanceSnapshot {
+            account_id,
+            bookmaker: "pari".into(),
+            currency: "RUB".into(),
+            total_balance: 2_500.0,
+            available_balance: 2_100.0,
+            exposure: 0.0,
+            captured_at: Utc::now(),
+        });
+
+        let enriched = enrich_freebet_lifecycle_state(
+            &registry,
+            FreebetLifecycleState {
+                bookmaker: "pari".into(),
+                lifecycle_stage: FreebetLifecycleStage::Planned,
+                next_milestone: "place_manual_legs".into(),
+                blocked_by: vec!["manual_trigger".into()],
+                read_only_follow_up: String::new(),
+                read_only_focus: "manual_settlement".into(),
+                opportunity: Some(make_freebet_opportunity()),
+                bonus: Some(make_freebet_bonus(BonusStatus::Claimed, 0.0)),
+                plan: None,
+                rollover: None,
+                allocation: None,
+                auto_rollover: Some(FreebetAutoRolloverDraft {
+                    status: FreebetAutoRolloverStatus::AwaitingTrigger,
+                    safe_mode: true,
+                    execution_allowed: false,
+                    required_cash_by_bookmaker: HashMap::new(),
+                    funding_gap_by_bookmaker: HashMap::new(),
+                    funding_readiness: FreebetFundingReadiness {
+                        ready: true,
+                        total_gap: 0.0,
+                        blocking_bookmakers: Vec::new(),
+                        largest_gap_bookmaker: None,
+                        largest_gap_amount: None,
+                    },
+                    funding_recommendation: "balances already cover the draft".into(),
+                    trigger:
+                        "wait for manual qualifying/freebet placement; draft stays in no-op mode"
+                            .into(),
+                    next_action: String::new(),
+                    read_only_check: String::new(),
+                    notes: Vec::new(),
+                }),
+                rollover_actions: Vec::new(),
+                execution_readiness: None,
+                updated_at: Utc::now(),
+            },
         );
+
+        assert_eq!(enriched.rollover_actions.len(), 4);
+        assert_eq!(enriched.rollover_actions[1].key, "manual_trigger");
+        assert_eq!(
+            enriched
+                .execution_readiness
+                .as_ref()
+                .map(|item| &item.stage),
+            Some(&FreebetExecutionReadinessStage::AwaitingManualTrigger)
+        );
+        let readiness = enriched.execution_readiness.as_ref().unwrap();
+        assert!(readiness.account_configured);
+        assert!(readiness.session_ready);
+        assert!(readiness.balance_snapshot_available);
+        assert!(!readiness.dry_run_ready);
+        assert!(readiness.manual_trigger_required);
+        assert!(readiness
+            .blocking_reasons
+            .iter()
+            .any(|item| item.contains("manual qualifying/freebet trigger")));
+        assert!(!readiness.real_money_enabled);
+    }
+
+    #[test]
+    fn execution_bridge_marks_funding_blocked_before_dry_run() {
+        let registry = ExecutionRegistry::new();
+
+        let enriched = enrich_freebet_lifecycle_state(
+            &registry,
+            FreebetLifecycleState {
+                bookmaker: "pari".into(),
+                lifecycle_stage: FreebetLifecycleStage::Planned,
+                next_milestone: "close_funding_gap".into(),
+                blocked_by: vec!["funding:pari".into()],
+                read_only_follow_up: String::new(),
+                read_only_focus: "balance_refresh".into(),
+                opportunity: Some(make_freebet_opportunity()),
+                bonus: Some(make_freebet_bonus(BonusStatus::Claimed, 0.0)),
+                plan: None,
+                rollover: None,
+                allocation: None,
+                auto_rollover: Some(FreebetAutoRolloverDraft {
+                    status: FreebetAutoRolloverStatus::AwaitingFunding,
+                    safe_mode: true,
+                    execution_allowed: false,
+                    required_cash_by_bookmaker: HashMap::from([("pari".into(), 500.0)]),
+                    funding_gap_by_bookmaker: HashMap::from([("pari".into(), 125.0)]),
+                    funding_readiness: FreebetFundingReadiness {
+                        ready: false,
+                        total_gap: 125.0,
+                        blocking_bookmakers: vec!["pari".into()],
+                        largest_gap_bookmaker: Some("pari".into()),
+                        largest_gap_amount: Some(125.0),
+                    },
+                    funding_recommendation: String::new(),
+                    trigger: String::new(),
+                    next_action: String::new(),
+                    read_only_check: String::new(),
+                    notes: Vec::new(),
+                }),
+                rollover_actions: Vec::new(),
+                execution_readiness: None,
+                updated_at: Utc::now(),
+            },
+        );
+
+        assert_eq!(
+            enriched
+                .execution_readiness
+                .as_ref()
+                .map(|item| &item.stage),
+            Some(&FreebetExecutionReadinessStage::FundingBlocked)
+        );
+        let readiness = enriched.execution_readiness.as_ref().unwrap();
+        assert!(!readiness.funding_ready);
+        assert!(!readiness.dry_run_ready);
+        assert!(readiness
+            .blocking_reasons
+            .iter()
+            .any(|item| item.contains("funding gap")));
     }
 
     #[test]
@@ -3707,6 +4783,9 @@ mod tests {
         assert!(response.preflight.arm_required);
         assert!(response.preflight.armed_for_execution);
         assert!(response.preflight.placement_ready);
+        assert!(response.preflight.rollout_gate_active);
+        assert!(response.preflight.approval_required);
+        assert!(response.preflight.submit_blocked_by_safe_mode);
         assert!(response.receipt.is_some());
         assert_eq!(response.execution_request.stake, 500.0);
     }
@@ -3764,5 +4843,8 @@ mod tests {
         assert!(!response.armed_for_execution);
         assert!(!response.placement_ready);
         assert!(!response.real_money_enabled);
+        assert!(response.rollout_gate_active);
+        assert!(!response.approval_required);
+        assert!(!response.submit_blocked_by_safe_mode);
     }
 }

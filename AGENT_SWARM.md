@@ -2,90 +2,129 @@
 
 Боевой контур для параллельной разработки `fork_hunter_pro`.
 
-## Что уже настроено
+## Текущее состояние
 
-- `bootstrap.ps1` — быстрый/full bootstrap dual-stack окружения
-- `worktrees.ps1` — создание и инициализация изолированных worktrees
-- `New-ForkHunterSwarm -Bootstrap` — готовый расклад ролей под проект
-- `.worktrees/` уже создан и заполнен worktree-ветками:
-  - `rust-core`
-  - `parsers`
-  - `api-bot`
-  - `integration`
-  - `legacy-python`
+- Базовая ветка swarm: `codex-swarm-base-20260416-0343`
+- Checkpoint commit: `c1e389d`
+- Основной control plane живёт в main checkout, рабочие слоты идут в clean `.worktrees/swarm-*`
+- Практический лимит этой сессии: одновременно держать не больше `6` живых агентов
 
-## Быстрый старт
+## Главный принцип
+
+Один агент = одно worktree = одна зона ответственности.
+
+Не смешивать:
+
+- parser work по разным БК
+- core safety/runtime work
+- operator/API/UI work
+- execution/freebet/bankroll work
+- legacy Python reference support
+
+## Активная схема
+
+### Активная волна
+
+- `swarm-winline`
+- `swarm-melbet`
+- `swarm-betboom`
+- `swarm-ligastavok`
+- `coordinator` (read-only dispatcher)
+- `service` (rotating shared slot)
+
+### Следующая очередь
+
+- `swarm-core-safety`
+- `swarm-api-operator`
+- `swarm-ui-operator`
+- `swarm-execution-money`
+- `swarm-agent-improvement`
+- `swarm-legacy-python`
+
+## Worktree map
+
+| Worktree | Ownership | Goal |
+|---|---|---|
+| `swarm-winline` | Winline parser, diagnostics, tests | Сузить runtime blocker, убрать дорогой fanout, вывести честный bounded path |
+| `swarm-melbet` | Melbet parser, diagnostics, tests | Продвинуть route/bootstrap path к production-ready feed |
+| `swarm-betboom` | Betboom parser, diagnostics, tests | Довести diagnostic-ready parser до runtime feed |
+| `swarm-ligastavok` | LigaStavok parser, diagnostics, tests | Усилить honest blocker/readiness вокруг anti-bot session bootstrap |
+| `swarm-core-safety` | `crates/shared`, `crates/engine`, `crates/scanner`, `crates/persistence` | Verifier, bulkhead, validator, health, runtime truthfulness |
+| `swarm-api-operator` | `crates/api`, `crates/bot`, `crates/fork_hunter_bin` | Readiness, triage, status surfaces, operator contracts |
+| `swarm-ui-operator` | `desktop-ui/src` | Operator cockpit, parser health, execution/funding surfaces |
+| `swarm-execution-money` | `crates/auto_betting`, `crates/bonus_hunter`, `crates/bankroll_manager` | Safe semi-auto groundwork, bankroll/funding readiness |
+| `swarm-agent-improvement` | bootstrap/workflow/docs/scripts | Улучшение swarm loop, памяти, handoff и bounded execution |
+| `swarm-legacy-python` | root Python scripts/tests/tooling | Только comparison, migration support, behavior reference |
+
+## Done criteria
+
+### Для parser worker
+
+- Найден реальный runtime blocker, а не общий vague fail
+- Добавлены или уточнены diagnostics/guardrails
+- Изменение делает поведение либо более рабочим, либо более честно bounded
+- Оставлены локальные шаги проверки
+- Ясно указано, что остаётся внешним blocker
+
+### Для service worker
+
+- Улучшение имеет узкий ownership
+- Изменения не лезут в чужие worktrees/домены
+- Есть локальная проверка slice
+- Есть короткий handoff для следующей волны
+
+## Минимальный цикл
+
+1. Взять своё `swarm-*` worktree.
+2. Прочитать `docs/memory/README.md`, `docs/onboarding/MULTI_SESSION_SWARM.md`, `docs/onboarding/SWARM_STATUS.md`.
+3. Сделать только scoped changes.
+4. Прогнать только свой validation slice.
+5. Описать итог и остаточные blockers.
+6. Освободить слот для следующей роли.
+
+## Safe validation
+
+По умолчанию:
 
 ```powershell
-. .\worktrees.ps1
-Show-ForkHunterSwarm
+git status --short
+cargo check -p shared
+cargo check -p engine
+cargo check -p persistence
+cargo check -p scanner
+cargo check -p parsers
+py -m pytest --collect-only -q
 ```
 
-Если клон новый и worktrees ещё не созданы:
+После стабилизации отдельного slice:
 
 ```powershell
-. .\worktrees.ps1
-New-ForkHunterSwarm -Bootstrap
+cargo test -p shared --lib --quiet
+cargo test -p engine --lib --quiet
+cargo test -p persistence --lib --quiet
+cargo test -p scanner --lib --quiet
+cargo test -p parsers --lib --quiet
 ```
 
-## Роли
+## Unsafe by default
 
-### rust-core
-- scope: `crates/shared`, `crates/engine`, `crates/scanner`, `crates/persistence`
-- задачи: runtime core, performance, correctness
-- не лезет в parsers/api/bot без отдельной задачи
+Не запускать без явной причины:
 
-### parsers
-- scope: `crates/parsers`
-- задачи: bookmaker coverage, parser_factory, normalization, reliability
+- `cargo test --workspace`
+- root `test_*.py` вне целевого slice
+- browser discovery scripts
+- heavy artifact generators
+- live runtime against real credentials
+- broad cleanup старых Python/diagnostic файлов
 
-### api-bot
-- scope: `crates/api`, `crates/bot`, `crates/fork_hunter_bin`
-- задачи: HTTP/WS, bot wiring, runtime entrypoint glue
+## Локальная память
 
-### integration
-- scope: workspace-wide validation, smoke tests, docs sync
-- задача: не фичи, а сборка итогов и final verification
+Истину держать в компактных repo-файлах, а не в длинной истории чата:
 
-### legacy-python
-- scope: root Python scripts/tests
-- задача: только migration/reference/support
-- не использовать как mainline
-
-## Правило №1
-
-Один агент = одно worktree = один scope.
-
-## Рекомендуемый запуск
-
-1. `rust-core` и `parsers` стартуют первыми
-2. `api-bot` идёт параллельно, если не зависит от parser changes
-3. `integration` включается после первых merge-ready результатов
-4. `legacy-python` запускать только при сравнении поведения или миграционных вопросах
-
-## Skills / plugins
-
-Отобраны и установлены только практичные штуки:
-
-- `agent-team-orchestration` — роль/процесс/handoff слой
-- `git-worktree-manager` — полезный git-worktree паттерн
-- `codex-orchestrator` — установлен как слой управления Codex runs
-
-Сознательно **не установлен автоматически**:
-- `codex-sub-agents` — ClawHub пометил как suspicious; без ручного ревью форсить не стоит
-
-## Что читать агентам
-
-- `AGENT_TASK.md` внутри своего worktree
-- `agent-output.md` внутри своего worktree
 - `DEV_SETUP.md`
-- `OPENCLAW_WORKFLOW.md`
-
-## Минимальный цикл работы
-
-1. взять worktree
-2. прочитать `AGENT_TASK.md`
-3. сделать scoped changes
-4. прогнать только свой validation slice
-5. записать итог в `agent-output.md`
-6. отдать в integration
+- `docs/onboarding/AUTONOMOUS_SWARM.md`
+- `desktop-ui/README.md`
+- `config.yaml.example`
+- `AGENT_SWARM.md`
+- `docs/memory/*`
+- `COMPRESSION.md`

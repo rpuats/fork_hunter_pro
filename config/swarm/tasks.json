@@ -1,0 +1,110 @@
+{
+  "version": 1,
+  "tasks": [
+    {
+      "id": "winline-fanout-bounds",
+      "lane": "winline",
+      "priority": 1,
+      "title": "Cut expensive route/page fanout",
+      "objective": "Reduce wasteful Winline route/page fanout and make runtime failure bounded and honest.",
+      "doneCriteria": [
+        "main expensive fanout path identified or reduced",
+        "runtime behavior becomes more bounded or more productive",
+        "local validation steps documented"
+      ]
+    },
+    {
+      "id": "melbet-bootstrap-truth",
+      "lane": "melbet",
+      "priority": 1,
+      "title": "Tighten route/bootstrap blocker",
+      "objective": "Promote Melbet from vague partial runtime to a clearer feed/bootstrap decision point.",
+      "doneCriteria": [
+        "route/bootstrap blocker isolated more tightly",
+        "runtime signals become more honest",
+        "next task is obvious without re-reading logs"
+      ]
+    },
+    {
+      "id": "betboom-feed-path",
+      "lane": "betboom",
+      "priority": 1,
+      "title": "Connect runtime feed path",
+      "objective": "Use existing probes/contracts groundwork to connect Betboom to a real runtime feed path or a more honest blocker.",
+      "doneCriteria": [
+        "feed path advanced",
+        "empty-result root cause narrowed",
+        "local validation documented"
+      ]
+    },
+    {
+      "id": "ligastavok-session-readiness",
+      "lane": "ligastavok",
+      "priority": 1,
+      "title": "Strengthen anti-bot readiness diagnostics",
+      "objective": "Improve honest session/bootstrap readiness and blocker reporting without fake bypasses.",
+      "doneCriteria": [
+        "readiness/blocker layer improved",
+        "anti-bot dependency made explicit",
+        "local validation documented"
+      ]
+    },
+    {
+      "id": "coordinator-wave-board",
+      "lane": "coordinator",
+      "priority": 1,
+      "title": "Maintain current wave board",
+      "objective": "Keep current wave, next wave, and task rotation compact and current in docs/memory and onboarding docs.",
+      "doneCriteria": [
+        "current active wave is current",
+        "next queued tasks are compact",
+        "handoff format stays short"
+      ]
+    },
+    {
+      "id": "service-core-truthfulness",
+      "lane": "service",
+      "priority": 1,
+      "title": "Improve runtime truthfulness",
+      "objective": "Strengthen parser health, validators, staleness, or verifier via a bounded core-safety patch.",
+      "doneCriteria": [
+        "one bounded core-safety improvement lands",
+        "validation result recorded",
+        "follow-up queued"
+      ]
+    },
+    {
+      "id": "service-operator-readiness",
+      "lane": "service",
+      "priority": 2,
+      "title": "Improve operator readiness surfaces",
+      "objective": "Improve readiness/triage/operator surfacing in API or UI after the core-safety slot finishes.",
+      "doneCriteria": [
+        "bounded operator-facing improvement lands",
+        "validation documented"
+      ]
+    },
+    {
+      "id": "service-execution-safety",
+      "lane": "service",
+      "priority": 3,
+      "title": "Improve execution safety groundwork",
+      "objective": "Improve approval/safety/drift/readiness groundwork before any real-money automation.",
+      "doneCriteria": [
+        "bounded execution safety improvement lands",
+        "validation documented"
+      ]
+    },
+    {
+      "id": "service-agent-throughput",
+      "lane": "service",
+      "priority": 4,
+      "title": "Improve swarm throughput",
+      "objective": "Improve lane handoff, task compression, or queue tooling to reduce overhead.",
+      "doneCriteria": [
+        "one bounded throughput improvement lands",
+        "new handoff path is simpler"
+      ]
+    }
+  ]
+}

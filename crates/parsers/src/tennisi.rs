@@ -1,6 +1,7 @@
 use crate::base::{BookmakerParser, ParserResult};
 use async_trait::async_trait;
 use chrono::{DateTime, Datelike, Duration, FixedOffset, NaiveDate, TimeZone, Utc};
+use futures::stream::{self, StreamExt};
 use regex::Regex;
 use reqwest::Client;
 use scraper::{ElementRef, Html, Selector};
@@ -16,6 +17,7 @@ const LIVE_CATEGORY_ID: &str = "29010669";
 const LIVE_LINES_URL: &str = "https://tennisi.bet/rt/cgi/!book2_free.LiveBetsLines?val=1&gameid=5&categoryid=29010669&lang=rus&tbnohdr=1";
 const SPORT_PAGE_URL_TEMPLATE: &str = "https://tennisi.bet/sport/{slug}";
 const CATEGORY_INFO_URL_TEMPLATE: &str = "https://tennisi.bet/rt/cgi/!rt_home.CategoryInfo?gameid=5&categoryid={category_id}&more=today&lang=rus";
+const PREMATCH_FETCH_CONCURRENCY: usize = 4;
 
 #[derive(Clone, Copy, Debug)]
 struct PrematchProbe {
@@ -204,8 +206,6 @@ impl TennisiParser {
         let mut current_league = String::new();
         let mut current_date = None;
         let mut current_headers: Vec<String> = Vec::new();
-        let mut seen = HashSet::new();
-
         for row in document.select(&row_selector) {
             let row_id = row.value().attr("id").unwrap_or_default();
             let expanded_cells = Self::expand_row_cells(&row, &cell_selector);
@@ -241,11 +241,6 @@ impl TennisiParser {
                     fallback_sport
                 };
                 let event_id = format!("{BOOKMAKER_SLUG}-{event_id_suffix}");
-                let dedupe_key = format!("{}|{}|{}|{}", is_live, league, home_team, away_team);
-                if !seen.insert(dedupe_key) {
-                    continue;
-                }
-
                 let raw_url = row
                     .select(&link_selector)
                     .next()
@@ -623,6 +618,30 @@ impl TennisiParser {
                 }
             }
         }
+
+        for separator in ['-', '–', '—'] {
+            let Some(index) = title
+                .char_indices()
+                .find_map(|(index, ch)| (ch == separator).then_some(index))
+            else {
+                continue;
+            };
+
+            let before = title[..index].chars().last();
+            let after = title[index + separator.len_utf8()..].chars().next();
+            let has_whitespace_boundary =
+                before.is_some_and(char::is_whitespace) || after.is_some_and(char::is_whitespace);
+            if !has_whitespace_boundary {
+                continue;
+            }
+
+            let home = Self::normalize_whitespace(&title[..index]);
+            let away = Self::normalize_whitespace(&title[index + separator.len_utf8()..]);
+            if !home.is_empty() && !away.is_empty() && home != away {
+                return Some((home, away));
+            }
+        }
+
         None
     }
 
@@ -841,8 +860,14 @@ impl BookmakerParser for TennisiParser {
             Err(error) => warn!(error = %error, "Tennisi live fetch failed"),
         }
 
-        for probe in PREMATCH_PROBES {
-            match self.fetch_prematch_probe(*probe).await {
+        let prematch_results = stream::iter(PREMATCH_PROBES.iter().copied())
+            .map(|probe| async move { (probe, self.fetch_prematch_probe(probe).await) })
+            .buffer_unordered(PREMATCH_FETCH_CONCURRENCY)
+            .collect::<Vec<_>>()
+            .await;
+
+        for (probe, result) in prematch_results {
+            match result {
                 Ok((events, odds)) => {
                     for event in events {
                         if seen_events.insert(event.id.clone()) {
@@ -929,6 +954,106 @@ mod tests {
                 && odd.line == Some(2.0)
                 && (odd.odds - 1.76).abs() < f64::EPSILON
         }));
+    }
+
+    #[test]
+    fn keeps_distinct_events_for_same_matchup_in_same_league() {
+        let html = r##"
+<html>
+<body>
+<table>
+<tr><td>Футбол :: Синтетические матчи</td></tr>
+<tr bgcolor="#FF8A4C">
+<td>№</td><td>Дата</td><td>Событие</td><td>П 1</td><td>X</td><td>П 2</td><td></td><td>1X</td><td>12</td><td>2X</td><td></td><td>Ф 1</td><td>К 1</td><td>Ф 2</td><td>К 2</td><td></td><td>&lt;</td><td>TM</td><td>&gt;</td><td>Доп</td>
+</tr>
+<tr><td>Сегодня</td></tr>
+<tr id="el2306692312" bgcolor="#FFF2C5">
+<td>2155</td>
+<td><a href="!rt_home.EventInfo?gameid=5&amp;eventid=2306692312&amp;more=allbets&amp;lang=rus">21:45</a></td>
+<td><a id="evtl2306692312" href="!rt_home.EventInfo?gameid=5&amp;eventid=2306692312&amp;more=allbets&amp;lang=rus">Лацио - Лидс</a></td>
+<td><a href="#">2.54</a></td>
+<td><a href="#">2.74</a></td>
+<td><a href="#">3.00</a></td>
+<td></td>
+<td><a href="#">1.34</a></td>
+<td><a href="#">1.40</a></td>
+<td><a href="#">1.46</a></td>
+<td></td>
+<td><b><a href="#">0</a></b></td>
+<td><a href="#">1.71</a></td>
+<td><b><a href="#">0</a></b></td>
+<td><a href="#">2.01</a></td>
+<td></td>
+<td><a href="#">1.76</a></td>
+<td><b>2</b></td>
+<td><a href="#">1.95</a></td>
+<td>+7</td>
+</tr>
+<tr id="el2306692313" bgcolor="#FFF2C5">
+<td>2156</td>
+<td><a href="!rt_home.EventInfo?gameid=5&amp;eventid=2306692313&amp;more=allbets&amp;lang=rus">22:15</a></td>
+<td><a id="evtl2306692313" href="!rt_home.EventInfo?gameid=5&amp;eventid=2306692313&amp;more=allbets&amp;lang=rus">Лацио - Лидс</a></td>
+<td><a href="#">2.40</a></td>
+<td><a href="#">2.90</a></td>
+<td><a href="#">3.15</a></td>
+<td></td>
+<td><a href="#">1.30</a></td>
+<td><a href="#">1.38</a></td>
+<td><a href="#">1.50</a></td>
+<td></td>
+<td><b><a href="#">0</a></b></td>
+<td><a href="#">1.68</a></td>
+<td><b><a href="#">0</a></b></td>
+<td><a href="#">2.05</a></td>
+<td></td>
+<td><a href="#">1.80</a></td>
+<td><b>2</b></td>
+<td><a href="#">1.90</a></td>
+<td>+7</td>
+</tr>
+</table>
+</body>
+</html>
+"##;
+
+        let (events, odds) =
+            TennisiParser::parse_prematch_page(html, Sport::Football, "football", "137");
+
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].id, "tennisi-2306692312");
+        assert_eq!(events[1].id, "tennisi-2306692313");
+        assert_eq!(
+            events
+                .iter()
+                .filter(|event| event.home_team == "Лацио")
+                .count(),
+            2
+        );
+        assert_eq!(
+            odds.iter()
+                .filter(|odd| odd.event_id == "tennisi-2306692312")
+                .count(),
+            7
+        );
+        assert_eq!(
+            odds.iter()
+                .filter(|odd| odd.event_id == "tennisi-2306692313")
+                .count(),
+            7
+        );
+    }
+
+    #[test]
+    fn splits_titles_with_relaxed_dash_spacing() {
+        assert_eq!(
+            TennisiParser::split_match_title("Рома- Интер"),
+            Some(("Рома".to_string(), "Интер".to_string()))
+        );
+        assert_eq!(
+            TennisiParser::split_match_title("Рома -Интер"),
+            Some(("Рома".to_string(), "Интер".to_string()))
+        );
+        assert_eq!(TennisiParser::split_match_title("Тампа-Бэй"), None);
     }
 
     #[test]

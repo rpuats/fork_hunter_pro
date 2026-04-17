@@ -8,7 +8,7 @@ use auto_betting::{
     ExecutionStateSnapshot, ExecutionStateTransition,
 };
 use chrono::Utc;
-use shared::{BookmakerAccount, BookmakerBalanceSnapshot, BookmakerSession};
+use shared::{BookmakerAccount, BookmakerAuthSnapshot, BookmakerBalanceSnapshot, BookmakerSession};
 use sqlx::{sqlite::SqliteConnectOptions, Row, SqlitePool};
 use std::str::FromStr;
 use tokio::sync::Mutex;
@@ -19,6 +19,7 @@ struct PersistedBookmakerState {
     account: Option<BookmakerAccount>,
     session: Option<BookmakerSession>,
     balance: Option<BookmakerBalanceSnapshot>,
+    auth_snapshot: Option<BookmakerAuthSnapshot>,
 }
 
 pub struct ExecutionStateStore {
@@ -79,12 +80,21 @@ impl ExecutionStateStore {
                     account_json TEXT,
                     session_json TEXT,
                     balance_json TEXT,
+                    auth_json TEXT,
                     updated_at INTEGER NOT NULL
                 )
                 "#,
             )
             .execute(pool.as_ref())
             .await?;
+
+            let _ = sqlx::query(
+                r#"
+                ALTER TABLE execution_registry_state ADD COLUMN auth_json TEXT
+                "#,
+            )
+            .execute(pool.as_ref())
+            .await;
 
             sqlx::query(
                 r#"
@@ -130,7 +140,7 @@ impl ExecutionStateStore {
 
         let rows = sqlx::query(
             r#"
-            SELECT bookmaker, account_json, session_json, balance_json
+            SELECT bookmaker, account_json, session_json, balance_json, auth_json
             FROM execution_registry_state
             "#,
         )
@@ -146,6 +156,8 @@ impl ExecutionStateStore {
             let session = parse_json_column::<BookmakerSession>(&row, "session_json", &bookmaker);
             let balance =
                 parse_json_column::<BookmakerBalanceSnapshot>(&row, "balance_json", &bookmaker);
+            let auth_snapshot =
+                parse_json_column::<BookmakerAuthSnapshot>(&row, "auth_json", &bookmaker);
 
             data.insert(
                 bookmaker,
@@ -153,6 +165,7 @@ impl ExecutionStateStore {
                     account,
                     session,
                     balance,
+                    auth_snapshot,
                 },
             );
         }
@@ -226,6 +239,16 @@ impl ExecutionStateStore {
     async fn save_balance_inner(&self, snapshot: &BookmakerBalanceSnapshot) -> Result<(), String> {
         self.update_state(&snapshot.bookmaker, |state| {
             state.balance = Some(snapshot.clone());
+        })
+        .await
+    }
+
+    async fn save_auth_snapshot_inner(
+        &self,
+        snapshot: &BookmakerAuthSnapshot,
+    ) -> Result<(), String> {
+        self.update_state(&snapshot.bookmaker, |state| {
+            state.auth_snapshot = Some(snapshot.clone());
         })
         .await
     }
@@ -349,6 +372,7 @@ impl ExecutionStateStore {
             let account_json = serialize_optional(&persisted.account)?;
             let session_json = serialize_optional(&persisted.session)?;
             let balance_json = serialize_optional(&persisted.balance)?;
+            let auth_json = serialize_optional(&persisted.auth_snapshot)?;
 
             sqlx::query(
                 r#"
@@ -357,13 +381,15 @@ impl ExecutionStateStore {
                     account_json,
                     session_json,
                     balance_json,
+                    auth_json,
                     updated_at
                 )
-                VALUES (?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT(bookmaker) DO UPDATE SET
                     account_json = excluded.account_json,
                     session_json = excluded.session_json,
                     balance_json = excluded.balance_json,
+                    auth_json = excluded.auth_json,
                     updated_at = excluded.updated_at
                 "#,
             )
@@ -371,6 +397,7 @@ impl ExecutionStateStore {
             .bind(account_json)
             .bind(session_json)
             .bind(balance_json)
+            .bind(auth_json)
             .bind(Utc::now().timestamp())
             .execute(pool.as_ref())
             .await
@@ -399,6 +426,10 @@ impl ExecutionRegistryPersistence for ExecutionStateStore {
                 .values()
                 .filter_map(|item| item.balance.clone())
                 .collect(),
+            auth_snapshots: data
+                .values()
+                .filter_map(|item| item.auth_snapshot.clone())
+                .collect(),
         })
     }
 
@@ -415,6 +446,10 @@ impl ExecutionRegistryPersistence for ExecutionStateStore {
         snapshot: &BookmakerBalanceSnapshot,
     ) -> Result<(), String> {
         self.save_balance_inner(snapshot).await
+    }
+
+    async fn save_auth_snapshot(&self, snapshot: &BookmakerAuthSnapshot) -> Result<(), String> {
+        self.save_auth_snapshot_inner(snapshot).await
     }
 }
 
@@ -458,7 +493,10 @@ where
 mod tests {
     use super::*;
     use auto_betting::{ExecutionLedgerAction, ExecutionStatePhase};
-    use shared::{BetStatus, BookmakerExecutionMode, BookmakerSessionState};
+    use shared::{
+        BetStatus, BookmakerAdapterReadinessStage, BookmakerAuthSnapshot, BookmakerAuthState,
+        BookmakerExecutionMode, BookmakerSessionState,
+    };
     use uuid::Uuid;
 
     fn make_account(bookmaker: &str) -> BookmakerAccount {
@@ -495,17 +533,40 @@ mod tests {
             exposure: 3_000.0,
             captured_at: Utc::now(),
         };
+        let auth_snapshot = BookmakerAuthSnapshot {
+            account_id: Some(account.id),
+            bookmaker: account.bookmaker.clone(),
+            auth_state: BookmakerAuthState::Authenticated,
+            readiness_stage: BookmakerAdapterReadinessStage::AuthenticatedReadOnly,
+            mode: Some(BookmakerExecutionMode::DryRun),
+            enabled: true,
+            cached_balance_available: true,
+            submit_enabled: false,
+            real_money_enabled: false,
+            safe_mode_blocked: false,
+            session_last_synced_at: Some(session.last_synced_at),
+            balance_captured_at: Some(balance.captured_at),
+            last_authenticated_at: Some(session.last_synced_at),
+            detail: Some("cached auth snapshot".into()),
+            captured_at: Utc::now(),
+        };
 
         store.save_account(&account).await.unwrap();
         store.save_session(&session).await.unwrap();
         store.save_balance_snapshot(&balance).await.unwrap();
+        store.save_auth_snapshot(&auth_snapshot).await.unwrap();
 
         let snapshot = store.load_snapshot().await.unwrap();
         assert_eq!(snapshot.accounts.len(), 1);
         assert_eq!(snapshot.sessions.len(), 1);
         assert_eq!(snapshot.balances.len(), 1);
+        assert_eq!(snapshot.auth_snapshots.len(), 1);
         assert_eq!(snapshot.accounts[0].bookmaker, "pari");
         assert_eq!(snapshot.balances[0].available_balance, 12_000.0);
+        assert_eq!(
+            snapshot.auth_snapshots[0].auth_state,
+            BookmakerAuthState::Authenticated
+        );
     }
 
     #[tokio::test]

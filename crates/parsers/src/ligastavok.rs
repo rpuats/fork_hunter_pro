@@ -31,6 +31,7 @@ const COOKIE_ENV_VAR: &str = "LIGASTAVOK_COOKIE_FILE";
 const COOKIE_HEADER_ENV_VAR: &str = "LIGASTAVOK_COOKIE_HEADER";
 const STORAGE_STATE_ENV_VAR: &str = "LIGASTAVOK_STORAGE_STATE_FILE";
 const HEADER_PROFILE_ENV_VAR: &str = "LIGASTAVOK_HEADER_PROFILE_FILE";
+const BOOTSTRAP_FILE_ENV_VAR: &str = "LIGASTAVOK_BOOTSTRAP_FILE";
 const ACCEPT_LANGUAGE_ENV_VAR: &str = "LIGASTAVOK_ACCEPT_LANGUAGE";
 const DEFAULT_ACCEPT_LANGUAGE: &str = "ru-RU,ru;q=0.9,en;q=0.8";
 
@@ -74,6 +75,32 @@ struct SessionBootstrap {
     accept_language: String,
     origin: String,
     referer: String,
+    api_accept_language: Option<String>,
+    api_origin: Option<String>,
+    api_referer: Option<String>,
+    browser_verified_api_probe_status: Option<u16>,
+    direct_probe_status: Option<u16>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SessionBootstrapBlocker {
+    Ready,
+    ProtectionOnlyUnverifiedApi,
+    ProtectionOnly,
+    HeaderOnly,
+    BootstrapUnavailable,
+}
+
+impl SessionBootstrapBlocker {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Ready => "ready",
+            Self::ProtectionOnlyUnverifiedApi => "protection_only_unverified_api",
+            Self::ProtectionOnly => "protection_only",
+            Self::HeaderOnly => "header_only",
+            Self::BootstrapUnavailable => "bootstrap_unavailable",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -90,6 +117,11 @@ struct HeaderProfile {
     accept_language: Option<String>,
     origin: Option<String>,
     referer: Option<String>,
+    api_accept_language: Option<String>,
+    api_origin: Option<String>,
+    api_referer: Option<String>,
+    browser_verified_api_probe_status: Option<u16>,
+    direct_probe_status: Option<u16>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -156,18 +188,35 @@ impl LigaStavokParser {
             accept_language,
             origin,
             referer,
+            api_accept_language: header_profile.api_accept_language,
+            api_origin: header_profile.api_origin,
+            api_referer: header_profile.api_referer,
+            browser_verified_api_probe_status: header_profile.browser_verified_api_probe_status,
+            direct_probe_status: header_profile.direct_probe_status,
         }
     }
 
     fn load_header_profile(manifest_dir: &Path) -> Option<HeaderProfile> {
         let mut candidates = Vec::new();
 
+        if let Ok(path) = std::env::var(BOOTSTRAP_FILE_ENV_VAR) {
+            candidates.push(PathBuf::from(path));
+        }
         if let Ok(path) = std::env::var(HEADER_PROFILE_ENV_VAR) {
             candidates.push(PathBuf::from(path));
         }
 
+        candidates.push(manifest_dir.join("../../ligastavok_bootstrap.json"));
         candidates.push(manifest_dir.join("../../ligastavok_header_profile.json"));
+        candidates.push(
+            manifest_dir
+                .join("../../tools/discovery_output/ligastavok/ligastavok_discovery_latest.json"),
+        );
+        candidates.push(PathBuf::from("ligastavok_bootstrap.json"));
         candidates.push(PathBuf::from("ligastavok_header_profile.json"));
+        candidates.push(PathBuf::from(
+            "tools/discovery_output/ligastavok/ligastavok_discovery_latest.json",
+        ));
 
         candidates.into_iter().find_map(|path| {
             let contents = fs::read_to_string(path).ok()?;
@@ -179,6 +228,9 @@ impl LigaStavokParser {
     fn load_storage_state(manifest_dir: &Path) -> Option<StorageStateBootstrap> {
         let mut candidates = Vec::new();
 
+        if let Ok(path) = std::env::var(BOOTSTRAP_FILE_ENV_VAR) {
+            candidates.push(PathBuf::from(path));
+        }
         if let Ok(path) = std::env::var(STORAGE_STATE_ENV_VAR) {
             candidates.push(PathBuf::from(path));
         }
@@ -186,10 +238,19 @@ impl LigaStavokParser {
             candidates.push(PathBuf::from(path));
         }
 
+        candidates.push(manifest_dir.join("../../ligastavok_bootstrap.json"));
         candidates.push(manifest_dir.join("../../ligastavok_storage_state.json"));
         candidates.push(manifest_dir.join("../../ligastavok_cookies.json"));
+        candidates.push(
+            manifest_dir
+                .join("../../tools/discovery_output/ligastavok/ligastavok_discovery_latest.json"),
+        );
+        candidates.push(PathBuf::from("ligastavok_bootstrap.json"));
         candidates.push(PathBuf::from("ligastavok_storage_state.json"));
         candidates.push(PathBuf::from("ligastavok_cookies.json"));
+        candidates.push(PathBuf::from(
+            "tools/discovery_output/ligastavok/ligastavok_discovery_latest.json",
+        ));
 
         candidates.into_iter().find_map(|path| {
             let contents = fs::read_to_string(path).ok()?;
@@ -316,12 +377,28 @@ impl LigaStavokParser {
     fn extract_storage_state_bootstrap(value: &Value) -> Option<StorageStateBootstrap> {
         let cookies = Self::extract_cookie_values(value).unwrap_or_default();
         let parsed_cookies = Self::parse_bootstrap_cookies(&cookies);
-        let cookie_header = Self::build_cookie_header_for_url(&parsed_cookies, ROOT_REFERER);
-        let origin = Self::extract_storage_origin(value);
-        let accept_language = Self::extract_storage_accept_language(value);
-        let referer = origin
-            .as_deref()
-            .and_then(|origin| Self::normalize_referer(&format!("{origin}/")));
+        let cookie_header = Self::merge_cookie_headers(
+            Self::extract_first_str(
+                value,
+                &[
+                    &["cookieHeader"],
+                    &["storageState", "cookieHeader"],
+                    &["storage_state", "cookieHeader"],
+                    &["storage_state", "cookie_header"],
+                ],
+            )
+            .and_then(|value| Self::normalize_cookie_header(&value)),
+            Self::build_cookie_header_for_url(&parsed_cookies, ROOT_REFERER),
+        );
+        let origin =
+            Self::extract_storage_origin(value).or_else(|| Self::extract_manifest_origin(value));
+        let accept_language = Self::extract_storage_accept_language(value)
+            .or_else(|| Self::extract_manifest_accept_language(value));
+        let referer = Self::extract_manifest_referer(value).or_else(|| {
+            origin
+                .as_deref()
+                .and_then(|origin| Self::normalize_referer(&format!("{origin}/")))
+        });
 
         if cookie_header.is_none() && origin.is_none() && accept_language.is_none() {
             None
@@ -350,6 +427,30 @@ impl LigaStavokParser {
             .iter()
             .filter_map(|origin| origin.get("origin").and_then(|value| value.as_str()))
             .find_map(Self::normalize_origin)
+    }
+
+    fn extract_manifest_origin(value: &Value) -> Option<String> {
+        Self::extract_first_str(
+            value,
+            &[
+                &["origin"],
+                &["storageState", "origin"],
+                &["storage_state", "origin"],
+                &["headerProfile", "origin"],
+                &["header_profile", "origin"],
+                &["final_url"],
+                &["finalUrl"],
+            ],
+        )
+        .and_then(|raw| {
+            Self::normalize_origin(&raw).or_else(|| {
+                Self::normalize_referer(&raw).and_then(|referer| {
+                    let url = Url::parse(&referer).ok()?;
+                    let host = url.host_str()?;
+                    Self::normalize_origin(&format!("{}://{}", url.scheme(), host))
+                })
+            })
+        })
     }
 
     fn extract_storage_accept_language(value: &Value) -> Option<String> {
@@ -416,14 +517,68 @@ impl LigaStavokParser {
         None
     }
 
+    fn extract_manifest_accept_language(value: &Value) -> Option<String> {
+        Self::extract_first_str(
+            value,
+            &[
+                &["accept_language"],
+                &["acceptLanguage"],
+                &["storageState", "acceptLanguage"],
+                &["storage_state", "acceptLanguage"],
+                &["storage_state", "accept_language"],
+                &["headerProfile", "accept_language"],
+                &["headerProfile", "acceptLanguage"],
+                &["header_profile", "accept_language"],
+                &["extraHTTPHeaders", "Accept-Language"],
+                &["extraHTTPHeaders", "accept-language"],
+            ],
+        )
+        .and_then(|value| Self::normalize_header_value(&value))
+    }
+
+    fn extract_manifest_referer(value: &Value) -> Option<String> {
+        Self::extract_first_str(
+            value,
+            &[
+                &["referer"],
+                &["referrer"],
+                &["storageState", "referer"],
+                &["storage_state", "referer"],
+                &["headerProfile", "referer"],
+                &["header_profile", "referer"],
+                &["final_url"],
+                &["finalUrl"],
+            ],
+        )
+        .and_then(|value| Self::normalize_referer(&value))
+    }
+
+    fn extract_first_str(value: &Value, paths: &[&[&str]]) -> Option<String> {
+        paths.iter().find_map(|path| {
+            let mut current = value;
+            for key in *path {
+                current = current.get(*key)?;
+            }
+            current.as_str().map(|value| value.to_string())
+        })
+    }
+
     fn extract_header_profile(value: &Value) -> Option<HeaderProfile> {
-        let headers = value.get("headers").unwrap_or(value);
-        let extra_headers = value.get("extraHTTPHeaders").unwrap_or(headers);
+        let root = value
+            .get("headerProfile")
+            .or_else(|| value.get("header_profile"))
+            .unwrap_or(value);
+        let headers = root.get("headers").unwrap_or(root);
+        let extra_headers = root
+            .get("extraHTTPHeaders")
+            .or_else(|| value.get("extraHTTPHeaders"))
+            .unwrap_or(headers);
 
         let accept_language = extra_headers
             .get("accept-language")
             .or_else(|| extra_headers.get("Accept-Language"))
             .or_else(|| headers.get("acceptLanguage"))
+            .or_else(|| headers.get("accept_language"))
             .or_else(|| headers.get("locale"))
             .and_then(|value| value.as_str())
             .and_then(Self::normalize_header_value);
@@ -441,16 +596,100 @@ impl LigaStavokParser {
             .or_else(|| headers.get("referrer"))
             .and_then(|value| value.as_str())
             .and_then(Self::normalize_referer);
+        let api_headers = root
+            .get("api_headers")
+            .or_else(|| root.get("apiHeaders"))
+            .or_else(|| value.get("api_headers"))
+            .or_else(|| value.get("apiHeaders"));
+        let api_accept_language = api_headers
+            .and_then(|headers| {
+                headers
+                    .get("accept-language")
+                    .or_else(|| headers.get("Accept-Language"))
+                    .and_then(|value| value.as_str())
+            })
+            .and_then(Self::normalize_header_value);
+        let api_origin = api_headers
+            .and_then(|headers| {
+                headers
+                    .get("origin")
+                    .or_else(|| headers.get("Origin"))
+                    .and_then(|value| value.as_str())
+            })
+            .and_then(Self::normalize_origin);
+        let api_referer = api_headers
+            .and_then(|headers| {
+                headers
+                    .get("referer")
+                    .or_else(|| headers.get("Referer"))
+                    .and_then(|value| value.as_str())
+            })
+            .and_then(Self::normalize_referer);
+        let direct_probe_status = root
+            .get("direct_probe_status")
+            .or_else(|| root.get("directProbeStatus"))
+            .or_else(|| value.get("direct_probe_status"))
+            .or_else(|| value.get("directProbeStatus"))
+            .and_then(|value| value.as_u64())
+            .and_then(|value| u16::try_from(value).ok())
+            .filter(|status| *status > 0);
+        let browser_verified_api_probe_status = Self::extract_first_u16(
+            value,
+            &[
+                &["headerProfile", "browser_verified_api_probe_status"],
+                &["headerProfile", "browserVerifiedApiProbeStatus"],
+                &["headerProfile", "browser_verified_api_probe", "status"],
+                &["headerProfile", "browserVerifiedApiProbe", "status"],
+                &["browser_verified_api_probe_status"],
+                &["browserVerifiedApiProbeStatus"],
+                &["browser_verified_api_probe", "status"],
+                &["browserVerifiedApiProbe", "status"],
+                &["runtimeBootstrap", "browser_verified_api_probe_status"],
+                &["runtimeBootstrap", "browserVerifiedApiProbeStatus"],
+                &["runtimeBootstrap", "browser_verified_api_probe", "status"],
+                &["runtimeBootstrap", "browserVerifiedApiProbe", "status"],
+            ],
+        );
 
-        if accept_language.is_none() && origin.is_none() && referer.is_none() {
+        if accept_language.is_none()
+            && origin.is_none()
+            && referer.is_none()
+            && api_accept_language.is_none()
+            && api_origin.is_none()
+            && api_referer.is_none()
+            && browser_verified_api_probe_status.is_none()
+            && direct_probe_status.is_none()
+        {
             None
         } else {
             Some(HeaderProfile {
                 accept_language,
                 origin,
                 referer,
+                api_accept_language,
+                api_origin,
+                api_referer,
+                browser_verified_api_probe_status,
+                direct_probe_status,
             })
         }
+    }
+
+    fn extract_first_u16(value: &Value, paths: &[&[&str]]) -> Option<u16> {
+        Self::extract_first_value(value, paths)
+            .and_then(|value| value.as_u64())
+            .and_then(|value| u16::try_from(value).ok())
+            .filter(|status| *status > 0)
+    }
+
+    fn extract_first_value<'a>(value: &'a Value, paths: &[&[&str]]) -> Option<&'a Value> {
+        paths.iter().find_map(|path| {
+            let mut current = value;
+            for segment in *path {
+                current = current.get(*segment)?;
+            }
+            Some(current)
+        })
     }
 
     fn parse_bootstrap_cookies(cookies: &[Value]) -> Vec<BootstrapCookie> {
@@ -588,22 +827,41 @@ impl LigaStavokParser {
         target_url: &str,
     ) -> HeaderMap {
         let mut headers = HeaderMap::new();
+        let accept_language = if is_document {
+            &self.bootstrap.accept_language
+        } else {
+            self.bootstrap
+                .api_accept_language
+                .as_deref()
+                .unwrap_or(&self.bootstrap.accept_language)
+        };
         headers.insert(
             HeaderName::from_static("accept-language"),
-            HeaderValue::from_str(&self.bootstrap.accept_language)
+            HeaderValue::from_str(accept_language)
                 .unwrap_or_else(|_| HeaderValue::from_static(DEFAULT_ACCEPT_LANGUAGE)),
         );
         let referer = if is_document {
             endpoint.referer
         } else {
-            &self.bootstrap.referer
+            self.bootstrap
+                .api_referer
+                .as_deref()
+                .unwrap_or(&self.bootstrap.referer)
         };
         headers.insert(
             HeaderName::from_static("referer"),
             HeaderValue::from_str(referer)
                 .unwrap_or_else(|_| HeaderValue::from_static(ROOT_REFERER)),
         );
-        if let Ok(value) = HeaderValue::from_str(&self.bootstrap.origin) {
+        let origin = if is_document {
+            &self.bootstrap.origin
+        } else {
+            self.bootstrap
+                .api_origin
+                .as_deref()
+                .unwrap_or(&self.bootstrap.origin)
+        };
+        if let Ok(value) = HeaderValue::from_str(origin) {
             headers.insert(HeaderName::from_static("origin"), value);
         }
         headers.insert(
@@ -719,6 +977,48 @@ impl LigaStavokParser {
             || lower.starts_with("qab")
     }
 
+    fn has_header_bootstrap(&self) -> bool {
+        self.bootstrap.accept_language != DEFAULT_ACCEPT_LANGUAGE
+            || self.bootstrap.origin != BASE_URL
+            || self.bootstrap.referer != ROOT_REFERER
+            || self.bootstrap.api_accept_language.is_some()
+            || self.bootstrap.api_origin.is_some()
+            || self.bootstrap.api_referer.is_some()
+            || self.bootstrap.browser_verified_api_probe_status.is_some()
+            || self.bootstrap.direct_probe_status.is_some()
+    }
+
+    fn has_browser_verified_api_probe(&self) -> bool {
+        self.bootstrap
+            .browser_verified_api_probe_status
+            .is_some_and(|status| (200..400).contains(&status))
+    }
+
+    fn has_direct_probe_success(&self) -> bool {
+        self.bootstrap
+            .direct_probe_status
+            .is_some_and(|status| (200..400).contains(&status))
+    }
+
+    fn can_attempt_runtime_with_bootstrap(&self) -> bool {
+        self.has_validated_session_bootstrap()
+            || (self.has_cookie_bootstrap() && self.has_browser_verified_api_probe())
+    }
+
+    fn session_bootstrap_blocker(&self) -> SessionBootstrapBlocker {
+        if self.has_validated_session_bootstrap() {
+            SessionBootstrapBlocker::Ready
+        } else if self.has_cookie_bootstrap() && !self.has_browser_verified_api_probe() {
+            SessionBootstrapBlocker::ProtectionOnlyUnverifiedApi
+        } else if self.has_cookie_bootstrap() {
+            SessionBootstrapBlocker::ProtectionOnly
+        } else if self.has_header_bootstrap() {
+            SessionBootstrapBlocker::HeaderOnly
+        } else {
+            SessionBootstrapBlocker::BootstrapUnavailable
+        }
+    }
+
     fn session_bootstrap_summary(&self) -> String {
         let cookie_names = self.bootstrap_cookie_names();
         let non_protection_cookie_count = cookie_names
@@ -726,9 +1026,12 @@ impl LigaStavokParser {
             .filter(|name| !Self::is_protection_cookie_name(name))
             .count();
         let protection_only = !cookie_names.is_empty() && non_protection_cookie_count == 0;
+        let bootstrap_blocker = self.session_bootstrap_blocker();
 
         format!(
-            "cookie_names={}; cookie_count={}; non_protection_cookie_count={}; protection_only={}; has_manual_cookie_header={}; accept_language={}; origin={}; referer={}",
+            "bootstrap_blocker={}; validated_session_bootstrap={}; cookie_names={}; cookie_count={}; non_protection_cookie_count={}; protection_only={}; has_manual_cookie_header={}; accept_language={}; origin={}; referer={}",
+            bootstrap_blocker.label(),
+            matches!(bootstrap_blocker, SessionBootstrapBlocker::Ready),
             if cookie_names.is_empty() {
                 "-".to_string()
             } else {
@@ -741,6 +1044,24 @@ impl LigaStavokParser {
             self.bootstrap.accept_language,
             self.bootstrap.origin,
             self.bootstrap.referer,
+        ) + &format!(
+            "; api_accept_language={}; api_origin={}; api_referer={}; browser_verified_api_probe_status={}; browser_verified_api_probe={}; direct_probe_status={}; direct_probe_success={}",
+            self.bootstrap
+                .api_accept_language
+                .as_deref()
+                .unwrap_or("-"),
+            self.bootstrap.api_origin.as_deref().unwrap_or("-"),
+            self.bootstrap.api_referer.as_deref().unwrap_or("-"),
+            self.bootstrap
+                .browser_verified_api_probe_status
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            self.has_browser_verified_api_probe(),
+            self.bootstrap
+                .direct_probe_status
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "-".to_string()),
+            self.has_direct_probe_success(),
         )
     }
 
@@ -982,29 +1303,26 @@ impl LigaStavokParser {
     ) -> Result<Vec<SportCatalogEntry>, Box<dyn std::error::Error + Send + Sync>> {
         let endpoint = self.endpoint_for_namespace("prematch");
         if let Err(error) = self.warm_up_session(endpoint).await {
-            if self.has_validated_session_bootstrap() {
+            if self.can_attempt_runtime_with_bootstrap() {
                 warn!(
                     %error,
                     session = %self.session_bootstrap_summary(),
-                    "Liga Stavok warm-up blocked, continuing with validated session bootstrap"
+                    "Liga Stavok warm-up blocked, continuing with bootstrap-backed API probe"
                 );
-            } else if self.has_cookie_bootstrap() {
-                return Err(Self::branch_error(
-                    "preflight",
-                    format!(
-                        "warm-up navigation refused before API bootstrap: {error}; bootstrap cookies are protection-only or session-incomplete ({})",
-                        self.session_bootstrap_summary()
-                    ),
-                ));
             } else {
                 return Err(Self::branch_error(
                     "preflight",
                     format!(
-                        "warm-up navigation refused before API bootstrap: {error}; cookie/storage bootstrap unavailable ({})",
+                        "warm-up navigation refused before API bootstrap: {error}; {}",
                         self.session_bootstrap_summary()
                     ),
                 ));
             }
+        } else if !self.can_attempt_runtime_with_bootstrap() {
+            info!(
+                session = %self.session_bootstrap_summary(),
+                "Liga Stavok warm-up succeeded without validated session bootstrap; proceeding on browser headers only"
+            );
         }
 
         let filter_catalog = match self.fetch_filter_catalog(endpoint).await {
@@ -1264,7 +1582,7 @@ impl LigaStavokParser {
                 ParserDiagnosticCheck {
                     code: "storage_state_bootstrap_supported".to_string(),
                     severity: DiagnosticSeverity::Info,
-                    message: "Playwright-style storage state bootstrap is parsed from LIGASTAVOK_STORAGE_STATE_FILE or ligastavok_storage_state.json for cookies, locale, and origin alignment.".to_string(),
+                    message: "Playwright-style storage state bootstrap is parsed from LIGASTAVOK_BOOTSTRAP_FILE, LIGASTAVOK_STORAGE_STATE_FILE, ligastavok_bootstrap.json, ligastavok_storage_state.json, or the latest discovery artifact for cookies, locale, and origin alignment.".to_string(),
                 },
                 ParserDiagnosticCheck {
                     code: "browser_header_bootstrap_supported".to_string(),
@@ -1275,6 +1593,16 @@ impl LigaStavokParser {
                     code: "session_bootstrap_validation_recorded".to_string(),
                     severity: DiagnosticSeverity::Info,
                     message: "Warm-up fallback proceeds only when bootstrap carries at least one non-protection cookie; protection-only QRATOR cookies are surfaced as an explicit blocker instead of a silent bypass.".to_string(),
+                },
+                ParserDiagnosticCheck {
+                    code: "session_bootstrap_blocker_recorded".to_string(),
+                    severity: DiagnosticSeverity::Info,
+                    message: "Runtime bootstrap diagnostics now classify ready, protection_only, header_only, and bootstrap_unavailable states so QRATOR/session gaps are surfaced as blockers instead of silent fallbacks.".to_string(),
+                },
+                ParserDiagnosticCheck {
+                    code: "browser_verified_api_probe_required_for_protection_only".to_string(),
+                    severity: DiagnosticSeverity::Info,
+                    message: "Protection-only QRATOR cookies unlock runtime only when discovery captured a real browser-observed sportsbook API response; direct fetch probes are tracked separately and do not count as browser verification.".to_string(),
                 },
                 ParserDiagnosticCheck {
                     code: "runtime_refusal_reasons_recorded".to_string(),
@@ -1961,6 +2289,14 @@ mod tests {
         assert!(readiness
             .checks
             .iter()
+            .any(|check| check.code == "session_bootstrap_blocker_recorded"));
+        assert!(readiness
+            .checks
+            .iter()
+            .any(|check| check.code == "browser_verified_api_probe_required_for_protection_only"));
+        assert!(readiness
+            .checks
+            .iter()
             .any(|check| check.code == "runtime_refusal_reasons_recorded"));
     }
 
@@ -2242,6 +2578,158 @@ mod tests {
     }
 
     #[test]
+    fn extracts_header_profile_from_bootstrap_bundle_shape() {
+        let payload = serde_json::json!({
+            "headerProfile": {
+                "accept_language": "ru-RU,ru;q=0.9,en;q=0.8",
+                "origin": "https://www.ligastavok.ru",
+                "referer": "https://www.ligastavok.ru/live/football"
+            }
+        });
+
+        let profile = LigaStavokParser::extract_header_profile(&payload).expect("profile");
+        assert_eq!(
+            profile.accept_language.as_deref(),
+            Some("ru-RU,ru;q=0.9,en;q=0.8")
+        );
+        assert_eq!(profile.origin.as_deref(), Some("https://www.ligastavok.ru"));
+        assert_eq!(
+            profile.referer.as_deref(),
+            Some("https://www.ligastavok.ru/live/football")
+        );
+    }
+
+    #[test]
+    fn extracts_api_header_profile_and_probe_status() {
+        let payload = serde_json::json!({
+            "headerProfile": {
+                "accept_language": "ru-RU,ru;q=0.9,en;q=0.8",
+                "origin": "https://www.ligastavok.ru",
+                "referer": "https://www.ligastavok.ru/live/football",
+                "browser_verified_api_probe": {
+                    "endpoint_kind": "events_list",
+                    "status": 204
+                },
+                "direct_probe_status": 200,
+                "api_headers": {
+                    "Accept-Language": "ru-RU",
+                    "Origin": "https://www.ligastavok.ru",
+                    "Referer": "https://www.ligastavok.ru/",
+                    "X-Application-Name": "mobile"
+                }
+            }
+        });
+
+        let profile = LigaStavokParser::extract_header_profile(&payload).expect("profile");
+
+        assert_eq!(profile.api_accept_language.as_deref(), Some("ru-RU"));
+        assert_eq!(
+            profile.api_origin.as_deref(),
+            Some("https://www.ligastavok.ru")
+        );
+        assert_eq!(
+            profile.api_referer.as_deref(),
+            Some("https://www.ligastavok.ru/")
+        );
+        assert_eq!(profile.browser_verified_api_probe_status, Some(204));
+        assert_eq!(profile.direct_probe_status, Some(200));
+    }
+
+    #[test]
+    fn extracts_browser_verified_probe_status_from_runtime_bootstrap_shape() {
+        let payload = serde_json::json!({
+            "runtimeBootstrap": {
+                "browser_verified_api_probe": {
+                    "endpoint_kind": "filter",
+                    "status": 202
+                },
+                "direct_probe_status": 0
+            }
+        });
+
+        let profile = LigaStavokParser::extract_header_profile(&payload).expect("profile");
+
+        assert_eq!(profile.browser_verified_api_probe_status, Some(202));
+        assert_eq!(profile.direct_probe_status, None);
+    }
+
+    #[test]
+    fn parses_bootstrap_bundle_storage_state_profile() {
+        let payload = serde_json::json!({
+            "cookieHeader": "qrator_jsr=abc; sessionid=live",
+            "final_url": "https://www.ligastavok.ru/live/football",
+            "storageState": {
+                "cookies": [
+                    {
+                        "name": "qrator_jsr",
+                        "value": "abc",
+                        "domain": ".ligastavok.ru",
+                        "path": "/"
+                    },
+                    {
+                        "name": "sessionid",
+                        "value": "live",
+                        "domain": ".ligastavok.ru",
+                        "path": "/"
+                    }
+                ]
+            },
+            "headerProfile": {
+                "accept_language": "ru-RU,ru;q=0.9,en;q=0.8",
+                "origin": "https://www.ligastavok.ru"
+            }
+        });
+
+        let bootstrap =
+            LigaStavokParser::extract_storage_state_bootstrap(&payload).expect("bootstrap");
+
+        assert_eq!(
+            bootstrap.cookie_header.as_deref(),
+            Some("qrator_jsr=abc; sessionid=live")
+        );
+        assert_eq!(
+            bootstrap.accept_language.as_deref(),
+            Some("ru-RU,ru;q=0.9,en;q=0.8")
+        );
+        assert_eq!(
+            bootstrap.origin.as_deref(),
+            Some("https://www.ligastavok.ru")
+        );
+        assert_eq!(
+            bootstrap.referer.as_deref(),
+            Some("https://www.ligastavok.ru/live/football")
+        );
+    }
+
+    #[test]
+    fn parses_raw_discovery_artifact_storage_state_profile() {
+        let payload = serde_json::json!({
+            "cookies": [
+                {
+                    "name": "sessionid",
+                    "value": "live",
+                    "domain": ".ligastavok.ru",
+                    "path": "/"
+                }
+            ],
+            "final_url": "https://www.ligastavok.ru/line/football"
+        });
+
+        let bootstrap =
+            LigaStavokParser::extract_storage_state_bootstrap(&payload).expect("bootstrap");
+
+        assert_eq!(bootstrap.cookie_header.as_deref(), Some("sessionid=live"));
+        assert_eq!(
+            bootstrap.origin.as_deref(),
+            Some("https://www.ligastavok.ru")
+        );
+        assert_eq!(
+            bootstrap.referer.as_deref(),
+            Some("https://www.ligastavok.ru/line/football")
+        );
+    }
+
+    #[test]
     fn drops_expired_cookies_from_cookie_header() {
         let payload = serde_json::json!([
             {
@@ -2349,17 +2837,93 @@ mod tests {
                 accept_language: super::DEFAULT_ACCEPT_LANGUAGE.to_string(),
                 origin: super::BASE_URL.to_string(),
                 referer: super::ROOT_REFERER.to_string(),
+                api_accept_language: None,
+                api_origin: None,
+                api_referer: None,
+                browser_verified_api_probe_status: None,
+                direct_probe_status: None,
             },
         };
 
         assert!(parser.has_cookie_bootstrap());
         assert!(!parser.has_validated_session_bootstrap());
+        assert_eq!(
+            parser.session_bootstrap_blocker().label(),
+            "protection_only_unverified_api"
+        );
+        assert!(parser
+            .session_bootstrap_summary()
+            .contains("bootstrap_blocker=protection_only_unverified_api"));
+        assert!(parser
+            .session_bootstrap_summary()
+            .contains("validated_session_bootstrap=false"));
         assert!(parser
             .session_bootstrap_summary()
             .contains("protection_only=true"));
         assert!(parser
             .session_bootstrap_summary()
             .contains("cookie_names=qrator_jsr"));
+    }
+
+    #[test]
+    fn session_bootstrap_validation_marks_header_only_bootstrap() {
+        let parser = LigaStavokParser {
+            client: std::sync::Arc::new(reqwest::Client::new()),
+            endpoints: vec![],
+            bootstrap: super::SessionBootstrap {
+                cookie_jar: vec![],
+                cookie_header: None,
+                accept_language: "ru-RU,ru;q=0.9,en;q=0.7".to_string(),
+                origin: super::BASE_URL.to_string(),
+                referer: super::ROOT_REFERER.to_string(),
+                api_accept_language: None,
+                api_origin: None,
+                api_referer: None,
+                browser_verified_api_probe_status: None,
+                direct_probe_status: None,
+            },
+        };
+
+        assert_eq!(parser.session_bootstrap_blocker().label(), "header_only");
+        assert!(!parser.has_validated_session_bootstrap());
+        assert!(parser
+            .session_bootstrap_summary()
+            .contains("bootstrap_blocker=header_only"));
+        assert!(parser
+            .session_bootstrap_summary()
+            .contains("validated_session_bootstrap=false"));
+    }
+
+    #[test]
+    fn session_bootstrap_validation_marks_missing_bootstrap() {
+        let parser = LigaStavokParser {
+            client: std::sync::Arc::new(reqwest::Client::new()),
+            endpoints: vec![],
+            bootstrap: super::SessionBootstrap {
+                cookie_jar: vec![],
+                cookie_header: None,
+                accept_language: super::DEFAULT_ACCEPT_LANGUAGE.to_string(),
+                origin: super::BASE_URL.to_string(),
+                referer: super::ROOT_REFERER.to_string(),
+                api_accept_language: None,
+                api_origin: None,
+                api_referer: None,
+                browser_verified_api_probe_status: None,
+                direct_probe_status: None,
+            },
+        };
+
+        assert_eq!(
+            parser.session_bootstrap_blocker().label(),
+            "bootstrap_unavailable"
+        );
+        assert!(!parser.has_validated_session_bootstrap());
+        assert!(parser
+            .session_bootstrap_summary()
+            .contains("bootstrap_blocker=bootstrap_unavailable"));
+        assert!(parser
+            .session_bootstrap_summary()
+            .contains("validated_session_bootstrap=false"));
     }
 
     #[test]
@@ -2373,15 +2937,111 @@ mod tests {
                 accept_language: super::DEFAULT_ACCEPT_LANGUAGE.to_string(),
                 origin: super::BASE_URL.to_string(),
                 referer: super::ROOT_REFERER.to_string(),
+                api_accept_language: None,
+                api_origin: None,
+                api_referer: None,
+                browser_verified_api_probe_status: None,
+                direct_probe_status: None,
             },
         };
 
         assert!(parser.has_validated_session_bootstrap());
+        assert_eq!(parser.session_bootstrap_blocker().label(), "ready");
+        assert!(parser
+            .session_bootstrap_summary()
+            .contains("bootstrap_blocker=ready"));
+        assert!(parser
+            .session_bootstrap_summary()
+            .contains("validated_session_bootstrap=true"));
         assert!(parser
             .session_bootstrap_summary()
             .contains("non_protection_cookie_count=1"));
         assert!(parser
             .session_bootstrap_summary()
             .contains("cookie_names=qrator_jsr|sessionid"));
+    }
+
+    #[test]
+    fn direct_probe_does_not_count_as_browser_verified_runtime_proof() {
+        let parser = LigaStavokParser {
+            client: std::sync::Arc::new(reqwest::Client::new()),
+            endpoints: vec![],
+            bootstrap: super::SessionBootstrap {
+                cookie_jar: vec![super::BootstrapCookie {
+                    name: "qrator_jsr".to_string(),
+                    value: "abc".to_string(),
+                    domain: ".ligastavok.ru".to_string(),
+                    path: "/".to_string(),
+                    expires: None,
+                    secure: true,
+                    host_only: false,
+                }],
+                cookie_header: Some("qrator_jsr=abc".to_string()),
+                accept_language: super::DEFAULT_ACCEPT_LANGUAGE.to_string(),
+                origin: super::BASE_URL.to_string(),
+                referer: super::ROOT_REFERER.to_string(),
+                api_accept_language: Some("ru-RU".to_string()),
+                api_origin: Some(super::BASE_URL.to_string()),
+                api_referer: Some(super::ROOT_REFERER.to_string()),
+                browser_verified_api_probe_status: None,
+                direct_probe_status: Some(200),
+            },
+        };
+
+        assert!(!parser.has_validated_session_bootstrap());
+        assert!(!parser.has_browser_verified_api_probe());
+        assert!(parser.has_direct_probe_success());
+        assert!(!parser.can_attempt_runtime_with_bootstrap());
+        assert_eq!(
+            parser.session_bootstrap_blocker().label(),
+            "protection_only_unverified_api"
+        );
+        assert!(parser
+            .session_bootstrap_summary()
+            .contains("browser_verified_api_probe=false"));
+        assert!(parser
+            .session_bootstrap_summary()
+            .contains("direct_probe_success=true"));
+    }
+
+    #[test]
+    fn browser_verified_probe_allows_runtime_attempt_with_protection_cookies() {
+        let parser = LigaStavokParser {
+            client: std::sync::Arc::new(reqwest::Client::new()),
+            endpoints: vec![],
+            bootstrap: super::SessionBootstrap {
+                cookie_jar: vec![super::BootstrapCookie {
+                    name: "qrator_jsr".to_string(),
+                    value: "abc".to_string(),
+                    domain: ".ligastavok.ru".to_string(),
+                    path: "/".to_string(),
+                    expires: None,
+                    secure: true,
+                    host_only: false,
+                }],
+                cookie_header: Some("qrator_jsr=abc".to_string()),
+                accept_language: super::DEFAULT_ACCEPT_LANGUAGE.to_string(),
+                origin: super::BASE_URL.to_string(),
+                referer: super::ROOT_REFERER.to_string(),
+                api_accept_language: Some("ru-RU".to_string()),
+                api_origin: Some(super::BASE_URL.to_string()),
+                api_referer: Some(super::ROOT_REFERER.to_string()),
+                browser_verified_api_probe_status: Some(204),
+                direct_probe_status: Some(200),
+            },
+        };
+
+        assert!(!parser.has_validated_session_bootstrap());
+        assert!(parser.has_browser_verified_api_probe());
+        assert!(parser.can_attempt_runtime_with_bootstrap());
+        assert!(parser
+            .session_bootstrap_summary()
+            .contains("browser_verified_api_probe=true"));
+        assert!(parser
+            .session_bootstrap_summary()
+            .contains("browser_verified_api_probe_status=204"));
+        assert!(parser
+            .session_bootstrap_summary()
+            .contains("direct_probe_status=200"));
     }
 }

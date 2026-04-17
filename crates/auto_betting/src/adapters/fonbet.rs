@@ -2,9 +2,11 @@ use async_trait::async_trait;
 use chrono::Utc;
 use shared::{
     BetExecutionReceipt, BetExecutionRequest, BetExecutionStatus, BookmakerAccount,
-    BookmakerAccountCapabilityMetadata, BookmakerBalanceRefresh, BookmakerBalanceRefreshState,
-    BookmakerBalanceSnapshot, BookmakerExecutionCapability, BookmakerExecutionMode,
-    BookmakerSession, BookmakerSessionState, BookmakerSessionStatus, BookmakerSessionSyncState,
+    BookmakerAccountCapabilityMetadata, BookmakerAdapterAuthMetadata,
+    BookmakerAdapterReadinessMetadata, BookmakerAdapterReadinessStage, BookmakerBalanceRefresh,
+    BookmakerBalanceRefreshState, BookmakerBalanceSnapshot, BookmakerExecutionCapability,
+    BookmakerExecutionMode, BookmakerSession, BookmakerSessionState, BookmakerSessionStatus,
+    BookmakerSessionSyncState,
 };
 
 use crate::execution::BookmakerExecutionAdapter;
@@ -15,6 +17,14 @@ pub struct FonbetExecutionAdapter;
 impl FonbetExecutionAdapter {
     pub const BOOKMAKER: &'static str = "fonbet";
     const API_BASE_URL: &'static str = "https://clientsapi24.fonbet.ru";
+
+    fn session_expired(session: &BookmakerSession, checked_at: chrono::DateTime<Utc>) -> bool {
+        matches!(session.state, BookmakerSessionState::Active)
+            && session
+                .expires_at
+                .map(|expires_at| expires_at <= checked_at)
+                .unwrap_or(false)
+    }
 
     fn dry_run_message(request: &BetExecutionRequest) -> String {
         format!(
@@ -56,6 +66,14 @@ impl FonbetExecutionAdapter {
                         false,
                         "fonbet session configured but not authenticated",
                     ),
+                    BookmakerSessionState::Active if Self::session_expired(session, checked_at) => {
+                        (
+                            BookmakerSessionSyncState::Expired,
+                            false,
+                            false,
+                            "fonbet session expired according to local expiry timestamp",
+                        )
+                    }
                     BookmakerSessionState::Active => (
                         BookmakerSessionSyncState::Authenticated,
                         true,
@@ -116,6 +134,22 @@ impl BookmakerExecutionAdapter for FonbetExecutionAdapter {
                 supports_read_only_session_sync: true,
                 supports_read_only_balance_refresh: true,
                 remote_balance_fetch_enabled: false,
+                auth: BookmakerAdapterAuthMetadata {
+                    flow: "manual_cookie_session".into(),
+                    requires_human_bootstrap: true,
+                    session_bootstrap_enabled: false,
+                    session_refresh_enabled: false,
+                    persisted_snapshot_enabled: true,
+                },
+                readiness: BookmakerAdapterReadinessMetadata {
+                    stage: BookmakerAdapterReadinessStage::AuthenticatedReadOnly,
+                    safe_mode_only: true,
+                    approval_reference_required: false,
+                    operator_notes: vec![
+                        "session status can be audited without enabling login bootstrap".into(),
+                        "cached balance may be reused, but remote refresh remains disabled".into(),
+                    ],
+                },
                 notes: vec![
                     "safe-mode adapter exposes cached account state only".into(),
                     "login and balance polling remain disabled until audited".into(),
@@ -257,5 +291,39 @@ mod tests {
             BookmakerBalanceRefreshState::AuthenticatedBalanceUnavailable
         );
         assert!(refresh.snapshot.is_none());
+    }
+
+    #[test]
+    fn treats_expired_active_session_as_not_authenticated() {
+        let adapter = FonbetExecutionAdapter;
+        let account = account();
+        let session = BookmakerSession {
+            account_id: account.id,
+            bookmaker: account.bookmaker.clone(),
+            state: BookmakerSessionState::Active,
+            token_hint: Some("sess...".into()),
+            last_synced_at: Utc::now(),
+            expires_at: Some(Utc::now() - chrono::Duration::minutes(5)),
+        };
+
+        let status = adapter.session_status(&account, Some(&session));
+
+        assert_eq!(status.sync_state, BookmakerSessionSyncState::Expired);
+        assert!(!status.authenticated);
+        assert!(!status.can_refresh_balance);
+        assert!(status
+            .detail
+            .as_deref()
+            .unwrap_or_default()
+            .contains("local expiry timestamp"));
+
+        let refresh =
+            futures::executor::block_on(adapter.refresh_balance_snapshot(&account, &status, None))
+                .expect("refresh should succeed");
+
+        assert_eq!(
+            refresh.state,
+            BookmakerBalanceRefreshState::SessionNotAuthenticated
+        );
     }
 }

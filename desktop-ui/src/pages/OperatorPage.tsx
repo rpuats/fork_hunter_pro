@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Activity, AlertTriangle, CheckCircle2, Clock3, PauseCircle, PlayCircle, Search, ShieldAlert, ShieldCheck, ShieldX, Siren, TimerReset, Wallet } from 'lucide-react'
 import { CompactSignalOverlay } from '../components/CompactSignalOverlay'
-import type { AccountStateResponse, BackendParserHealthStatus, BackendParserReadinessStage, Bookmaker, ExecutionLedgerAudit, ExecutionOverview, ExecutionStateAudit, ExecutionStateSnapshotRecord, ParserCoverage, ParserHealth } from '../types'
+import type { AccountStateResponse, BackendParserHealthStatus, BackendParserReadinessStage, Bookmaker, BookmakerExecutionMode, ExecutionBookmakerReadinessRecord, ExecutionLedgerAudit, ExecutionOverview, ExecutionStateAudit, ExecutionStateReadinessSummary, ExecutionStateSnapshotRecord, FreebetLifecycleSummary, ParserCoverage, ParserHealth } from '../types'
 
 interface OperatorPageProps {
   executionOverview: ExecutionOverview | null
@@ -12,6 +12,7 @@ interface OperatorPageProps {
   parserHealth: ParserHealth[]
   bookmakers: Bookmaker[]
   accountStates: AccountStateResponse[]
+  freebetSummary: FreebetLifecycleSummary | null
   onOpenAccount: (bookmaker: string) => void
 }
 
@@ -143,7 +144,12 @@ function readinessBadgeClass(stage: BackendParserReadinessStage) {
   }
 }
 
-export function OperatorPage({ executionOverview, executionLedger, executionState, parserCoverage, parserHealth, bookmakers, accountStates, onOpenAccount }: OperatorPageProps) {
+function formatExecutionMode(mode: BookmakerExecutionMode | null | undefined) {
+  if (!mode) return 'No account'
+  return mode.replace(/([a-z])([A-Z])/g, '$1 $2')
+}
+
+export function OperatorPage({ executionOverview, executionLedger, executionState, parserCoverage, parserHealth, bookmakers, accountStates, freebetSummary, onOpenAccount }: OperatorPageProps) {
   const [readinessFilter, setReadinessFilter] = useState<ReadinessFilter>('attention')
   const [ledgerFilter, setLedgerFilter] = useState<LedgerFilter>('errors')
   const [ledgerSort, setLedgerSort] = useState<LedgerSort>('priority')
@@ -228,6 +234,52 @@ export function OperatorPage({ executionOverview, executionLedger, executionStat
     blocked: readinessRows.filter((entry) => entry.stage === 'blocked').length,
     warnings: readinessRows.filter((entry) => entry.checks.some((check) => check.severity === 'warn' || check.severity === 'fail')).length,
   }), [readinessRows])
+  const executionReadinessSummary = useMemo<ExecutionStateReadinessSummary>(() => {
+    if (stateDiagnostics?.readiness) return stateDiagnostics.readiness
+
+    return {
+      total_bookmakers: accounts?.total_bookmakers ?? accountStates.length,
+      accounts_configured: accounts?.accounts_configured ?? accountStates.filter((account) => account.account).length,
+      accounts_enabled: accounts?.accounts_enabled ?? accountStates.filter((account) => account.account?.enabled).length,
+      auth_ready: accountStates.filter((account) => account.readiness.session_ready).length,
+      sessions_authenticated: accounts?.sessions_authenticated ?? accountStates.filter((account) => account.readiness.session_ready).length,
+      balances_cached: accounts?.balances_cached ?? accountStates.filter((account) => account.balance).length,
+      dry_run_ready: accounts?.ready_for_dry_run ?? accountStates.filter((account) => account.readiness.dry_run_ready).length,
+      placement_ready: accounts?.ready_for_execution ?? accountStates.filter((account) => account.readiness.placement_ready).length,
+      approval_required: accountStates.filter((account) => account.readiness.approval_required).length,
+      submit_blocked_by_safe_mode: accountStates.filter((account) => account.readiness.submit_blocked_by_safe_mode).length,
+      operator_attention_required: accountStates.filter((account) => account.readiness.approval_required || Boolean(account.readiness.operator_action)).length,
+    }
+  }, [accountStates, accounts, stateDiagnostics])
+  const executionReadinessRows = useMemo<ExecutionBookmakerReadinessRecord[]>(() => {
+    if (stateDiagnostics?.bookmaker_readiness?.length) return stateDiagnostics.bookmaker_readiness
+
+    return accountStates.map((account) => ({
+      bookmaker: account.bookmaker,
+      account_configured: Boolean(account.account),
+      account_enabled: Boolean(account.account?.enabled),
+      execution_mode: (account.account?.mode as BookmakerExecutionMode | undefined) ?? null,
+      requires_session: account.capability.requires_session,
+      auth_ready: account.readiness.session_ready,
+      session_authenticated: account.readiness.session_ready,
+      balance_cached: Boolean(account.balance),
+      dry_run_ready: account.readiness.dry_run_ready,
+      placement_ready: account.readiness.placement_ready,
+      approval_required: account.readiness.approval_required,
+      submit_blocked_by_safe_mode: account.readiness.submit_blocked_by_safe_mode,
+      operator_action: account.readiness.operator_action,
+      blocking_reasons: account.readiness.blocking_reasons,
+    }))
+  }, [accountStates, stateDiagnostics])
+  const authReadinessRate = executionReadinessSummary.total_bookmakers > 0
+    ? (executionReadinessSummary.auth_ready / executionReadinessSummary.total_bookmakers) * 100
+    : 0
+  const liveAuthRate = executionReadinessSummary.total_bookmakers > 0
+    ? (executionReadinessSummary.sessions_authenticated / executionReadinessSummary.total_bookmakers) * 100
+    : 0
+  const executionPlacementRate = executionReadinessSummary.total_bookmakers > 0
+    ? (executionReadinessSummary.placement_ready / executionReadinessSummary.total_bookmakers) * 100
+    : 0
 
   const parserHealthSummary = useMemo(() => ({
     healthy: parserHealth.filter((entry) => entry.status === 'Healthy').length,
@@ -424,6 +476,39 @@ export function OperatorPage({ executionOverview, executionLedger, executionStat
 
   const ToneIcon = executionTone.icon
   const transitionRows = useMemo(() => (stateDiagnostics?.recent_transitions ?? []).slice(0, 8), [stateDiagnostics])
+  const authSurfaceRows = useMemo(() => {
+    return [...executionReadinessRows]
+      .map((entry) => {
+        const issues = [
+          ...(entry.operator_action ? [entry.operator_action] : []),
+          ...entry.blocking_reasons,
+        ]
+        const uniqueIssues = Array.from(new Set(issues.filter(Boolean)))
+        const priority =
+          (entry.submit_blocked_by_safe_mode ? 90 : 0)
+          + (entry.approval_required ? 50 : 0)
+          + (!entry.account_configured ? 42 : 0)
+          + (!entry.account_enabled ? 24 : 0)
+          + (entry.requires_session && !entry.auth_ready ? 36 : 0)
+          + (entry.requires_session && !entry.session_authenticated ? 22 : 0)
+          + (!entry.balance_cached ? 18 : 0)
+          + (!entry.placement_ready ? 24 : 0)
+          + Math.min(uniqueIssues.length * 6, 18)
+
+        return {
+          ...entry,
+          issues: uniqueIssues,
+          priority,
+          tone: entry.submit_blocked_by_safe_mode
+            ? 'danger'
+            : entry.approval_required || !entry.placement_ready || (entry.requires_session && !entry.session_authenticated)
+              ? 'warning'
+              : 'success',
+        }
+      })
+      .sort((a, b) => b.priority - a.priority || a.bookmaker.localeCompare(b.bookmaker))
+      .slice(0, 8)
+  }, [executionReadinessRows])
   const bookmakerStateRows = useMemo(() => {
     return [...(stateDiagnostics?.bookmaker_summaries ?? [])]
       .sort((a, b) => Number(Boolean(b.latest_error)) - Number(Boolean(a.latest_error)) || b.total_snapshots - a.total_snapshots || a.bookmaker.localeCompare(b.bookmaker))
@@ -684,6 +769,47 @@ export function OperatorPage({ executionOverview, executionLedger, executionStat
     warning: bookmakerHotspots.filter((entry) => entry.tone === 'warning').length,
     active: bookmakerHotspots.filter((entry) => entry.score > 0).length,
   }), [bookmakerHotspots])
+  const freebetSignals = useMemo(() => ({
+    milestones: (freebetSummary?.next_milestones ?? []).slice(0, 3),
+    blockers: (freebetSummary?.blockers ?? []).slice(0, 3),
+    focuses: (freebetSummary?.read_only_focuses ?? []).slice(0, 3),
+  }), [freebetSummary])
+  const freebetOperatorSnapshot = useMemo(() => {
+    const blockedAccounts = accountStates.filter((account) => !account.readiness.placement_ready).length
+    const executionReady = accounts?.ready_for_execution ?? accountStates.filter((account) => account.readiness.placement_ready).length
+    const parserWatchers = parserHealthSummary.incidents + parserHealthSummary.degraded
+    const freebetBlocked = freebetSummary?.blocked_states ?? 0
+    const fundingGap = freebetSummary?.total_funding_gap ?? 0
+    const trackedPlans = freebetSummary?.tracked_plans ?? 0
+    const largestGap = freebetSummary?.largest_funding_gap ?? null
+    const tone = freebetBlocked > 0 || fundingGap > 0 || blockedAccounts > 0 || parserHealthSummary.incidents > 0
+      ? 'warning'
+      : trackedPlans > 0 && executionReady > 0
+        ? 'success'
+        : 'info'
+
+    return {
+      tone,
+      pills: [
+        { label: 'plans', value: trackedPlans, badge: 'badge-info' },
+        { label: 'exec-ready', value: executionReady, badge: executionReady > 0 ? 'badge-success' : 'badge-info' },
+        { label: 'parser watch', value: parserWatchers, badge: parserWatchers > 0 ? 'badge-warning' : 'badge-success' },
+        { label: 'blocked states', value: freebetBlocked, badge: freebetBlocked > 0 ? 'badge-warning' : 'badge-success' },
+      ],
+      summary: largestGap
+        ? `${largestGap.bookmaker} remains the main freebet funding gap at ${largestGap.amount.toFixed(2)} RUB.`
+        : trackedPlans > 0
+          ? 'Tracked freebet plans are visible without a leading funding gap in the current snapshot.'
+          : 'No tracked freebet plans are visible in the current lifecycle snapshot.',
+      detail: freebetBlocked > 0
+        ? `${freebetBlocked} lifecycle states are blocked; compare with ${blockedAccounts} blocked execution accounts before manual follow-up.`
+        : fundingGap > 0
+          ? `Funding gap totals ${fundingGap.toFixed(2)} RUB while execution-ready coverage is ${executionReady}.`
+          : parserWatchers > 0
+            ? `${parserWatchers} parser watchers can still affect freebet verification despite a clean lifecycle rollup.`
+            : 'Lifecycle, execution readiness and parser health currently align for a read-only operator pass.',
+    } as const
+  }, [accountStates, accounts, freebetSummary, parserHealthSummary.degraded, parserHealthSummary.incidents])
 
   return (
     <motion.div variants={container} initial="hidden" animate="show" className="space-y-6">
@@ -766,6 +892,92 @@ export function OperatorPage({ executionOverview, executionLedger, executionStat
           </div>
         </motion.div>
       </div>
+
+      <motion.div variants={item} className="glass-card p-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between mb-4">
+          <div>
+            <h3 className="text-base font-semibold">Auth / readiness execution surface</h3>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+              `/api/v1/execution/state` readiness rollup with `/api/v1/accounts` fallback.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2 text-xs">
+            <span className="badge badge-info">auth-ready {executionReadinessSummary.auth_ready}</span>
+            <span className={`badge ${executionReadinessSummary.sessions_authenticated < executionReadinessSummary.auth_ready ? 'badge-warning' : 'badge-success'}`}>live auth {executionReadinessSummary.sessions_authenticated}</span>
+            <span className={`badge ${executionReadinessSummary.submit_blocked_by_safe_mode > 0 ? 'badge-danger' : 'badge-success'}`}>safe mode {executionReadinessSummary.submit_blocked_by_safe_mode}</span>
+            <span className={`badge ${executionReadinessSummary.operator_attention_required > 0 ? 'badge-warning' : 'badge-success'}`}>attention {executionReadinessSummary.operator_attention_required}</span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 xl:grid-cols-5 gap-3 mb-4">
+          {[
+            ['Auth ready', `${executionReadinessSummary.auth_ready} / ${executionReadinessSummary.total_bookmakers}`, formatPercent(authReadinessRate)],
+            ['Authenticated', `${executionReadinessSummary.sessions_authenticated} / ${executionReadinessSummary.total_bookmakers}`, formatPercent(liveAuthRate)],
+            ['Balances cached', executionReadinessSummary.balances_cached.toString(), `${executionReadinessSummary.dry_run_ready} dry-run ready`],
+            ['Placement ready', `${executionReadinessSummary.placement_ready} / ${executionReadinessSummary.total_bookmakers}`, formatPercent(executionPlacementRate)],
+            ['Operator attention', executionReadinessSummary.operator_attention_required.toString(), `${executionReadinessSummary.approval_required} approval / ${executionReadinessSummary.submit_blocked_by_safe_mode} safe mode`],
+          ].map(([label, value, detail]) => (
+            <div key={String(label)} className="rounded-xl p-4" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
+              <p className="text-xs uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>{label}</p>
+              <p className="text-2xl font-semibold mt-2">{value}</p>
+              <p className="text-xs mt-2" style={{ color: 'var(--text-secondary)' }}>{detail}</p>
+            </div>
+          ))}
+        </div>
+
+        {authSurfaceRows.length > 0 ? (
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+            {authSurfaceRows.map((entry) => (
+              <button
+                key={entry.bookmaker}
+                type="button"
+                onClick={() => onOpenAccount(entry.bookmaker)}
+                className="w-full rounded-xl p-4 text-left transition-colors"
+                style={{
+                  background: 'var(--bg-secondary)',
+                  border: `1px solid ${entry.tone === 'danger' ? 'rgba(248, 81, 73, 0.22)' : entry.tone === 'warning' ? 'rgba(210, 153, 34, 0.22)' : 'var(--border-color)'}`,
+                }}
+              >
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-sm font-semibold">{entry.bookmaker}</p>
+                      <span className={`badge ${entry.tone === 'danger' ? 'badge-danger' : entry.tone === 'warning' ? 'badge-warning' : 'badge-success'}`}>priority {entry.priority}</span>
+                      <span className={`badge ${entry.execution_mode === 'Real' || entry.execution_mode === 'SemiRealReady' || entry.execution_mode === 'Armed' ? 'badge-success' : 'badge-info'}`}>{formatExecutionMode(entry.execution_mode)}</span>
+                      {entry.requires_session ? <span className={`badge ${entry.session_authenticated ? 'badge-success' : entry.auth_ready ? 'badge-warning' : 'badge-danger'}`}>{entry.session_authenticated ? 'session active' : entry.auth_ready ? 'auth drift' : 'auth blocked'}</span> : <span className="badge badge-info">no session req</span>}
+                    </div>
+
+                    <div className="flex flex-wrap gap-2 mt-2">
+                      <span className={`badge ${entry.balance_cached ? 'badge-success' : 'badge-warning'}`}>balance {entry.balance_cached ? 'cached' : 'missing'}</span>
+                      <span className={`badge ${entry.dry_run_ready ? 'badge-success' : 'badge-info'}`}>dry-run {entry.dry_run_ready ? 'ready' : 'off'}</span>
+                      <span className={`badge ${entry.placement_ready ? 'badge-success' : 'badge-warning'}`}>placement {entry.placement_ready ? 'ready' : 'blocked'}</span>
+                      {entry.approval_required ? <span className="badge badge-warning">approval</span> : null}
+                      {entry.submit_blocked_by_safe_mode ? <span className="badge badge-danger">safe mode</span> : null}
+                    </div>
+
+                    <div className="mt-3 space-y-1">
+                      {entry.issues.length > 0 ? entry.issues.slice(0, 2).map((issue) => (
+                        <p key={`${entry.bookmaker}-${issue}`} className="text-xs" style={{ color: 'var(--text-secondary)' }}>{issue}</p>
+                      )) : <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Auth and readiness path is clean in the current snapshot.</p>}
+                    </div>
+                  </div>
+
+                  <div className="text-left lg:text-right shrink-0">
+                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>execution path</p>
+                    <p className="text-sm font-medium">{entry.account_configured ? entry.account_enabled ? 'Configured / enabled' : 'Configured / disabled' : 'No account'}</p>
+                    <p className="text-xs mt-1" style={{ color: 'var(--accent-blue)' }}>open accounts drill-down</p>
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="rounded-xl border border-dashed p-6 text-center" style={{ borderColor: 'var(--border-color)', color: 'var(--text-muted)' }}>
+            <ShieldCheck size={24} className="mx-auto mb-3 opacity-40" />
+            <p className="text-sm">Execution auth/readiness surface пока пустой: UI ждёт readiness rollup из `/api/v1/execution/state`.</p>
+          </div>
+        )}
+      </motion.div>
 
       {attentionCards.length > 0 ? (
         <motion.div variants={item} className="grid grid-cols-1 xl:grid-cols-4 gap-3">
@@ -1087,6 +1299,117 @@ export function OperatorPage({ executionOverview, executionLedger, executionStat
           <div className="rounded-xl border border-dashed p-6 text-center" style={{ borderColor: 'var(--border-color)', color: 'var(--text-muted)' }}>
             <ShieldCheck size={24} className="mx-auto mb-3 opacity-40" />
             <p className="text-sm">Account snapshot не показал operator actions: execution path выглядит чистым в текущем GET-срезе.</p>
+          </div>
+        )}
+      </motion.div>
+
+      <motion.div variants={item} className="glass-card p-5">
+        <div className="flex items-center justify-between mb-4 gap-4">
+          <div>
+            <h3 className="text-base font-semibold">Freebet lifecycle</h3>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+              Read-only rollup from `/api/v1/freebets/summary` for operator/freebet triage.
+            </p>
+          </div>
+          {freebetSummary ? <span className="badge badge-info">{freebetSummary.total_bookmakers} tracked</span> : null}
+        </div>
+
+        {freebetSummary && freebetSummary.total_bookmakers > 0 ? (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+              {[
+                ['Blocked states', freebetSummary.blocked_states, freebetSummary.blocked_states > 0 ? 'badge-warning' : 'badge-success'],
+                ['Funding gaps', `${freebetSummary.total_funding_gap.toFixed(2)} RUB`, freebetSummary.total_funding_gap > 0 ? 'badge-danger' : 'badge-success'],
+                ['Tracked plans', freebetSummary.tracked_plans, 'badge-info'],
+                ['Est. profit', `${freebetSummary.total_estimated_profit.toFixed(2)} RUB`, 'badge-success'],
+              ].map(([label, value, badge]) => (
+                <div key={String(label)} className="rounded-xl p-4" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>{label}</p>
+                    <span className={`badge ${badge}`}>{value}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div
+              className="rounded-xl p-4"
+              style={{
+                background: 'var(--bg-secondary)',
+                border: `1px solid ${freebetOperatorSnapshot.tone === 'warning' ? 'rgba(210, 153, 34, 0.28)' : freebetOperatorSnapshot.tone === 'success' ? 'rgba(63, 185, 80, 0.24)' : 'var(--border-color)'}`,
+              }}
+            >
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2 mb-2">
+                    <p className="text-sm font-semibold">Operator crossover</p>
+                    <span className={`badge ${freebetOperatorSnapshot.tone === 'warning' ? 'badge-warning' : freebetOperatorSnapshot.tone === 'success' ? 'badge-success' : 'badge-info'}`}>
+                      read-only linked view
+                    </span>
+                  </div>
+                  <p className="text-sm">{freebetOperatorSnapshot.summary}</p>
+                  <p className="text-xs mt-2" style={{ color: 'var(--text-secondary)' }}>{freebetOperatorSnapshot.detail}</p>
+                </div>
+
+                <div className="flex flex-wrap gap-2 lg:max-w-[42%] lg:justify-end">
+                  {freebetOperatorSnapshot.pills.map((pill) => (
+                    <span key={pill.label} className={`badge ${pill.badge}`}>
+                      {pill.label} {pill.value}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 xl:grid-cols-[0.9fr,1.1fr] gap-4">
+              <div className="rounded-xl p-4" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
+                <div className="flex flex-wrap gap-2 mb-3 text-xs">
+                  <span className="badge badge-info">discovered {freebetSummary.discovered}</span>
+                  <span className="badge badge-info">available {freebetSummary.available}</span>
+                  <span className="badge badge-warning">qualified {freebetSummary.qualified}</span>
+                  <span className="badge badge-warning">planned {freebetSummary.planned}</span>
+                  <span className="badge badge-info">rollover {freebetSummary.rollover_in_progress}</span>
+                  <span className="badge badge-success">completed {freebetSummary.rollover_completed}</span>
+                </div>
+                <p className="text-sm">
+                  {freebetSummary.largest_funding_gap
+                    ? `Largest funding gap: ${freebetSummary.largest_funding_gap.bookmaker} needs ${freebetSummary.largest_funding_gap.amount.toFixed(2)} RUB.`
+                    : 'No funding leader is currently surfaced by the lifecycle snapshot.'}
+                </p>
+                <p className="text-xs mt-2" style={{ color: 'var(--text-secondary)' }}>
+                  Snapshot {formatDateTime(freebetSummary.generated_at)} • amount {freebetSummary.total_freebet_amount.toFixed(2)} RUB
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {[
+                  { label: 'Next milestones', rows: freebetSignals.milestones, badge: 'badge-info' },
+                  { label: 'Top blockers', rows: freebetSignals.blockers, badge: 'badge-warning' },
+                  { label: 'Read-only focus', rows: freebetSignals.focuses, badge: 'badge-success' },
+                ].map((section) => (
+                  <div key={section.label} className="rounded-xl p-4" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
+                    <p className="text-xs uppercase tracking-wider mb-3" style={{ color: 'var(--text-muted)' }}>{section.label}</p>
+                    {section.rows.length > 0 ? (
+                      <div className="space-y-2">
+                        {section.rows.map((entry) => (
+                          <div key={`${section.label}-${entry.label}`} className="flex items-center justify-between gap-3 text-sm">
+                            <span style={{ color: 'var(--text-secondary)' }}>{toTitleCase(entry.label)}</span>
+                            <span className={`badge ${section.badge}`}>{entry.count}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-sm" style={{ color: 'var(--text-muted)' }}>No signals.</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="rounded-xl border border-dashed p-6 text-center" style={{ borderColor: 'var(--border-color)', color: 'var(--text-muted)' }}>
+            <ShieldCheck size={24} className="mx-auto mb-3 opacity-40" />
+            <p className="text-sm">Freebet lifecycle snapshot пока пустой: operator surface ждёт `/api/v1/freebets/summary`.</p>
           </div>
         )}
       </motion.div>

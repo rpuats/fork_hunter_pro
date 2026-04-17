@@ -1,0 +1,82 @@
+{
+  "version": 1,
+  "lanes": [
+    {
+      "id": "winline",
+      "type": "bookmaker",
+      "worktree": ".worktrees/swarm-winline",
+      "priority": 1,
+      "title": "Winline lane",
+      "ownership": [
+        "crates/parsers",
+        "related parser diagnostics/tests/docs only"
+      ],
+      "default_status": "active"
+    },
+    {
+      "id": "melbet",
+      "type": "bookmaker",
+      "worktree": ".worktrees/swarm-melbet",
+      "priority": 2,
+      "title": "Melbet lane",
+      "ownership": [
+        "crates/parsers",
+        "related parser diagnostics/tests/docs only"
+      ],
+      "default_status": "active"
+    },
+    {
+      "id": "betboom",
+      "type": "bookmaker",
+      "worktree": ".worktrees/swarm-betboom",
+      "priority": 3,
+      "title": "Betboom lane",
+      "ownership": [
+        "crates/parsers",
+        "related parser diagnostics/tests/docs only"
+      ],
+      "default_status": "active"
+    },
+    {
+      "id": "ligastavok",
+      "type": "bookmaker",
+      "worktree": ".worktrees/swarm-ligastavok",
+      "priority": 4,
+      "title": "LigaStavok lane",
+      "ownership": [
+        "crates/parsers",
+        "related parser diagnostics/tests/docs only"
+      ],
+      "default_status": "active"
+    },
+    {
+      "id": "coordinator",
+      "type": "service",
+      "worktree": ".",
+      "priority": 5,
+      "title": "Coordinator lane",
+      "ownership": [
+        "docs/onboarding",
+        "docs/memory",
+        "swarm board only"
+      ],
+      "default_status": "active"
+    },
+    {
+      "id": "service",
+      "type": "service",
+      "worktree": ".",
+      "priority": 6,
+      "title": "Service lane",
+      "ownership": [
+        "swarm-core-safety",
+        "swarm-api-operator",
+        "swarm-execution-money",
+        "swarm-agent-improvement",
+        "swarm-ui-operator",
+        "swarm-legacy-python"
+      ],
+      "default_status": "active"
+    }
+  ]
+}

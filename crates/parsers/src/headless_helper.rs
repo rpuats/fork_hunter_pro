@@ -35,6 +35,11 @@ pub struct HeadlessChromeHelper {
     browser: Browser,
 }
 
+const SELECTOR_READY_POST_WAIT_CAP_MS: u64 = 500;
+const SELECTOR_MISS_POST_WAIT_CAP_MS: u64 = 600;
+const SCROLL_STEP_WAIT_MS: u64 = 350;
+pub const SCROLL_PAGE_BUDGET_MS: u64 = SCROLL_STEP_WAIT_MS * 2;
+
 impl HeadlessChromeHelper {
     pub fn new() -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
         let mut launch_options = LaunchOptionsBuilder::default();
@@ -72,6 +77,25 @@ impl HeadlessChromeHelper {
             DESKTOP_PROFILE,
             None,
             Some(navigation_timeout_ms),
+            None,
+        )
+    }
+
+    /// Navigate to URL with capped waits that respect an outer deadline.
+    pub fn navigate_and_wait_with_timeout_and_deadline(
+        &self,
+        url: &str,
+        wait_ms: u64,
+        navigation_timeout_ms: u64,
+        deadline: Instant,
+    ) -> Result<Arc<headless_chrome::Tab>, Box<dyn std::error::Error + Send + Sync>> {
+        self.navigate_with_profile_and_referer_and_timeout(
+            url,
+            wait_ms,
+            DESKTOP_PROFILE,
+            None,
+            Some(navigation_timeout_ms),
+            Some(deadline),
         )
     }
 
@@ -82,7 +106,7 @@ impl HeadlessChromeHelper {
         wait_ms: u64,
         profile: HeadlessProfile,
     ) -> Result<Arc<headless_chrome::Tab>, Box<dyn std::error::Error + Send + Sync>> {
-        self.navigate_with_profile_and_referer_and_timeout(url, wait_ms, profile, None, None)
+        self.navigate_with_profile_and_referer_and_timeout(url, wait_ms, profile, None, None, None)
     }
 
     /// Navigate to URL with profile and optional Referer header.
@@ -93,7 +117,28 @@ impl HeadlessChromeHelper {
         profile: HeadlessProfile,
         referer: Option<&str>,
     ) -> Result<Arc<headless_chrome::Tab>, Box<dyn std::error::Error + Send + Sync>> {
-        self.navigate_with_profile_and_referer_and_timeout(url, wait_ms, profile, referer, None)
+        self.navigate_with_profile_and_referer_and_timeout(
+            url, wait_ms, profile, referer, None, None,
+        )
+    }
+
+    /// Navigate to URL with profile, referer, and capped navigation readiness wait.
+    pub fn navigate_with_profile_and_referer_with_timeout(
+        &self,
+        url: &str,
+        wait_ms: u64,
+        profile: HeadlessProfile,
+        referer: Option<&str>,
+        navigation_timeout_ms: u64,
+    ) -> Result<Arc<headless_chrome::Tab>, Box<dyn std::error::Error + Send + Sync>> {
+        self.navigate_with_profile_and_referer_and_timeout(
+            url,
+            wait_ms,
+            profile,
+            referer,
+            Some(navigation_timeout_ms),
+            None,
+        )
     }
 
     fn navigate_with_profile_and_referer_and_timeout(
@@ -103,6 +148,7 @@ impl HeadlessChromeHelper {
         profile: HeadlessProfile,
         referer: Option<&str>,
         navigation_timeout_ms: Option<u64>,
+        deadline: Option<Instant>,
     ) -> Result<Arc<headless_chrome::Tab>, Box<dyn std::error::Error + Send + Sync>> {
         let started = Instant::now();
         let tab = self.browser.new_tab()?;
@@ -127,30 +173,57 @@ impl HeadlessChromeHelper {
         debug!(url = url, "HeadlessChrome: navigating");
         tab.navigate_to(url)?;
         if let Some(timeout_ms) = navigation_timeout_ms {
-            Self::wait_for_navigation_readiness(&tab, url, timeout_ms)?;
+            let effective_timeout_ms = Self::cap_with_deadline(timeout_ms, deadline);
+            if effective_timeout_ms == 0 {
+                return Err(format!(
+                    "headless navigation readiness deadline elapsed before wait for {}",
+                    url
+                )
+                .into());
+            }
+            Self::wait_for_navigation_readiness(&tab, url, effective_timeout_ms)?;
         } else {
             tab.wait_until_navigated()?;
         }
         let navigated_ms = started.elapsed().as_millis() as u64;
 
         let selector_wait_started = Instant::now();
-        let selector_budget_ms = wait_ms.min(8_000);
-        let selector_ready = Self::wait_for_any_selector(
-            &tab,
-            &[
-                "ww-feature-event-mini-card-dsk",
-                ".main-event",
-                "a[href*='/stavki/event/']",
-                ".half__names .name",
-            ],
-            selector_budget_ms,
-        );
+        let selector_budget_ms = Self::cap_with_deadline(wait_ms.min(8_000), deadline);
+        let selector_ready = selector_budget_ms > 0
+            && Self::wait_for_any_selector(
+                &tab,
+                &[
+                    "ww-feature-block-event-dsk",
+                    "ww-feature-event-market-dsk",
+                    "ww-feature-event-mini-card-dsk",
+                    ".main-event",
+                    ".card",
+                    ".event-card",
+                    "[id^='eventId-']",
+                    "[data-test*='event']",
+                    "[data-testid*='event']",
+                    "[class*='event-card']",
+                    "[class*='match-card']",
+                    "a[href*='/stavki/event/']",
+                    ".half__names .name",
+                    ".competitor__name",
+                    "[class*='team'] [class*='name']",
+                    "[data-test*='coef']",
+                    "[data-testid*='coef']",
+                    "[class*='coef']",
+                    "button[title]",
+                    "[role='button']",
+                ],
+                selector_budget_ms,
+            );
         let selector_wait_ms = selector_wait_started.elapsed().as_millis() as u64;
 
         // Wait additional time for lazy loading
         let post_wait_started = Instant::now();
-        if wait_ms > 0 {
-            std::thread::sleep(Duration::from_millis(wait_ms));
+        let post_wait_budget_ms =
+            Self::cap_with_deadline(Self::post_wait_budget_ms(wait_ms, selector_ready), deadline);
+        if post_wait_budget_ms > 0 {
+            std::thread::sleep(Duration::from_millis(post_wait_budget_ms));
         }
         let post_wait_ms = post_wait_started.elapsed().as_millis() as u64;
 
@@ -160,6 +233,7 @@ impl HeadlessChromeHelper {
             selector_ready = selector_ready,
             selector_budget_ms = selector_budget_ms,
             requested_wait_ms = wait_ms,
+            effective_post_wait_ms = post_wait_budget_ms,
             navigation_ms = navigated_ms,
             selector_wait_ms = selector_wait_ms,
             post_wait_ms = post_wait_ms,
@@ -177,6 +251,25 @@ impl HeadlessChromeHelper {
             );
         }
         Ok(tab)
+    }
+
+    fn post_wait_budget_ms(wait_ms: u64, selector_ready: bool) -> u64 {
+        if selector_ready {
+            wait_ms.min(SELECTOR_READY_POST_WAIT_CAP_MS)
+        } else {
+            wait_ms.min(SELECTOR_MISS_POST_WAIT_CAP_MS)
+        }
+    }
+
+    fn cap_with_deadline(budget_ms: u64, deadline: Option<Instant>) -> u64 {
+        match deadline {
+            Some(deadline) => budget_ms.min(
+                deadline
+                    .saturating_duration_since(Instant::now())
+                    .as_millis() as u64,
+            ),
+            None => budget_ms,
+        }
     }
 
     fn wait_for_navigation_readiness(
@@ -249,10 +342,12 @@ impl HeadlessChromeHelper {
                     return result;
                 };
 
-                const scripts = Array.from(document.scripts || [])
+                const allScripts = Array.from(document.scripts || []);
+                const scripts = allScripts
                     .map((script) => script.src || '')
                     .filter(Boolean)
                     .slice(0, 20);
+                const inlineScriptCount = allScripts.filter((script) => !script.src).length;
                 const resourceEntries = (() => {
                     try {
                         return performance.getEntriesByType('resource') || [];
@@ -270,7 +365,112 @@ impl HeadlessChromeHelper {
                 };
                 const transportHints = [];
                 const transportHintKeys = new Set();
+                const bootstrapMarkers = [];
+                const bootstrapMarkerKeys = new Set();
                 const partnerConfig = window.$globalSettings?.partner || window.$P || {};
+                const locationHref = String(window.location.href || '');
+                const locationPath = String(window.location.pathname || '');
+                const locationSearch = String(window.location.search || '');
+                const locationHash = String(window.location.hash || '');
+                const historyState = (() => {
+                    try {
+                        return window.history?.state || null;
+                    } catch (_) {
+                        return null;
+                    }
+                })();
+                const pushBootstrapMarker = (value) => {
+                    const normalizedValue = String(value || '').trim();
+                    if (!normalizedValue || bootstrapMarkerKeys.has(normalizedValue)) return;
+                    bootstrapMarkerKeys.add(normalizedValue);
+                    bootstrapMarkers.push(normalizedValue);
+                };
+                const markRouteHint = (value, source) => {
+                    const normalizedValue = String(value || '').trim();
+                    if (!normalizedValue) return;
+                    pushBootstrapMarker(`route:${source}:${normalizedValue}`);
+                    const lower = normalizedValue.toLowerCase();
+                    if (lower.includes('/live')) pushBootstrapMarker(`route_family:${source}:live`);
+                    if (lower.includes('/line')) pushBootstrapMarker(`route_family:${source}:line`);
+                    if (lower.includes('/ru/sport') || lower.includes('sport.melbet.ru')) {
+                        pushBootstrapMarker(`route_family:${source}:sportsbook`);
+                    }
+                };
+                markRouteHint(locationHref, 'href');
+                markRouteHint(locationPath, 'path');
+                markRouteHint(locationSearch, 'search');
+                markRouteHint(locationHash, 'hash');
+                markRouteHint(document.referrer || '', 'referrer');
+                markRouteHint(historyState?.as || historyState?.url || historyState?.path, 'history');
+                markRouteHint(historyState?.initialRoute?.path, 'history_initial_route');
+                allScripts
+                    .filter((script) => !script.src)
+                    .slice(0, 12)
+                    .forEach((script) => {
+                        const content = String(script.textContent || '').toLowerCase();
+                        if (!content) return;
+                        if (content.includes('$globalsettings')) {
+                            pushBootstrapMarker('inline:$globalSettings');
+                        }
+                        if (content.includes('window.$p') || content.includes('$p=')) {
+                            pushBootstrapMarker('inline:$P');
+                        }
+                        if (content.includes('$httpapi')) {
+                            pushBootstrapMarker('inline:$httpApi');
+                        }
+                        if (content.includes('partnerid')) {
+                            pushBootstrapMarker('inline:partnerId');
+                        }
+                        if (content.includes('countrycode')) {
+                            pushBootstrapMarker('inline:countryCode');
+                        }
+                        if (content.includes('langid')) {
+                            pushBootstrapMarker('inline:langId');
+                        }
+                        if (content.includes('/ru/sport') || content.includes('sport.melbet.ru')) {
+                            pushBootstrapMarker('inline:sportsbook_route');
+                        }
+                        if (content.includes('initialroute')) {
+                            pushBootstrapMarker('inline:initialRoute');
+                        }
+                    });
+                Array.from(document.querySelectorAll('a[href], iframe[src]'))
+                    .slice(0, 16)
+                    .forEach((node) => {
+                        markRouteHint(
+                            node.getAttribute('href') || node.getAttribute('src') || '',
+                            node.tagName.toLowerCase()
+                        );
+                    });
+                const shellSelectors = [
+                    'ww-app-dsk',
+                    'ww-feature-header-dsk',
+                    'ww-feature-nav-bar-dsk',
+                    'ww-feature-sport-menu-dsk',
+                    'ww-feature-coupon-dsk',
+                    '#root',
+                    '#app',
+                    '[data-reactroot]',
+                    '[id="__next"]',
+                    '[id="__nuxt"]'
+                ];
+                shellSelectors.forEach((selector) => {
+                    try {
+                        if (document.querySelector(selector)) {
+                            pushBootstrapMarker(`shell:${selector}`);
+                        }
+                    } catch (_) {}
+                });
+                const sportsbookLinkCount = (() => {
+                    try {
+                        return document.querySelectorAll('a[href*="/live"], a[href*="/line"], a[href*="/ru/sport"], a[href*="sport.melbet.ru"]').length;
+                    } catch (_) {
+                        return 0;
+                    }
+                })();
+                if (sportsbookLinkCount > 0) {
+                    pushBootstrapMarker(`shell:route_links:${sportsbookLinkCount}`);
+                }
                 scripts.forEach((script) => {
                     const lower = script.toLowerCase();
                     if (lower.includes('ws') || lower.includes('socket')) {
@@ -359,8 +559,24 @@ impl HeadlessChromeHelper {
                 ].forEach(([kind, value]) => {
                     pushHint(transportHints, transportHintKeys, kind, value, 'partner_config');
                 });
+                if (window.$globalSettings) {
+                    pushBootstrapMarker('runtime:$globalSettings');
+                }
+                if (window.$P) {
+                    pushBootstrapMarker('runtime:$P');
+                }
                 if (window.$httpApi) {
+                    pushBootstrapMarker('runtime:$httpApi');
                     pushHint(transportHints, transportHintKeys, 'script_transport_marker', 'window.$httpApi', 'runtime');
+                }
+                if (Number(window.$P?.Id || window.$globalSettings?.partner?.Id || 0) > 0) {
+                    pushBootstrapMarker('runtime:partnerId');
+                }
+                if (Number(window.$globalSettings?.language?.Id || 0) > 0) {
+                    pushBootstrapMarker('runtime:langId');
+                }
+                if (String(window.$globalSettings?.user?.CountryCode || '').trim()) {
+                    pushBootstrapMarker('runtime:countryCode');
                 }
 
                 const navigationTiming = (() => {
@@ -417,7 +633,9 @@ impl HeadlessChromeHelper {
                         langId: Number(window.$globalSettings?.language?.Id || 0),
                         countryCode: String(window.$globalSettings?.user?.CountryCode || ''),
                         hasGlobalSettings: Boolean(window.$globalSettings),
-                        hasPartnerConfig: Boolean(window.$globalSettings?.partner || window.$P)
+                        hasPartnerConfig: Boolean(window.$globalSettings?.partner || window.$P),
+                        inlineScriptCount,
+                        bootstrapMarkers: bootstrapMarkers.slice(0, 8)
                     },
                     readinessDiagnostics: {
                         readyState: document.readyState || '',
@@ -462,6 +680,89 @@ impl HeadlessChromeHelper {
             label = profile.label,
             app_marker = app_marker,
             touch_points = touch_points,
+        )
+    }
+
+    /// Capture lightweight runtime route/DOM state for parser diagnostics.
+    pub fn capture_runtime_state(tab: &headless_chrome::Tab) -> Option<Value> {
+        Self::evaluate_json(
+            tab,
+            r#"(() => {
+                const count = (selector) => {
+                    try {
+                        return document.querySelectorAll(selector).length;
+                    } catch (_) {
+                        return 0;
+                    }
+                };
+                const normalizeText = (value) => String(value || '').replace(/\s+/g, ' ').trim();
+                const detectBlocker = (href, title, bodyText) => {
+                    const checks = [
+                        { kind: 'captcha', pattern: /captcha|капча|каптча/i },
+                        { kind: 'access_denied', pattern: /access denied|forbidden|доступ запрещен|доступ ограничен/i },
+                        { kind: 'human_verification', pattern: /verify you are human|prove you are human|подтвердите, что вы человек|проверка браузера/i },
+                        { kind: 'cloudflare_challenge', pattern: /cloudflare|just a moment|checking your browser/i },
+                        { kind: 'ddos_guard', pattern: /ddos-guard|anti-ddos|anti ddos/i },
+                    ];
+                    const sources = [
+                        ['title', normalizeText(title)],
+                        ['body', normalizeText(bodyText)],
+                        ['href', String(href || '')],
+                    ];
+                    for (const check of checks) {
+                        for (const [source, value] of sources) {
+                            if (!value || !check.pattern.test(value)) continue;
+                            return {
+                                kind: check.kind,
+                                source,
+                                matchedText: normalizeText(value).slice(0, 160),
+                            };
+                        }
+                    }
+                    return null;
+                };
+                const navigationEntry = (() => {
+                    try {
+                        const entries = performance.getEntriesByType('navigation') || [];
+                        const last = entries[entries.length - 1];
+                        if (!last) return null;
+                        return {
+                            type: String(last.type || ''),
+                            domContentLoadedMs: Math.round(Number(last.domContentLoadedEventEnd || 0)),
+                            loadMs: Math.round(Number(last.loadEventEnd || 0))
+                        };
+                    } catch (_) {
+                        return null;
+                    }
+                })();
+
+                const href = String(window.location.href || '');
+                const title = String(document.title || '');
+                const bodyText = normalizeText(document.body?.innerText || document.body?.textContent || '');
+                const blocker = detectBlocker(href, title, bodyText);
+
+                return {
+                    href,
+                    pathname: String(window.location.pathname || ''),
+                    search: String(window.location.search || ''),
+                    hash: String(window.location.hash || ''),
+                    title,
+                    readyState: String(document.readyState || ''),
+                    historyLength: Number(window.history?.length || 0),
+                    bodyChildCount: Number(document.body?.children?.length || 0),
+                    bodyTextLength: Number(bodyText.length),
+                    customElementCount: Number(Array.from(document.querySelectorAll('*')).filter((node) => String(node.tagName || '').includes('-')).length),
+                    buttonCount: count('button, [role="button"]'),
+                    interactiveNodeCount: count('button, [role="button"], a[href], input, select, textarea'),
+                    linkCount: count('a[href]'),
+                    routeLinkCount: count('a[href^="/live"], a[href^="/stavki/"]'),
+                    routerShellCount: count('ww-app-dsk, ww-feature-header-dsk, ww-feature-nav-bar-dsk, ww-feature-sport-menu-dsk, ww-feature-coupon-dsk'),
+                    firstButtonText: normalizeText(document.querySelector('button, [role="button"]')?.textContent || '').slice(0, 160),
+                    bodyTextSample: bodyText.slice(0, 220),
+                    navigationEntry,
+                    blocker,
+                };
+            })()"#,
         )
     }
 
@@ -608,11 +909,28 @@ impl HeadlessChromeHelper {
     pub fn scroll_page(
         tab: &headless_chrome::Tab,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        tab.evaluate("window.scrollTo(0, document.body.scrollHeight / 2)", false)?;
-        std::thread::sleep(Duration::from_secs(1));
-        tab.evaluate("window.scrollTo(0, document.body.scrollHeight)", false)?;
-        std::thread::sleep(Duration::from_secs(1));
+        let _ = Self::scroll_page_with_deadline(tab, None)?;
         Ok(())
+    }
+
+    /// Scroll page to trigger lazy loading without overrunning an outer deadline.
+    pub fn scroll_page_with_deadline(
+        tab: &headless_chrome::Tab,
+        deadline: Option<Instant>,
+    ) -> Result<bool, Box<dyn std::error::Error + Send + Sync>> {
+        tab.evaluate("window.scrollTo(0, document.body.scrollHeight / 2)", false)?;
+        let first_wait_ms = Self::cap_with_deadline(SCROLL_STEP_WAIT_MS, deadline);
+        if first_wait_ms == 0 {
+            return Ok(false);
+        }
+        std::thread::sleep(Duration::from_millis(first_wait_ms));
+        tab.evaluate("window.scrollTo(0, document.body.scrollHeight)", false)?;
+        let second_wait_ms = Self::cap_with_deadline(SCROLL_STEP_WAIT_MS, deadline);
+        if second_wait_ms == 0 {
+            return Ok(false);
+        }
+        std::thread::sleep(Duration::from_millis(second_wait_ms));
+        Ok(true)
     }
 
     /// Extract all text content from page
@@ -739,4 +1057,41 @@ pub fn extract_odds_from_text(text: &str) -> Vec<f64> {
         }
     }
     odds
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{HeadlessChromeHelper, SELECTOR_READY_POST_WAIT_CAP_MS};
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn caps_post_wait_after_selector_readiness() {
+        assert_eq!(
+            HeadlessChromeHelper::post_wait_budget_ms(1_800, true),
+            SELECTOR_READY_POST_WAIT_CAP_MS
+        );
+        assert_eq!(HeadlessChromeHelper::post_wait_budget_ms(300, true), 300);
+    }
+
+    #[test]
+    fn keeps_full_post_wait_when_selector_probe_misses() {
+        assert_eq!(HeadlessChromeHelper::post_wait_budget_ms(1_800, false), 600);
+        assert_eq!(HeadlessChromeHelper::post_wait_budget_ms(300, false), 300);
+    }
+
+    #[test]
+    fn deadline_cap_trims_budget_to_remaining_time() {
+        let deadline = Instant::now() + Duration::from_millis(40);
+        assert!(HeadlessChromeHelper::cap_with_deadline(500, Some(deadline)) <= 40);
+        assert_eq!(HeadlessChromeHelper::cap_with_deadline(120, None), 120);
+    }
+
+    #[test]
+    fn deadline_cap_drops_to_zero_after_deadline_passes() {
+        let deadline = Instant::now() - Duration::from_millis(1);
+        assert_eq!(
+            HeadlessChromeHelper::cap_with_deadline(500, Some(deadline)),
+            0
+        );
+    }
 }
