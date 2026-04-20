@@ -28,6 +28,7 @@ pub mod sportbet;
 pub mod stealth;
 pub mod tennisi;
 pub mod winline;
+pub mod winline_real_working;
 pub mod winline_rest;
 pub mod winline_rest_adapter;
 pub mod zenit;
