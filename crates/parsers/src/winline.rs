@@ -148,19 +148,21 @@ const HTML_PROBES: &[HtmlProbe] = &[
 const HEADLESS_EXTRACT_JS: &str = r#"(() => {
     const normalizeText = (value) => (value || '').replace(/\s+/g, ' ').trim();
     const GENERIC_CARD_SELECTOR = [
-        'ww-feature-block-event-dsk',
-        'ww-feature-event-mini-card-dsk',
-        '.main-event',
-        '.card',
-        '.event-card',
-        '[id^="eventId-"]',
+        '.pinned-event',                // NEW - Primary selector for pinned/live events
+        '.event-card',                  // NEW - Event card wrapper
+        '.card',                        // Generic card (lower priority)
+        '.ww-events-info',              // Alternative event container
+        'ww-feature-block-event-dsk',   // Keep legacy fallback
+        'ww-feature-event-mini-card-dsk', // Keep legacy fallback
+        '.main-event',                  // Legacy fallback
         '[data-test*="event"]',
         '[data-testid*="event"]',
         '[class*="event-card"]',
         '[class*="match-card"]'
     ].join(', ');
     const GENERIC_ODDS_SELECTOR = [
-        '.coefficient-button_fill',
+        '.coefficient-button',          // PRIMARY - New class structure
+        '.coefficient-button_fill',     // Fill variant
         '.button__coef-title',
         '.main-event__coeff',
         '[data-test*="coef"]',
@@ -253,6 +255,8 @@ const HEADLESS_EXTRACT_JS: &str = r#"(() => {
         if (!scope) return [];
 
         const selectors = [
+            '.pinned-event__team',              // NEW - Primary team selector
+            '.pinned-event__match',             // NEW - Match info
             '.half__names .name',
             '.body-left__names .name',
             '.card__competitors .name',
@@ -316,17 +320,33 @@ const HEADLESS_EXTRACT_JS: &str = r#"(() => {
         }];
     };
     const collectMarkets = (root) => {
+        // Try to find markets in WW-FEATURE-EVENT-MARKET-DSK web components (primary)
         const featureMarkets = Array.from(root.querySelectorAll('ww-feature-event-market-dsk')).map((market) => {
-        const buttons = Array.from(market.querySelectorAll('.coefficient-button_fill, .button__coef-title, .main-event__coeff'))
-            .map((button) => parseOdds(button.textContent || ''))
-            .filter((value) => value !== null);
-        return {
-            buttons,
-            middle: textFrom(market.querySelector('.coefficient-middle, .coefficient-middle__selector')),
-            text: normalizeText(market.textContent || ''),
-        };
-    }).filter((market) => market.buttons.length >= 2);
-        return featureMarkets.length > 0 ? featureMarkets : collectGenericMarkets(root);
+            const buttons = Array.from(market.querySelectorAll('.coefficient-button, .coefficient-button_fill, .button__coef-title, .main-event__coeff'))
+                .map((button) => parseOdds(button.textContent || ''))
+                .filter((value) => value !== null);
+            return {
+                buttons,
+                middle: textFrom(market.querySelector('.coefficient-middle, .coefficient-middle__selector')),
+                text: normalizeText(market.textContent || ''),
+            };
+        }).filter((market) => market.buttons.length >= 2);
+        
+        if (featureMarkets.length > 0) return featureMarkets;
+        
+        // Fallback: Try coefficient containers
+        const coeffContainers = Array.from(root.querySelectorAll('.coeffs-wrapper, .card__coeffs, [class*="coefficients"]')).map((container) => {
+            const buttons = Array.from(container.querySelectorAll('.coefficient-button, .coefficient-button_fill'))
+                .map((button) => parseOdds(button.textContent || ''))
+                .filter((value) => value !== null);
+            return {
+                buttons,
+                middle: textFrom(container.querySelector('.coefficient-middle, .coefficient-middle__selector')),
+                text: normalizeText(container.textContent || ''),
+            };
+        }).filter((market) => market.buttons.length >= 2);
+        
+        return coeffContainers.length > 0 ? coeffContainers : collectGenericMarkets(root);
     };
     const inferLive = (scope, fallbackText) => {
         const cardText = normalizeText(fallbackText || scope?.textContent || '');
@@ -355,6 +375,37 @@ const HEADLESS_EXTRACT_JS: &str = r#"(() => {
         card.closest('ww-feature-block-sport-dsk')?.querySelector('.block-sport-header__info, .block-sport-header')
     );
 
+    // NEW: Search for pinned/live events first (most relevant)
+    Array.from(document.querySelectorAll('.pinned-event')).forEach((card) => {
+        try {
+            const nameEls = extractNames(card);
+            if (nameEls.length < 2) return;
+
+            const link = card.querySelector('a[href*="/stavki/event/"]');
+            const href = link ? normalizeText(link.getAttribute('href') || '') : '';
+            const hrefMatch = href.match(/\/stavki\/event\/(\d+)/);
+            const eventId = hrefMatch ? hrefMatch[1] : '';
+            const marketSelection = pickOdds(collectMarkets(card));
+            if (!marketSelection) return;
+            const cardText = normalizeText(card.textContent || '');
+
+            pushEvent({
+                home: nameEls[0],
+                away: nameEls[1],
+                tournament: tournamentName(card) || textFrom(card.querySelector('[class*="tournament"]')),
+                eventId,
+                href,
+                odds: marketSelection.odds,
+                totalLine: marketSelection.totalLine,
+                sourceUrl: window.location.href,
+                isLive: true,  // Pinned events are typically live
+                sportName: sportName(card),
+                sportSlug: pageSportSlug,
+            });
+        } catch (_) {}
+    });
+
+    // Legacy: Search for old ww-feature-block-event-dsk (fallback)
     Array.from(document.querySelectorAll('ww-feature-block-event-dsk')).forEach((card) => {
         try {
             const nameEls = extractNames(card);
@@ -385,6 +436,36 @@ const HEADLESS_EXTRACT_JS: &str = r#"(() => {
         } catch (_) {}
     });
 
+    // NEW: Search for .event-card (new event card structure)
+    Array.from(document.querySelectorAll('.event-card:not(.pinned-event)')).forEach((card) => {
+        try {
+            const nameEls = extractNames(card);
+            if (nameEls.length < 2) return;
+
+            const link = card.querySelector('a[href*="/stavki/event/"]');
+            const href = link ? normalizeText(link.getAttribute('href') || '') : '';
+            const hrefMatch = href.match(/\/stavki\/event\/(\d+)/);
+            const eventId = hrefMatch ? hrefMatch[1] : '';
+            const marketSelection = pickOdds(collectMarkets(card));
+            if (!marketSelection) return;
+
+            pushEvent({
+                home: nameEls[0],
+                away: nameEls[1],
+                tournament: tournamentName(card),
+                eventId,
+                href,
+                odds: marketSelection.odds,
+                totalLine: marketSelection.totalLine,
+                sourceUrl: window.location.href,
+                isLive: inferLive(card),
+                sportName: sportName(card),
+                sportSlug: pageSportSlug,
+            });
+        } catch (_) {}
+    });
+
+    // Legacy: Search for old ww-feature-event-mini-card-dsk and .main-event (fallback)
     Array.from(document.querySelectorAll('ww-feature-event-mini-card-dsk, .main-event')).forEach((card) => {
         try {
             const nameEls = extractNames(card);
