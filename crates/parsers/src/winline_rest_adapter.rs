@@ -1,9 +1,8 @@
-use crate::base::{BookmakerParser, ParserResult};
+use crate::base::ParserResult;
 use crate::winline_rest::WinlineRestParser;
 use reqwest::Client;
 use std::sync::Arc;
 use std::time::Instant;
-use chrono::Utc;
 
 /// Адаптер Winline REST парсера
 pub struct WinlineRestAdapter {
