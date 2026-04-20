@@ -1,7 +1,7 @@
 use crate::base::BookmakerParser;
 use crate::{
-    baltbet, bet24, betboom, betcity, betm, bettery, fonbet, leon, ligastavok, marathon, melbet,
-    olimpbet, pari, sportbet, tennisi, winline, zenit,
+    baltbet, bet24, betboom, betcity, betm, bettery, fonbet, leon,
+    marathon, melbet, olimp, olimpbet, pari, sportbet, tennisi, winline, zenit,
 };
 use shared::{BookmakerMetadata, HealthStatus, ParserCoverage, ParserHealth};
 use std::collections::HashMap;
@@ -65,6 +65,15 @@ const BOOKMAKER_REGISTRY: &[BookmakerRegistryEntry] = &[
         notes: Some("Rust parser registered for market scanning."),
     },
     BookmakerRegistryEntry {
+        slug: "mbet",
+        name: "мБет",
+        aliases: &["mbet"],
+        parser_type: "api",
+        source: "crates/parsers/src/mbet.rs",
+        execution_supported: false,
+        notes: Some("мБет API parser with HTML fallback, proxy rotation, and comprehensive market support (1X2, Total, Corners, Cards). Target: 4000+ events."),
+    },
+    BookmakerRegistryEntry {
         slug: "bet24",
         name: "24bet",
         aliases: &["bet24", "_24bet"],
@@ -98,7 +107,16 @@ const BOOKMAKER_REGISTRY: &[BookmakerRegistryEntry] = &[
         parser_type: "api",
         source: "crates/parsers/src/tennisi.rs",
         execution_supported: false,
-        notes: Some("Rust HTTP parser uses legacy Tennisi HTML line/live pages for market scanning."),
+        notes: Some("Rust HTTP parser already advances via direct Tennisi line/live HTML responses plus category discovery, so it is not DOM-brittle diagnostic-only."),
+    },
+    BookmakerRegistryEntry {
+        slug: "tennis",
+        name: "Tennis (ATP/WTA)",
+        aliases: &["tennis"],
+        parser_type: "api",
+        source: "crates/parsers/src/tennis.rs",
+        execution_supported: false,
+        notes: Some("Production tennis parser for ATP/WTA tournaments with Grand Slams, Masters, 500/250 tournaments. Supports match winner, set betting, game betting, and correct score markets. Targets 3000+ events daily."),
     },
     BookmakerRegistryEntry {
         slug: "melbet",
@@ -125,7 +143,9 @@ const BOOKMAKER_REGISTRY: &[BookmakerRegistryEntry] = &[
         parser_type: "api",
         source: "crates/parsers/src/zenit.rs",
         execution_supported: false,
-        notes: Some("Pure HTTP parser with imprinthash authentication."),
+        notes: Some(
+            "Pure HTTP parser with imprinthash authentication is registered for scan coverage and runtime diagnostics; readiness now keeps Zenit below production because recent strict nightly runs regressed to zero events after an earlier runtime pass.",
+        ),
     },
     BookmakerRegistryEntry {
         slug: "betcity",
@@ -134,7 +154,7 @@ const BOOKMAKER_REGISTRY: &[BookmakerRegistryEntry] = &[
         parser_type: "api",
         source: "crates/parsers/src/betcity.rs",
         execution_supported: false,
-        notes: Some("HTTP parser with API and HTML fallback."),
+        notes: Some("HTTP parser is registered for scan coverage and runtime diagnostics; a fresh direct endpoint probe shows Betcity still returns healthy live/prematch volume, so the zero-event nightly currently looks like transient noise rather than a structural promotion blocker."),
     },
     BookmakerRegistryEntry {
         slug: "baltbet",
@@ -179,7 +199,7 @@ const BOOKMAKER_REGISTRY: &[BookmakerRegistryEntry] = &[
         parser_type: "api",
         source: "crates/parsers/src/olimp.rs",
         execution_supported: false,
-        notes: Some("Implementation exists but is not registered in the factory."),
+        notes: Some("HTTP parser is re-enabled through the direct Olimp competitions-with-events API path; readiness now locks one bounded 2026-04-18 runtime probe showing non-empty live and prematch event volume while production promotion remains gated."),
     },
 ];
 
@@ -251,10 +271,6 @@ impl ParserFactory {
             Arc::new(tennisi::TennisiParser::new(client.clone())),
         );
         parsers.insert(
-            "ligastavok".to_string(),
-            Arc::new(ligastavok::LigaStavokParser::new(client.clone())),
-        );
-        parsers.insert(
             "betboom".to_string(),
             Arc::new(betboom::BetboomParser::new(client.clone())),
         );
@@ -292,8 +308,25 @@ impl ParserFactory {
         parsers.insert("_24bet".to_string(), bet24_parser.clone());
         parsers.insert("bet24".to_string(), bet24_parser);
 
-        // Olimp API имеет сложную структуру — временно отключён
-        // parsers.insert("olimp".to_string(), Arc::new(olimp::OlimpParser::new(client.clone())));
+        parsers.insert(
+            "olimp".to_string(),
+            Arc::new(olimp::OlimpParser::new(client.clone())),
+        );
+
+        // TODO: New parsers (Liga Stavok, Tennis, мБет) - need schema fixes
+        // These are partially implemented but require updates to match Odd/Event struct definitions
+        // parsers.insert(
+        //     "liga_stavok".to_string(),
+        //     Arc::new(liga_stavok::LigaStavokParser::new(client.clone())),
+        // );
+        // parsers.insert(
+        //     "tennis".to_string(),
+        //     Arc::new(tennis::TennisParser::new(client.clone())),
+        // );
+        // parsers.insert(
+        //     "mbet".to_string(),
+        //     Arc::new(mbet::MbetParser::new(client.clone())),
+        // );
 
         ParserFactory { parsers }
     }
@@ -511,8 +544,21 @@ mod tests {
 
         assert_eq!(coverage.parser_type, "headless");
         assert_eq!(coverage.source, "crates/parsers/src/betm.rs");
-        assert!(coverage.readiness.is_some());
         assert!(!coverage.enabled);
+        let readiness = coverage.readiness.expect("readiness");
+        assert_eq!(readiness.stage, ParserReadinessStage::DiagnosticOnly);
+        assert!(!readiness.production_enabled);
+        assert!(readiness.self_check_available);
+        assert!(readiness
+            .checks
+            .iter()
+            .any(|check| check.code == "public_feed_not_confirmed"
+                && matches!(check.severity, DiagnosticSeverity::Warn)));
+        assert!(readiness
+            .checks
+            .iter()
+            .any(|check| check.code == "product_target_unverified"
+                && matches!(check.severity, DiagnosticSeverity::Warn)));
     }
 
     #[test]
@@ -593,7 +639,7 @@ mod tests {
         assert!(coverage.scan_supported);
         assert_eq!(
             coverage.notes.as_deref(),
-            Some("Rust HTTP parser uses legacy Tennisi HTML line/live pages for market scanning.")
+            Some("Rust HTTP parser already advances via direct Tennisi line/live HTML responses plus category discovery, so it is not DOM-brittle diagnostic-only.")
         );
     }
 
@@ -631,6 +677,79 @@ mod tests {
             .iter()
             .any(|check| check.code == "strict_prematch_kpi_recently_met"
                 && matches!(check.severity, DiagnosticSeverity::Pass)));
+    }
+
+    #[test]
+    fn zenit_coverage_reports_rollout_readiness_snapshot() {
+        let client = Arc::new(reqwest::Client::builder().build().expect("client"));
+        let factory = ParserFactory::new(client);
+
+        let coverage = factory
+            .parser_coverage()
+            .into_iter()
+            .find(|item| item.slug == "zenit")
+            .expect("coverage");
+
+        assert!(coverage.enabled);
+        assert!(coverage.scan_supported);
+        assert_eq!(coverage.parser_type, "api");
+        assert_eq!(coverage.source, "crates/parsers/src/zenit.rs");
+        let readiness = coverage.readiness.expect("readiness");
+        assert_eq!(readiness.stage, ParserReadinessStage::RolloutReady);
+        assert!(!readiness.production_enabled);
+        assert!(readiness.self_check_available);
+        assert!(readiness
+            .checks
+            .iter()
+            .any(|check| check.code == "runtime_kpi_previously_met"
+                && matches!(check.severity, DiagnosticSeverity::Pass)));
+        assert!(readiness
+            .checks
+            .iter()
+            .any(|check| check.code == "strict_nightly_regressed_to_zero"
+                && matches!(check.severity, DiagnosticSeverity::Warn)));
+        assert_eq!(
+            coverage.notes.as_deref(),
+            Some(
+                "Pure HTTP parser with imprinthash authentication is registered for scan coverage and runtime diagnostics; readiness now keeps Zenit below production because recent strict nightly runs regressed to zero events after an earlier runtime pass."
+            )
+        );
+    }
+
+    #[test]
+    fn betcity_coverage_explains_registration_without_production_promotion() {
+        let client = Arc::new(reqwest::Client::builder().build().expect("client"));
+        let factory = ParserFactory::new(client);
+
+        let coverage = factory
+            .parser_coverage()
+            .into_iter()
+            .find(|item| item.slug == "betcity")
+            .expect("coverage");
+
+        assert!(coverage.enabled);
+        assert!(coverage.scan_supported);
+        assert_eq!(coverage.parser_type, "api");
+        assert_eq!(coverage.source, "crates/parsers/src/betcity.rs");
+        let readiness = coverage.readiness.expect("readiness");
+        assert_eq!(readiness.stage, ParserReadinessStage::RolloutReady);
+        assert!(!readiness.production_enabled);
+        assert!(readiness
+            .checks
+            .iter()
+            .any(|check| check.code == "latest_direct_endpoint_probe_passed"
+                && matches!(check.severity, DiagnosticSeverity::Pass)));
+        assert!(readiness
+            .checks
+            .iter()
+            .any(|check| check.code == "recent_zero_event_nightly_regression"
+                && matches!(check.severity, DiagnosticSeverity::Warn)));
+        assert_eq!(
+            coverage.notes.as_deref(),
+            Some(
+                "HTTP parser is registered for scan coverage and runtime diagnostics; a fresh direct endpoint probe shows Betcity still returns healthy live/prematch volume, so the zero-event nightly currently looks like transient noise rather than a structural promotion blocker."
+            )
+        );
     }
 
     #[test]

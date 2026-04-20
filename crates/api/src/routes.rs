@@ -6,7 +6,7 @@ use tower_http::services::{ServeDir, ServeFile};
 use tower_http::trace::TraceLayer;
 
 use crate::handlers::*;
-use crate::handlers::{ApiResponse, AppState};
+use crate::handlers::{ApiResponse, AppState, telegram_status, telegram_update_config, telegram_history};
 use crate::ws::{ws_handler, ws_surebets_v1_handler};
 
 async fn api_not_found() -> (StatusCode, Json<ApiResponse<serde_json::Value>>) {
@@ -58,8 +58,14 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/v1/corridors", get(get_corridors))
         .route("/api/v1/express-forks", get(get_express_forks))
         .route("/api/v1/bookmakers", get(get_bookmakers))
+        .route(
+            "/api/v1/bookmakers/status-catalog",
+            get(get_bookmaker_status_catalog),
+        )
         .route("/api/v1/parsers/coverage", get(get_parsers_coverage))
         .route("/api/v1/parsers/health", get(get_parsers_health))
+        .route("/api/v1/parsers/promotion-kpi", get(get_parsers_promotion_kpi))
+        .route("/api/v1/swarm/status", get(get_swarm_status))
         .route("/api/v1/accounts", get(get_accounts))
         .route("/api/v1/accounts/summary", get(get_accounts_summary))
         .route("/api/v1/accounts/:bookmaker", get(get_account_by_bookmaker))
@@ -77,6 +83,9 @@ pub fn create_router(state: AppState) -> Router {
         )
         .route("/api/v1/stakes/validate", post(validate_stake))
         .route("/api/v1/capabilities", get(get_capabilities))
+        .route("/api/v1/telegram/status", get(telegram_status))
+        .route("/api/v1/telegram/config", post(telegram_update_config))
+        .route("/api/v1/telegram/history", get(telegram_history))
         .route("/ws", get(ws_handler))
         .route("/ws/v1/surebets", get(ws_surebets_v1_handler))
         .route("/api", any(api_not_found))

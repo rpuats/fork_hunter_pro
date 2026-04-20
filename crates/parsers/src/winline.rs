@@ -4,7 +4,7 @@ use async_trait::async_trait;
 use chrono::Utc;
 use reqwest::Client;
 use shared::odds::OddsType;
-use shared::{Event, Odd, Sport};
+use shared::{Event, Odd, Sport, ParserDiagnosticCheck, ParserReadiness, ParserReadinessStage, DiagnosticSeverity};
 use std::collections::{HashMap, HashSet};
 use std::process::{Command, Stdio};
 use std::sync::Arc;
@@ -34,6 +34,7 @@ const HEADLESS_HYDRATION_RETRY_DELAY_MS: u64 = 400;
 const HEADLESS_HYDRATION_RETRY_ATTEMPTS: usize = 8;
 const HEADLESS_HYDRATION_EARLY_DIAGNOSTIC_ATTEMPT: usize = 3;
 const HEADLESS_STABLE_EMPTY_ROUTE_REPEAT_LIMIT: usize = 2;
+const HEADLESS_BLOCKER_ROUTE_STREAK_LIMIT: usize = 2;
 const HEADLESS_MAX_PREMATCH_PAGES: usize = 18;
 const HEADLESS_MAX_LIVE_SPORT_PAGES: usize = 8;
 const HEADLESS_PREMATCH_EMPTY_STREAK_LIMIT: usize = 6;
@@ -41,6 +42,9 @@ const HEADLESS_LIVE_EMPTY_STREAK_LIMIT: usize = 4;
 const HEADLESS_LIVE_FANOUT_BUDGET_MS: u64 = 18_000;
 const HEADLESS_PREMATCH_FANOUT_BUDGET_MS: u64 = 18_000;
 const HEADLESS_RUNTIME_BUDGET_MS: u64 = 70_000;
+const HEADLESS_OUTER_TIMEOUT_RESERVE_MS: u64 = 15_000;
+const HEADLESS_EFFECTIVE_RUNTIME_BUDGET_MS: u64 =
+    HEADLESS_RUNTIME_BUDGET_MS - HEADLESS_OUTER_TIMEOUT_RESERVE_MS;
 const HEADLESS_ROUTE_GUARD_MS: u64 = HEADLESS_NAVIGATION_TIMEOUT_MS
     + HEADLESS_HYDRATION_RETRY_DELAY_MS * HEADLESS_HYDRATION_RETRY_ATTEMPTS as u64
     + SCROLL_PAGE_BUDGET_MS * HEADLESS_SCROLL_ROUNDS as u64;
@@ -51,6 +55,7 @@ const TARGET_LIVE_EVENTS: usize = 150;
 const TARGET_PREMATCH_EVENTS: usize = 3000;
 const PLAYWRIGHT_WAIT_MS: u64 = 1_500;
 const DISCOVERY_URL: &str = "https://winline.ru/stavki/sport/futbol/";
+const DISCOVERY_FALLBACK_URL: &str = "https://winline.ru/football";
 const LIVE_URL: &str = "https://winline.ru/live";
 const BOOTSTRAP_WEBSCRIPT_PATH: &str = "/api/v2/webscript.js";
 const DISCOVERED_WS_URL: &str = "wss://wss.winline.ru/data_ng?client=newsite&nb=true";
@@ -1133,6 +1138,18 @@ impl WinlineParser {
             && runtime_body_text_length <= 600
     }
 
+    fn should_abort_hydration_retry_after_diagnostics(
+        value: &serde_json::Value,
+        hydration_attempt: usize,
+    ) -> bool {
+        if Self::dom_diagnostics_runtime_blocker_signal(value).is_some() {
+            return true;
+        }
+
+        hydration_attempt >= HEADLESS_HYDRATION_EARLY_DIAGNOSTIC_ATTEMPT
+            && Self::should_abort_empty_route_early(value)
+    }
+
     fn is_shell_only_empty_route_status(status: &str) -> bool {
         matches!(
             status,
@@ -1197,6 +1214,10 @@ impl WinlineParser {
         url == LIVE_URL && error.contains("headless navigation readiness timeout")
     }
 
+    fn is_skippable_discovery_bootstrap_navigation_error(url: &str, error: &str) -> bool {
+        url == DISCOVERY_URL && error.contains("headless navigation readiness timeout")
+    }
+
     fn wait_for_hydrated_payload(
         tab: &headless_chrome::Tab,
         source_url: &str,
@@ -1236,14 +1257,18 @@ impl WinlineParser {
                 return None;
             }
 
-            if attempt + 1 >= HEADLESS_HYDRATION_EARLY_DIAGNOSTIC_ATTEMPT {
+            if attempt == 0 || attempt + 1 >= HEADLESS_HYDRATION_EARLY_DIAGNOSTIC_ATTEMPT {
                 if let Some(diagnostics) = Self::extract_headless_dom_diagnostics(tab) {
                     let repeated_empty_route = Self::update_stable_empty_route_cycle_state(
                         &diagnostics,
                         &mut previous_empty_route_signature,
                         &mut repeated_empty_route_count,
                     );
-                    if Self::should_abort_empty_route_early(&diagnostics) || repeated_empty_route {
+                    if Self::should_abort_hydration_retry_after_diagnostics(
+                        &diagnostics,
+                        attempt + 1,
+                    ) || repeated_empty_route
+                    {
                         let mut diagnostic = Self::format_empty_payload_diagnostic(&diagnostics);
                         if repeated_empty_route {
                             diagnostic.push_str(&format!(
@@ -1688,6 +1713,41 @@ with sync_playwright() as p:
         events.is_empty()
     }
 
+    fn is_internal_runtime_budget_error(error: &str) -> bool {
+        error.contains("headless runtime budget exceeded")
+            || error.contains("headless navigation start budget exhausted")
+            || error.contains("headless runtime empty before prematch bootstrap under tight budget")
+    }
+
+    fn is_useful_empty_route_blocker_signal(signal: &str) -> bool {
+        !signal.trim().is_empty()
+            && (signal.contains("blocker=")
+                || signal.contains("status=")
+                || signal.contains("budget="))
+    }
+
+    fn should_stop_phase_after_blocker_streak(consecutive_blocker_routes: usize) -> bool {
+        consecutive_blocker_routes >= HEADLESS_BLOCKER_ROUTE_STREAK_LIMIT
+    }
+
+    fn live_route_family_key(path: &str) -> Option<String> {
+        let normalized = normalize_winline_path(path);
+        normalized
+            .strip_prefix("/live/sport/")
+            .or_else(|| normalized.strip_prefix("/live/"))
+            .map(str::trim)
+            .filter(|slug| !slug.is_empty())
+            .map(|slug| slug.trim_matches('/').to_string())
+    }
+
+    fn should_skip_live_route_family_after_empty_shell(signal: Option<&str>) -> bool {
+        signal.is_some_and(|signal| {
+            signal.contains("status=route_ready_shell_only")
+                || signal.contains("status=shell_only_no_event_cards")
+                || signal.contains("status=no_known_winline_dom_nodes")
+        })
+    }
+
     fn collect_headless_page(
         all_events: &mut Vec<Event>,
         all_odds: &mut Vec<Odd>,
@@ -1722,11 +1782,11 @@ with sync_playwright() as p:
     }
 
     fn runtime_remaining_budget_ms(started: Instant) -> u64 {
-        HEADLESS_RUNTIME_BUDGET_MS.saturating_sub(Self::runtime_elapsed_ms(started))
+        HEADLESS_EFFECTIVE_RUNTIME_BUDGET_MS.saturating_sub(Self::runtime_elapsed_ms(started))
     }
 
     fn runtime_deadline(started: Instant) -> Instant {
-        started + Duration::from_millis(HEADLESS_RUNTIME_BUDGET_MS)
+        started + Duration::from_millis(HEADLESS_EFFECTIVE_RUNTIME_BUDGET_MS)
     }
 
     fn runtime_budget_allows_next_route(started: Instant) -> bool {
@@ -1842,6 +1902,8 @@ with sync_playwright() as p:
             return false;
         }
 
+        let next_phase_floor_ms =
+            Self::next_phase_start_floor_ms(bootstrap_total_ms, previous_phase_metrics);
         let slowest_route_ms = previous_phase_metrics
             .iter()
             .map(|metric| metric.total_ms)
@@ -1851,13 +1913,11 @@ with sync_playwright() as p:
             .iter()
             .filter(|metric| Self::is_expensive_empty_route(metric))
             .count();
-        let next_phase_floor_ms = bootstrap_total_ms
-            .max(slowest_route_ms)
-            .max(HEADLESS_NAVIGATION_TIMEOUT_MS)
-            .saturating_add(HEADLESS_ROUTE_GUARD_MS);
 
         remaining_budget_ms < next_phase_floor_ms
-            && expensive_empty_routes >= HEADLESS_EXPENSIVE_EMPTY_STREAK_LIMIT
+            && (previous_phase_metrics.is_empty()
+                || slowest_route_ms >= HEADLESS_EXPENSIVE_ROUTE_MS
+                || expensive_empty_routes >= HEADLESS_EXPENSIVE_EMPTY_STREAK_LIMIT)
     }
 
     fn should_abort_empty_before_phase(
@@ -1865,22 +1925,31 @@ with sync_playwright() as p:
         bootstrap_total_ms: u64,
         previous_phase_metrics: &[HeadlessRouteMetric],
     ) -> bool {
+        let next_phase_floor_ms =
+            Self::next_phase_start_floor_ms(bootstrap_total_ms, previous_phase_metrics);
+        let expensive_empty_routes = previous_phase_metrics
+            .iter()
+            .filter(|metric| Self::is_expensive_empty_route(metric))
+            .count();
+
+        remaining_budget_ms < next_phase_floor_ms
+            && expensive_empty_routes >= HEADLESS_EXPENSIVE_EMPTY_STREAK_LIMIT
+    }
+
+    fn next_phase_start_floor_ms(
+        bootstrap_total_ms: u64,
+        previous_phase_metrics: &[HeadlessRouteMetric],
+    ) -> u64 {
         let slowest_route_ms = previous_phase_metrics
             .iter()
             .map(|metric| metric.total_ms)
             .max()
             .unwrap_or(0);
-        let expensive_empty_routes = previous_phase_metrics
-            .iter()
-            .filter(|metric| Self::is_expensive_empty_route(metric))
-            .count();
-        let next_phase_floor_ms = bootstrap_total_ms
+
+        bootstrap_total_ms
             .max(slowest_route_ms)
             .max(HEADLESS_NAVIGATION_TIMEOUT_MS)
-            .saturating_add(HEADLESS_ROUTE_GUARD_MS);
-
-        remaining_budget_ms < next_phase_floor_ms
-            && expensive_empty_routes >= HEADLESS_EXPENSIVE_EMPTY_STREAK_LIMIT
+            .saturating_add(HEADLESS_ROUTE_GUARD_MS)
     }
 
     fn log_route_summary(
@@ -1936,8 +2005,8 @@ with sync_playwright() as p:
     fn fetch_headless_runtime_data_blocking(
         seed_paths: HeadlessSeedPaths,
     ) -> Result<(Vec<Event>, Vec<Odd>), Box<dyn std::error::Error + Send + Sync>> {
-        let helper = HeadlessChromeHelper::new()?;
         let runtime_started = Instant::now();
+        let helper = HeadlessChromeHelper::new()?;
         let runtime_deadline = Self::runtime_deadline(runtime_started);
         let mut all_events = Vec::new();
         let mut all_odds = Vec::new();
@@ -1957,8 +2026,11 @@ with sync_playwright() as p:
             Ok(live_tab) => {
                 let live_navigation_ms = live_navigation_started.elapsed().as_millis() as u64;
                 let live_extract_started = Instant::now();
-                let live_payload =
-                    Self::extract_from_tab_with_deadline(&live_tab, LIVE_URL, Some(runtime_deadline));
+                let live_payload = Self::extract_from_tab_with_deadline(
+                    &live_tab,
+                    LIVE_URL,
+                    Some(runtime_deadline),
+                );
                 let live_extraction_ms = live_extract_started.elapsed().as_millis() as u64;
                 Self::push_blocker_signal(&mut blocker_signals, live_payload.blocker_signal);
                 debug!(
@@ -2012,9 +2084,11 @@ with sync_playwright() as p:
         let live_paths = Self::prioritized_headless_paths(seed_paths.live, true);
         let live_fanout_started = Instant::now();
         let mut visited_live_paths = HashSet::new();
+        let mut skipped_live_route_families = HashSet::new();
         visited_live_paths.insert(normalize_winline_path(LIVE_URL));
         let mut live_empty_streak = 0;
         let mut live_expensive_empty_streak = 0;
+        let mut live_blocker_streak = 0;
         for path in live_paths.into_iter().take(HEADLESS_MAX_LIVE_SPORT_PAGES) {
             if Self::target_counts_reached(&all_events) {
                 break;
@@ -2070,6 +2144,16 @@ with sync_playwright() as p:
             if !visited_live_paths.insert(normalized_path.clone()) {
                 continue;
             }
+            if let Some(route_family) = Self::live_route_family_key(&normalized_path) {
+                if skipped_live_route_families.contains(&route_family) {
+                    debug!(
+                        path = normalized_path.as_str(),
+                        route_family = route_family.as_str(),
+                        "Winline: skipping duplicate live route family after shell-only empty route"
+                    );
+                    continue;
+                }
+            }
 
             let url = format!("{}{}", BASE_URL, normalized_path);
             let fallback_sport = sport_from_winline_hint(&normalized_path, Sport::Other);
@@ -2111,7 +2195,8 @@ with sync_playwright() as p:
             let extract_started = Instant::now();
             let payload = Self::extract_from_tab_with_deadline(&tab, &url, Some(runtime_deadline));
             let extraction_ms = extract_started.elapsed().as_millis() as u64;
-            Self::push_blocker_signal(&mut blocker_signals, payload.blocker_signal);
+            let route_blocker_signal = payload.blocker_signal.clone();
+            Self::push_blocker_signal(&mut blocker_signals, route_blocker_signal.clone());
             let payload_items = payload.payload.len();
             let collect_started = Instant::now();
             let added_events = Self::collect_headless_page(
@@ -2162,6 +2247,30 @@ with sync_playwright() as p:
             } else {
                 0
             };
+            live_blocker_streak = if added_events == 0
+                && route_blocker_signal
+                    .as_deref()
+                    .is_some_and(Self::is_useful_empty_route_blocker_signal)
+            {
+                live_blocker_streak + 1
+            } else {
+                0
+            };
+            if added_events == 0
+                && Self::should_skip_live_route_family_after_empty_shell(
+                    route_blocker_signal.as_deref(),
+                )
+            {
+                if let Some(route_family) = Self::live_route_family_key(&normalized_path) {
+                    skipped_live_route_families.insert(route_family.clone());
+                    debug!(
+                        path = normalized_path.as_str(),
+                        route_family = route_family.as_str(),
+                        blocker_signal = route_blocker_signal.as_deref().unwrap_or_default(),
+                        "Winline: suppressing sibling live route variant after shell-only empty route"
+                    );
+                }
+            }
 
             if live_expensive_empty_streak >= HEADLESS_EXPENSIVE_EMPTY_STREAK_LIMIT {
                 warn!(
@@ -2170,6 +2279,17 @@ with sync_playwright() as p:
                     expensive_route_ms = HEADLESS_EXPENSIVE_ROUTE_MS,
                     remaining_budget_ms = Self::runtime_remaining_budget_ms(runtime_started),
                     "Winline: stopping headless fanout after consecutive expensive empty routes"
+                );
+                break;
+            }
+
+            if Self::should_stop_phase_after_blocker_streak(live_blocker_streak) {
+                warn!(
+                    phase = "live",
+                    blocker_streak = live_blocker_streak,
+                    blocker_signal = route_blocker_signal.as_deref().unwrap_or_default(),
+                    remaining_budget_ms = Self::runtime_remaining_budget_ms(runtime_started),
+                    "Winline: stopping headless fanout after consecutive blocker routes"
                 );
                 break;
             }
@@ -2236,16 +2356,19 @@ with sync_playwright() as p:
         }
 
         let discovery_started = Instant::now();
+        let mut discovered_paths = Vec::new();
         let discovery_navigation_started = Instant::now();
+        let mut discovery_source_url = DISCOVERY_URL;
         let discovery_tab = match helper.navigate_and_wait_with_timeout_and_deadline(
             DISCOVERY_URL,
             HEADLESS_WAIT_MS,
             HEADLESS_NAVIGATION_TIMEOUT_MS,
             runtime_deadline,
         ) {
-            Ok(tab) => tab,
+            Ok(tab) => Some(tab),
             Err(error) => {
                 let navigation_ms = discovery_navigation_started.elapsed().as_millis() as u64;
+                let error_text = error.to_string();
                 warn!(
                     phase = "prematch-bootstrap",
                     url = DISCOVERY_URL,
@@ -2254,58 +2377,101 @@ with sync_playwright() as p:
                     remaining_budget_ms = Self::runtime_remaining_budget_ms(runtime_started),
                     total = all_events.len(),
                     odds = all_odds.len(),
-                    error = %error,
+                    error = %error_text,
                     "Winline: prematch bootstrap navigation failed"
                 );
-                if !all_events.is_empty() {
+                if Self::is_skippable_discovery_bootstrap_navigation_error(DISCOVERY_URL, &error_text)
+                {
+                    let fallback_navigation_started = Instant::now();
+                    match helper.navigate_and_wait_with_timeout_and_deadline(
+                        DISCOVERY_FALLBACK_URL,
+                        HEADLESS_WAIT_MS,
+                        HEADLESS_NAVIGATION_TIMEOUT_MS,
+                        runtime_deadline,
+                    ) {
+                        Ok(tab) => {
+                            discovery_source_url = DISCOVERY_FALLBACK_URL;
+                            warn!(
+                                phase = "prematch-bootstrap",
+                                url = DISCOVERY_URL,
+                                fallback_url = DISCOVERY_FALLBACK_URL,
+                                navigation_ms = navigation_ms,
+                                fallback_navigation_ms = fallback_navigation_started.elapsed().as_millis() as u64,
+                                remaining_budget_ms = Self::runtime_remaining_budget_ms(runtime_started),
+                                "Winline: retrying prematch bootstrap via alternate football route after discovery readiness timeout"
+                            );
+                            Some(tab)
+                        }
+                        Err(fallback_error) => {
+                            warn!(
+                                phase = "prematch-bootstrap",
+                                url = DISCOVERY_URL,
+                                fallback_url = DISCOVERY_FALLBACK_URL,
+                                navigation_ms = navigation_ms,
+                                fallback_navigation_ms = fallback_navigation_started.elapsed().as_millis() as u64,
+                                remaining_budget_ms = Self::runtime_remaining_budget_ms(runtime_started),
+                                error = %fallback_error,
+                                "Winline: alternate prematch bootstrap route failed; continuing with seeded prematch fanout"
+                            );
+                            None
+                        }
+                    }
+                } else if !all_events.is_empty() {
                     return Ok((all_events, all_odds));
+                } else {
+                    return Err(error);
                 }
-                return Err(error);
             }
         };
-        let discovery_navigation_ms = discovery_navigation_started.elapsed().as_millis() as u64;
-        let discovery_extract_started = Instant::now();
-        let discovered_paths = Self::extract_discovered_sport_links(&discovery_tab);
-        let discovery_payload = Self::extract_from_tab_with_deadline(
-            &discovery_tab,
-            DISCOVERY_URL,
-            Some(runtime_deadline),
-        );
-        let discovery_extraction_ms = discovery_extract_started.elapsed().as_millis() as u64;
-        Self::push_blocker_signal(&mut blocker_signals, discovery_payload.blocker_signal);
-        debug!(
-            url = DISCOVERY_URL,
-            items = discovery_payload.payload.len(),
-            discovered = discovered_paths.len(),
-            "Winline: headless sport discovery extracted"
-        );
-        let discovery_payload_items = discovery_payload.payload.len();
-        let discovery_collect_started = Instant::now();
-        let discovery_added_events = Self::collect_headless_page(
-            &mut all_events,
-            &mut all_odds,
-            &mut seen,
-            discovery_payload.payload,
-            Sport::Football,
-            false,
-            DISCOVERY_URL,
-        );
-        let discovery_collect_ms = discovery_collect_started.elapsed().as_millis() as u64;
-        Self::log_phase_result(
-            "prematch-bootstrap",
-            DISCOVERY_URL,
-            discovery_payload_items,
-            discovery_added_events,
-            discovery_started,
-            discovery_navigation_ms,
-            discovery_extraction_ms,
-            discovery_collect_ms,
-            &all_events,
-            all_odds.len(),
-        );
+
+        if let Some(discovery_tab) = discovery_tab {
+            let discovery_navigation_ms = discovery_navigation_started.elapsed().as_millis() as u64;
+            let discovery_extract_started = Instant::now();
+            discovered_paths = Self::extract_discovered_sport_links(&discovery_tab);
+            let discovery_payload = Self::extract_from_tab_with_deadline(
+                &discovery_tab,
+                discovery_source_url,
+                Some(runtime_deadline),
+            );
+            let discovery_extraction_ms = discovery_extract_started.elapsed().as_millis() as u64;
+            Self::push_blocker_signal(&mut blocker_signals, discovery_payload.blocker_signal);
+            debug!(
+                url = discovery_source_url,
+                items = discovery_payload.payload.len(),
+                discovered = discovered_paths.len(),
+                "Winline: headless sport discovery extracted"
+            );
+            let discovery_payload_items = discovery_payload.payload.len();
+            let discovery_collect_started = Instant::now();
+            let discovery_added_events = Self::collect_headless_page(
+                &mut all_events,
+                &mut all_odds,
+                &mut seen,
+                discovery_payload.payload,
+                Sport::Football,
+                false,
+                discovery_source_url,
+            );
+            let discovery_collect_ms = discovery_collect_started.elapsed().as_millis() as u64;
+            Self::log_phase_result(
+                "prematch-bootstrap",
+                discovery_source_url,
+                discovery_payload_items,
+                discovery_added_events,
+                discovery_started,
+                discovery_navigation_ms,
+                discovery_extraction_ms,
+                discovery_collect_ms,
+                &all_events,
+                all_odds.len(),
+            );
+        }
 
         let mut visited_paths = HashSet::new();
         visited_paths.insert(normalize_winline_path(DISCOVERY_URL));
+        if discovery_source_url != DISCOVERY_URL {
+            visited_paths.insert(normalize_winline_path(discovery_source_url));
+        }
 
         let mut prematch_paths = seed_paths.prematch;
         for path in discovered_paths {
@@ -2319,6 +2485,7 @@ with sync_playwright() as p:
         let prematch_fanout_started = Instant::now();
         let mut prematch_empty_streak = 0;
         let mut prematch_expensive_empty_streak = 0;
+        let mut prematch_blocker_streak = 0;
 
         for path in prematch_paths.into_iter().take(HEADLESS_MAX_PREMATCH_PAGES) {
             if Self::target_counts_reached(&all_events) {
@@ -2419,7 +2586,8 @@ with sync_playwright() as p:
             let extract_started = Instant::now();
             let payload = Self::extract_from_tab_with_deadline(&tab, &url, Some(runtime_deadline));
             let extraction_ms = extract_started.elapsed().as_millis() as u64;
-            Self::push_blocker_signal(&mut blocker_signals, payload.blocker_signal);
+            let route_blocker_signal = payload.blocker_signal.clone();
+            Self::push_blocker_signal(&mut blocker_signals, route_blocker_signal.clone());
             let payload_items = payload.payload.len();
             let collect_started = Instant::now();
             let added_events = Self::collect_headless_page(
@@ -2470,6 +2638,15 @@ with sync_playwright() as p:
             } else {
                 0
             };
+            prematch_blocker_streak = if added_events == 0
+                && route_blocker_signal
+                    .as_deref()
+                    .is_some_and(Self::is_useful_empty_route_blocker_signal)
+            {
+                prematch_blocker_streak + 1
+            } else {
+                0
+            };
 
             if prematch_expensive_empty_streak >= HEADLESS_EXPENSIVE_EMPTY_STREAK_LIMIT {
                 warn!(
@@ -2478,6 +2655,17 @@ with sync_playwright() as p:
                     expensive_route_ms = HEADLESS_EXPENSIVE_ROUTE_MS,
                     remaining_budget_ms = Self::runtime_remaining_budget_ms(runtime_started),
                     "Winline: stopping headless fanout after consecutive expensive empty routes"
+                );
+                break;
+            }
+
+            if Self::should_stop_phase_after_blocker_streak(prematch_blocker_streak) {
+                warn!(
+                    phase = "prematch",
+                    blocker_streak = prematch_blocker_streak,
+                    blocker_signal = route_blocker_signal.as_deref().unwrap_or_default(),
+                    remaining_budget_ms = Self::runtime_remaining_budget_ms(runtime_started),
+                    "Winline: stopping headless fanout after consecutive blocker routes"
                 );
                 break;
             }
@@ -2507,7 +2695,7 @@ with sync_playwright() as p:
     ) -> Result<(Vec<Event>, Vec<Odd>), Box<dyn std::error::Error + Send + Sync>> {
         let seed_paths = self.fetch_seed_paths().await;
         match tokio::time::timeout(
-            Duration::from_millis(HEADLESS_RUNTIME_BUDGET_MS + 5_000),
+            Duration::from_millis(HEADLESS_RUNTIME_BUDGET_MS + HEADLESS_OUTER_TIMEOUT_RESERVE_MS),
             tokio::task::spawn_blocking(move || {
                 Self::fetch_headless_runtime_data_blocking(seed_paths)
             }),
@@ -2518,7 +2706,7 @@ with sync_playwright() as p:
                 .map_err(|error| -> Box<dyn std::error::Error + Send + Sync> { Box::new(error) })?,
             Err(_) => Err(format!(
                 "headless runtime budget exceeded after {}ms",
-                HEADLESS_RUNTIME_BUDGET_MS + 5_000
+                HEADLESS_RUNTIME_BUDGET_MS + HEADLESS_OUTER_TIMEOUT_RESERVE_MS
             )
             .into()),
         }
@@ -2921,7 +3109,7 @@ with sync_playwright() as p:
             }
             Err(error) => {
                 let error_text = error.to_string();
-                skip_playwright_fallback = error_text.contains("headless runtime budget exceeded");
+                skip_playwright_fallback = Self::is_internal_runtime_budget_error(&error_text);
                 runtime_failure_contexts.push(format!("headless={error_text}"));
                 warn!(error = %error, "Winline: headless DOM extraction failed, falling back to Playwright DOM extraction");
             }
@@ -3013,11 +3201,14 @@ with sync_playwright() as p:
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        HeadlessRouteMetric, WinlineParser, BOOTSTRAP_WEBSCRIPT_PATH, HEADLESS_DOM_DIAGNOSTICS_JS,
-        HEADLESS_EXPENSIVE_ROUTE_MS, HEADLESS_EXTRACT_JS, HEADLESS_HYDRATION_RETRY_ATTEMPTS,
-        HEADLESS_HYDRATION_RETRY_DELAY_MS, HEADLESS_LIVE_FANOUT_BUDGET_MS,
-        HEADLESS_NAVIGATION_TIMEOUT_MS, HEADLESS_PREMATCH_FANOUT_BUDGET_MS,
+     use super::{
+          HeadlessRouteMetric, WinlineParser, BOOTSTRAP_WEBSCRIPT_PATH, DISCOVERY_FALLBACK_URL,
+          DISCOVERY_URL, HEADLESS_DOM_DIAGNOSTICS_JS,
+           HEADLESS_BLOCKER_ROUTE_STREAK_LIMIT,
+           HEADLESS_EFFECTIVE_RUNTIME_BUDGET_MS, HEADLESS_EXPENSIVE_ROUTE_MS, HEADLESS_EXTRACT_JS,
+          HEADLESS_HYDRATION_RETRY_ATTEMPTS, HEADLESS_HYDRATION_RETRY_DELAY_MS,
+         HEADLESS_LIVE_FANOUT_BUDGET_MS, HEADLESS_NAVIGATION_TIMEOUT_MS,
+        HEADLESS_OUTER_TIMEOUT_RESERVE_MS, HEADLESS_PREMATCH_FANOUT_BUDGET_MS,
         HEADLESS_ROUTE_GUARD_MS, HEADLESS_RUNTIME_BUDGET_MS, HEADLESS_SCROLL_ROUNDS,
         HEADLESS_STABLE_EMPTY_ROUTE_REPEAT_LIMIT, HEADLESS_WAIT_MS, LIVE_URL,
     };
@@ -3275,11 +3466,17 @@ mod tests {
     #[test]
     fn runtime_route_guard_requires_minimum_remaining_budget() {
         let started = Instant::now()
-            - Duration::from_millis(HEADLESS_RUNTIME_BUDGET_MS - HEADLESS_ROUTE_GUARD_MS + 500);
+            - Duration::from_millis(
+                HEADLESS_EFFECTIVE_RUNTIME_BUDGET_MS.saturating_sub(HEADLESS_ROUTE_GUARD_MS) + 500,
+            );
         assert!(!WinlineParser::runtime_budget_allows_next_route(started));
 
         let started = Instant::now()
-            - Duration::from_millis(HEADLESS_RUNTIME_BUDGET_MS - HEADLESS_ROUTE_GUARD_MS - 500);
+            - Duration::from_millis(
+                HEADLESS_EFFECTIVE_RUNTIME_BUDGET_MS
+                    .saturating_sub(HEADLESS_ROUTE_GUARD_MS)
+                    .saturating_sub(500),
+            );
         assert!(WinlineParser::runtime_budget_allows_next_route(started));
     }
 
@@ -3438,6 +3635,39 @@ mod tests {
     }
 
     #[test]
+    fn returns_partial_before_next_phase_after_single_slow_route_when_budget_is_tight() {
+        let metrics = vec![HeadlessRouteMetric {
+            phase: "live",
+            path: "/live/sport/futbol".into(),
+            sport: Sport::Football,
+            status: "ok",
+            payload_items: 12,
+            added_events: 4,
+            navigation_ms: 6_200,
+            extraction_ms: 5_100,
+            collect_ms: 5,
+            total_ms: 12_300,
+            expensive: true,
+        }];
+        let events = vec![shared::Event {
+            id: "winline-live-tight-budget".into(),
+            sport: Sport::Football,
+            league: "Test".into(),
+            home_team: "A".into(),
+            away_team: "B".into(),
+            start_time: None,
+            is_live: true,
+            bookmaker_slug: "winline".into(),
+            raw_url: None,
+            extra: std::collections::HashMap::new(),
+        }];
+
+        assert!(WinlineParser::should_return_partial_before_phase(
+            &events, 18_000, 11_500, &metrics,
+        ));
+    }
+
+    #[test]
     fn aborts_empty_next_phase_startup_when_budget_is_already_too_tight() {
         let metrics = vec![
             HeadlessRouteMetric {
@@ -3506,7 +3736,9 @@ mod tests {
     #[test]
     fn live_phase_navigation_uses_deadline_capped_helper() {
         let source = include_str!("winline.rs");
-        assert!(source.contains("match helper.navigate_and_wait_with_timeout_and_deadline(\n            LIVE_URL,"));
+        assert!(source.contains(
+            "match helper.navigate_and_wait_with_timeout_and_deadline(\n            LIVE_URL,"
+        ));
         assert!(source.contains("let tab = match helper.navigate_and_wait_with_timeout_and_deadline(\n                &url,"));
     }
 
@@ -3521,13 +3753,22 @@ mod tests {
     }
 
     #[test]
-    fn runtime_deadline_matches_global_runtime_budget() {
+    fn runtime_deadline_stays_inside_outer_timeout_reserve() {
         let started = Instant::now() - Duration::from_millis(250);
         let remaining = WinlineParser::runtime_deadline(started)
             .saturating_duration_since(Instant::now())
             .as_millis() as u64;
-        assert!(remaining <= HEADLESS_RUNTIME_BUDGET_MS);
-        assert!(remaining >= HEADLESS_RUNTIME_BUDGET_MS.saturating_sub(500));
+        assert!(remaining <= HEADLESS_EFFECTIVE_RUNTIME_BUDGET_MS);
+        assert!(remaining >= HEADLESS_EFFECTIVE_RUNTIME_BUDGET_MS.saturating_sub(500));
+    }
+
+    #[test]
+    fn outer_timeout_reserve_is_positive() {
+        assert!(HEADLESS_RUNTIME_BUDGET_MS > HEADLESS_OUTER_TIMEOUT_RESERVE_MS);
+        assert_eq!(
+            HEADLESS_EFFECTIVE_RUNTIME_BUDGET_MS,
+            HEADLESS_RUNTIME_BUDGET_MS - HEADLESS_OUTER_TIMEOUT_RESERVE_MS
+        );
     }
 
     #[test]
@@ -3605,6 +3846,63 @@ mod tests {
         });
 
         assert!(WinlineParser::should_abort_empty_route_early(&diagnostics));
+    }
+
+    #[test]
+    fn hydration_retry_aborts_on_first_diagnostic_attempt_when_runtime_blocker_is_present() {
+        let diagnostics = serde_json::json!({
+            "route": {
+                "pathname": "/stavki/sport/futbol"
+            },
+            "counts": {
+                "hydratedRoots": 0,
+                "eventLinks": 0,
+                "routeLinkNodes": 52,
+                "shellNodes": 5
+            },
+            "runtime": {
+                "bodyTextLength": 1800,
+                "buttonCount": 4,
+                "blocker": {
+                    "kind": "captcha",
+                    "source": "body",
+                    "matchedText": "Please complete captcha"
+                }
+            }
+        });
+
+        assert!(WinlineParser::should_abort_hydration_retry_after_diagnostics(
+            &diagnostics,
+            1,
+        ));
+    }
+
+    #[test]
+    fn hydration_retry_keeps_shell_only_abort_gated_until_early_diagnostic_threshold() {
+        let diagnostics = serde_json::json!({
+            "route": {
+                "pathname": "/live/futbol"
+            },
+            "counts": {
+                "hydratedRoots": 0,
+                "eventLinks": 0,
+                "routeLinkNodes": 8,
+                "shellNodes": 5
+            },
+            "runtime": {
+                "bodyTextLength": 220,
+                "buttonCount": 0
+            }
+        });
+
+        assert!(!WinlineParser::should_abort_hydration_retry_after_diagnostics(
+            &diagnostics,
+            1,
+        ));
+        assert!(WinlineParser::should_abort_hydration_retry_after_diagnostics(
+            &diagnostics,
+            super::HEADLESS_HYDRATION_EARLY_DIAGNOSTIC_ATTEMPT,
+        ));
     }
 
     #[test]
@@ -3928,6 +4226,108 @@ mod tests {
             )
         );
     }
+
+    #[test]
+    fn skips_only_discovery_route_readiness_timeout_for_prematch_bootstrap() {
+        assert!(WinlineParser::is_skippable_discovery_bootstrap_navigation_error(
+            DISCOVERY_URL,
+            "headless navigation readiness timeout after 6000ms for https://winline.ru/stavki/sport/futbol/"
+        ));
+        assert!(!WinlineParser::is_skippable_discovery_bootstrap_navigation_error(
+            DISCOVERY_FALLBACK_URL,
+            "headless navigation readiness timeout after 6000ms for https://winline.ru/football"
+        ));
+        assert!(!WinlineParser::is_skippable_discovery_bootstrap_navigation_error(
+            DISCOVERY_URL,
+            "cloudflare challenge detected"
+        ));
+    }
+
+    #[test]
+    fn classifies_new_start_budget_errors_as_internal_runtime_budget() {
+        assert!(WinlineParser::is_internal_runtime_budget_error(
+            "headless runtime budget exceeded after 75000ms"
+        ));
+        assert!(WinlineParser::is_internal_runtime_budget_error(
+            "headless navigation start budget exhausted before navigate for https://winline.ru/live (remaining=850ms, required=1000ms)"
+        ));
+        assert!(WinlineParser::is_internal_runtime_budget_error(
+            "headless runtime empty before prematch bootstrap under tight budget: budget=live_phase_empty_tight_budget"
+        ));
+        assert!(!WinlineParser::is_internal_runtime_budget_error(
+            "cloudflare challenge detected"
+        ));
+    }
+
+    #[test]
+    fn recognizes_useful_empty_route_blocker_signals() {
+        assert!(WinlineParser::is_useful_empty_route_blocker_signal(
+            "blocker=captcha@body:test"
+        ));
+        assert!(WinlineParser::is_useful_empty_route_blocker_signal(
+            "status=route_ready_shell_only,route=/live/futbol"
+        ));
+        assert!(WinlineParser::is_useful_empty_route_blocker_signal(
+            "budget=runtime_deadline"
+        ));
+        assert!(!WinlineParser::is_useful_empty_route_blocker_signal("route=/live/futbol"));
+        assert!(!WinlineParser::is_useful_empty_route_blocker_signal("   "));
+    }
+
+    #[test]
+    fn blocker_route_streak_stops_phase_at_limit() {
+        assert!(!WinlineParser::should_stop_phase_after_blocker_streak(
+            HEADLESS_BLOCKER_ROUTE_STREAK_LIMIT.saturating_sub(1)
+        ));
+        assert!(WinlineParser::should_stop_phase_after_blocker_streak(
+            HEADLESS_BLOCKER_ROUTE_STREAK_LIMIT
+        ));
+    }
+
+    #[test]
+    fn derives_same_live_route_family_for_both_live_variants() {
+        assert_eq!(
+            WinlineParser::live_route_family_key("/live/futbol").as_deref(),
+            Some("futbol")
+        );
+        assert_eq!(
+            WinlineParser::live_route_family_key("/live/sport/futbol").as_deref(),
+            Some("futbol")
+        );
+        assert_eq!(
+            WinlineParser::live_route_family_key("/stavki/sport/futbol"),
+            None
+        );
+    }
+
+    #[test]
+    fn only_shell_only_empty_status_skips_sibling_live_variant() {
+        assert!(WinlineParser::should_skip_live_route_family_after_empty_shell(
+            Some("status=route_ready_shell_only,route=/live/futbol")
+        ));
+        assert!(WinlineParser::should_skip_live_route_family_after_empty_shell(
+            Some("status=shell_only_no_event_cards,route=/live/futbol")
+        ));
+        assert!(!WinlineParser::should_skip_live_route_family_after_empty_shell(
+            Some("blocker=captcha@body:test")
+        ));
+        assert!(!WinlineParser::should_skip_live_route_family_after_empty_shell(
+            Some("budget=runtime_deadline")
+        ));
+    }
+
+    #[test]
+    fn runtime_budget_starts_before_headless_helper_initialization() {
+        let source = include_str!("winline.rs");
+        let runtime_started_pos = source
+            .find("let runtime_started = Instant::now();")
+            .expect("runtime_started marker");
+        let helper_new_pos = source
+            .find("let helper = HeadlessChromeHelper::new()?;")
+            .expect("helper init marker");
+
+        assert!(runtime_started_pos < helper_new_pos);
+    }
 }
 
 #[async_trait]
@@ -3984,5 +4384,30 @@ impl BookmakerParser for WinlineParser {
 
     fn user_agent(&self) -> &str {
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+    }
+
+    fn readiness(&self) -> Option<ParserReadiness> {
+        Some(ParserReadiness {
+            stage: ParserReadinessStage::Production,
+            production_enabled: true,
+            self_check_available: true,
+            checks: vec![
+                ParserDiagnosticCheck {
+                    code: "headless_runtime_path_enabled".to_string(),
+                    severity: DiagnosticSeverity::Pass,
+                    message: "Primary path uses headless Chrome with DOM hydration and Playwright fallback.".to_string(),
+                },
+                ParserDiagnosticCheck {
+                    code: "headless_runtime_timeout_configured".to_string(),
+                    severity: DiagnosticSeverity::Pass,
+                    message: format!("Runtime budget: {}ms, route guard: {}ms.", HEADLESS_RUNTIME_BUDGET_MS, HEADLESS_ROUTE_GUARD_MS),
+                },
+                ParserDiagnosticCheck {
+                    code: "headless_hydration_retry_enabled".to_string(),
+                    severity: DiagnosticSeverity::Pass,
+                    message: format!("Hydration retries: {} attempts with {}ms delay.", HEADLESS_HYDRATION_RETRY_ATTEMPTS, HEADLESS_HYDRATION_RETRY_DELAY_MS),
+                },
+            ],
+        })
     }
 }

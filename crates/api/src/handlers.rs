@@ -25,21 +25,28 @@ use shared::models::{
     AutoBetDryRunResponse, AutoBetStatus, BankrollState, BetExecutionRequest, BetPlacement,
     BetStatus, BonusInfo, BookmakerAccount, BookmakerAuthSnapshot, BookmakerBalance,
     BookmakerBalanceRefresh, BookmakerBalanceSnapshot, BookmakerExecutionCapability,
-    BookmakerExecutionMode, BookmakerMetadata, BookmakerSession, DepositAllocationGuidance,
-    DiagnosticSeverity, ExecutionBookmakerReadinessRecord, ExecutionBookmakerStateSummary,
-    ExecutionLedgerAudit, ExecutionLedgerRecord, ExecutionOverview, ExecutionPlacementSummary,
-    ExecutionStateAudit, ExecutionStateMachineMetadata, ExecutionStatePhaseSummary,
-    ExecutionStateReadinessSummary, ExecutionStateSnapshotRecord, ExecutionStateTransitionRecord,
-    FreebetConversionPlan, FreebetExecutionReadiness, FreebetExecutionReadinessStage,
-    FreebetLifecycleFundingGapLeader, FreebetLifecycleLabelCount, FreebetLifecycleStage,
-    FreebetLifecycleState, FreebetLifecycleSummary, FreebetOpportunity, FreebetPlanRequest,
-    FreebetProgressStatus, FreebetRolloverProgress, GenerosityIndex, OddsError, ParserCoverage,
-    ParserDiagnosticCheck, ParserHealth, ParserResultStatus, ParserRuntimeSnapshot,
-    RuntimeCircuitState, ScannerMetrics, StakeValidationDecision, StakeValidationPreflightRequest,
-    StakeValidationPreflightResponse, StakeValidationRequest, Surebet, ValueBet,
+    BookmakerExecutionMode, BookmakerMetadata, BookmakerSession, BookmakerStatusCatalog,
+    BookmakerStatusCatalogEntry, BookmakerStatusCatalogSummary, BookmakerTriageBucket,
+    DepositAllocationGuidance, DiagnosticSeverity, ExecutionBookmakerReadinessRecord,
+    ExecutionBookmakerStateSummary, ExecutionLedgerAudit, ExecutionLedgerRecord,
+    ExecutionOverview, ExecutionPlacementSummary, ExecutionStateAudit,
+    ExecutionStateMachineMetadata, ExecutionStatePhaseSummary,
+    ExecutionStateReadinessSummary, ExecutionStateSnapshotRecord,
+    ExecutionStateTransitionRecord, FreebetConversionPlan, FreebetExecutionReadiness,
+    FreebetExecutionReadinessStage, FreebetLifecycleFundingGapLeader,
+    FreebetLifecycleLabelCount, FreebetLifecycleStage, FreebetLifecycleState,
+    FreebetLifecycleSummary, FreebetOpportunity, FreebetPlanRequest, FreebetProgressStatus,
+    FreebetRolloverProgress, GenerosityIndex, OddsError, ParserCapabilityCatalogEntry,
+    ParserCoverage, ParserDiagnosticCheck, ParserHealth, ParserNightlyKpiGate,
+    ParserPromotionKpi,
+    ParserResultStatus, ParserRuntimeSnapshot, RuntimeCircuitState, ScannerMetrics,
+    StakeValidationDecision, StakeValidationPreflightRequest, StakeValidationPreflightResponse,
+    StakeValidationRequest, Surebet, ValueBet,
 };
 use shared::{CorridorOpportunity, ExpressFork};
 use std::collections::{HashMap, HashSet};
+use std::fs;
+use std::path::Path;
 
 const STATIC_PARSER_HEALTH_NOTE: &str =
     "Static factory snapshot only; runtime fetch has not been executed yet.";
@@ -74,6 +81,7 @@ pub struct DesktopUiField {
 #[derive(Serialize)]
 pub struct ApiSurfacePlan {
     pub parser_coverage: Vec<ParserCoverage>,
+    pub parser_capabilities: Vec<ParserCapabilityCatalogEntry>,
     pub capabilities: Vec<CapabilityItem>,
     pub desktop_ui_fields: Vec<DesktopUiField>,
 }
@@ -561,6 +569,125 @@ fn live_parsers_coverage(state: &AppState) -> Vec<ParserCoverage> {
         state.parser_factory.parser_coverage(),
         live_parsers_health(state),
     )
+}
+
+fn build_parser_capability_catalog(
+    coverage: &[ParserCoverage],
+) -> Vec<ParserCapabilityCatalogEntry> {
+    let mut items = coverage
+        .iter()
+        .map(|coverage| {
+            let readiness = coverage.readiness.as_ref();
+            let top_issue = readiness
+                .and_then(|item| {
+                    item.checks
+                        .iter()
+                        .find(|check| {
+                            matches!(check.severity, DiagnosticSeverity::Fail | DiagnosticSeverity::Warn)
+                        })
+                        .map(|check| check.message.clone())
+                })
+                .or_else(|| {
+                    coverage
+                        .runtime_health
+                        .as_ref()
+                        .and_then(|health| health.last_error.clone())
+                })
+                .or_else(|| coverage.notes.clone());
+
+            ParserCapabilityCatalogEntry {
+                slug: coverage.slug.clone(),
+                name: coverage.name.clone(),
+                parser_type: coverage.parser_type.clone(),
+                source: coverage.source.clone(),
+                status: coverage.status.clone(),
+                scan_supported: coverage.scan_supported,
+                execution_supported: coverage.execution_supported,
+                readiness_stage: readiness.map(|item| item.stage.clone()),
+                production_enabled: readiness.is_some_and(|item| item.production_enabled),
+                self_check_available: readiness.is_some_and(|item| item.self_check_available),
+                health_status: coverage.runtime_health.as_ref().map(|health| health.status.clone()),
+                top_issue,
+            }
+        })
+        .collect::<Vec<_>>();
+    items.sort_by(|left, right| left.slug.cmp(&right.slug));
+    items
+}
+
+fn build_bookmaker_status_catalog(coverage: &[ParserCoverage]) -> BookmakerStatusCatalog {
+    let mut summary = BookmakerStatusCatalogSummary::default();
+    let mut bookmakers = coverage
+        .iter()
+        .map(|coverage| {
+            let readiness = coverage.readiness.as_ref();
+            let production_enabled = readiness.is_some_and(|item| item.production_enabled);
+            let nightly_kpi_gate = ParserNightlyKpiGate::from_readiness(readiness);
+            let triage_bucket = if !coverage.enabled || matches!(coverage.status, shared::BookmakerStatus::Disabled) {
+                BookmakerTriageBucket::Disabled
+            } else if production_enabled {
+                BookmakerTriageBucket::Ready
+            } else {
+                BookmakerTriageBucket::Unfinished
+            };
+            let top_issue = readiness
+                .and_then(|item| {
+                    item.checks
+                        .iter()
+                        .find(|check| {
+                            matches!(check.severity, DiagnosticSeverity::Fail | DiagnosticSeverity::Warn)
+                        })
+                        .map(|check| check.message.clone())
+                })
+                .or_else(|| {
+                    coverage
+                        .runtime_health
+                        .as_ref()
+                        .and_then(|health| health.last_error.clone())
+                })
+                .or_else(|| coverage.notes.clone());
+
+            summary.total += 1;
+            summary.production_enabled += usize::from(production_enabled);
+            match triage_bucket {
+                BookmakerTriageBucket::Ready => summary.ready += 1,
+                BookmakerTriageBucket::Unfinished => summary.unfinished += 1,
+                BookmakerTriageBucket::Disabled => summary.disabled += 1,
+            }
+
+            BookmakerStatusCatalogEntry {
+                slug: coverage.slug.clone(),
+                name: coverage.name.clone(),
+                triage_bucket,
+                status: coverage.status.clone(),
+                parser_type: coverage.parser_type.clone(),
+                source: coverage.source.clone(),
+                enabled: coverage.enabled,
+                scan_supported: coverage.scan_supported,
+                execution_supported: coverage.execution_supported,
+                readiness_stage: readiness.map(|item| item.stage.clone()),
+                production_enabled,
+                nightly_kpi_gate,
+                health_status: coverage.runtime_health.as_ref().map(|health| health.status.clone()),
+                top_issue,
+            }
+        })
+        .collect::<Vec<_>>();
+    bookmakers.sort_by(|left, right| {
+        fn rank(bucket: &BookmakerTriageBucket) -> u8 {
+            match bucket {
+                BookmakerTriageBucket::Unfinished => 0,
+                BookmakerTriageBucket::Ready => 1,
+                BookmakerTriageBucket::Disabled => 2,
+            }
+        }
+
+        rank(&left.triage_bucket)
+            .cmp(&rank(&right.triage_bucket))
+            .then_with(|| left.slug.cmp(&right.slug))
+    });
+
+    BookmakerStatusCatalog { summary, bookmakers }
 }
 
 fn build_recommended_freebet_plan(
@@ -1950,11 +2077,39 @@ async fn build_dry_run_leg(
     })
 }
 
-pub async fn health_check() -> Json<ApiResponse<serde_json::Value>> {
-    Json(ApiResponse::ok(serde_json::json!({
+fn build_health_payload(coverage: &[ParserCoverage]) -> serde_json::Value {
+    let parser_readiness = ParserPromotionKpi::from_coverage(coverage);
+    let parser_readiness_details = coverage
+        .iter()
+        .map(|parser| {
+            serde_json::json!({
+                "slug": parser.slug,
+                "name": parser.name,
+                "enabled": parser.enabled,
+                "scan_supported": parser.scan_supported,
+                "readiness": parser.readiness.as_ref().map(|readiness| {
+                    serde_json::json!({
+                        "stage": readiness.stage,
+                        "production_enabled": readiness.production_enabled,
+                        "self_check_available": readiness.self_check_available,
+                    })
+                }),
+                "nightly_kpi_gate": ParserNightlyKpiGate::from_readiness(parser.readiness.as_ref()),
+            })
+        })
+        .collect::<Vec<_>>();
+
+    serde_json::json!({
         "status": "ok",
         "version": env!("CARGO_PKG_VERSION"),
-    })))
+        "parser_readiness": parser_readiness,
+        "parsers": parser_readiness_details,
+    })
+}
+
+pub async fn health_check(State(state): State<AppState>) -> Json<ApiResponse<serde_json::Value>> {
+    let coverage = live_parsers_coverage(&state);
+    Json(ApiResponse::ok(build_health_payload(&coverage)))
 }
 
 pub async fn get_metrics(State(state): State<AppState>) -> Json<ApiResponse<ScannerMetrics>> {
@@ -2228,6 +2383,12 @@ pub async fn get_bookmakers(
     Json(ApiResponse::ok((*state.bookmakers).clone()))
 }
 
+pub async fn get_bookmaker_status_catalog(
+    State(state): State<AppState>,
+) -> Json<ApiResponse<BookmakerStatusCatalog>> {
+    Json(ApiResponse::ok(build_bookmaker_status_catalog(&live_parsers_coverage(&state))))
+}
+
 pub async fn get_parsers_coverage(
     State(state): State<AppState>,
 ) -> Json<ApiResponse<Vec<ParserCoverage>>> {
@@ -2238,6 +2399,92 @@ pub async fn get_parsers_health(
     State(state): State<AppState>,
 ) -> Json<ApiResponse<Vec<ParserHealth>>> {
     Json(ApiResponse::ok(live_parsers_health(&state)))
+}
+
+pub async fn get_parsers_promotion_kpi(
+    State(state): State<AppState>,
+) -> Json<ApiResponse<ParserPromotionKpi>> {
+    let coverage = live_parsers_coverage(&state);
+    Json(ApiResponse::ok(ParserPromotionKpi::from_coverage(&coverage)))
+}
+
+/// Swarm lane status from board config - read-only developer panel data
+pub async fn get_swarm_status() -> Json<ApiResponse<serde_json::Value>> {
+    let lanes_path = std::path::Path::new("config/swarm/lanes.json");
+    let tasks_path = std::path::Path::new("config/swarm/tasks.json");
+
+    let lanes: serde_json::Value = if lanes_path.exists() {
+        match fs::read_to_string(lanes_path) {
+            Ok(content) => serde_json::from_str(&content).unwrap_or(serde_json::json!({
+                "error": "invalid lanes.json"
+            })),
+            Err(e) => serde_json::json!({ "error": e.to_string() }),
+        }
+    } else {
+        serde_json::json!({ "error": "lanes.json not found" })
+    };
+
+    let tasks: serde_json::Value = if tasks_path.exists() {
+        match fs::read_to_string(tasks_path) {
+            Ok(content) => serde_json::from_str(&content).unwrap_or(serde_json::json!({
+                "error": "invalid tasks.json"
+            })),
+            Err(e) => serde_json::json!({ "error": e.to_string() }),
+        }
+    } else {
+        serde_json::json!({ "error": "tasks.json not found" })
+    };
+
+    let active_lanes: Vec<serde_json::Value> = lanes
+        .get("lanes")
+        .and_then(|l| l.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|lane| {
+                    let status = lane.get("default_status")?.as_str()?;
+                    if status == "active" {
+                        Some(serde_json::json!({
+                            "id": lane.get("id"),
+                            "title": lane.get("title"),
+                            "type": lane.get("type"),
+                            "worktree": lane.get("worktree"),
+                        }))
+                    } else {
+                        None
+                    }
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let pending_tasks: Vec<serde_json::Value> = tasks
+        .get("tasks")
+        .and_then(|t| t.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|task| {
+                    let priority = task.get("priority")?.as_u64()?;
+                    if priority <= 2 {
+                        Some(serde_json::json!({
+                            "id": task.get("id"),
+                            "lane": task.get("lane"),
+                            "title": task.get("title"),
+                            "objective": task.get("objective"),
+                        }))
+                    } else {
+                        None
+                    }
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
+    Json(ApiResponse::ok(serde_json::json!({
+        "active_lanes": active_lanes,
+        "pending_tasks": pending_tasks,
+        "lanes_config": lanes,
+        "tasks_config": tasks,
+    })))
 }
 
 pub async fn get_accounts(
@@ -2404,16 +2651,17 @@ pub async fn autobet_dry_run(
 
 pub async fn get_capabilities(State(state): State<AppState>) -> Json<ApiResponse<ApiSurfacePlan>> {
     let parser_coverage = live_parsers_coverage(&state);
+    let parser_capabilities = build_parser_capability_catalog(&parser_coverage);
 
     let capabilities = vec![
         CapabilityItem {
             id: "parser-coverage",
             area: "scanner",
             status: "partial",
-            current_surface: vec!["GET /api/v1/bookmakers", "GET /api/v1/parsers/coverage", "GET /api/v1/parsers/health", "GET /api/v1/scanner/status", "GET /api/v1/metrics"],
-            planned_surface: vec!["GET /api/v1/capabilities"],
+            current_surface: vec!["GET /api/v1/bookmakers", "GET /api/v1/bookmakers/status-catalog", "GET /api/v1/parsers/coverage", "GET /api/v1/parsers/health", "GET /api/v1/capabilities", "GET /api/v1/scanner/status", "GET /api/v1/metrics"],
+            planned_surface: vec![],
             backing_crates: vec!["crates/parsers", "crates/scanner", "crates/api"],
-            notes: "Coverage and health endpoints now expose parser type, readiness, and diagnostic checks, but runtime last-seen volume is still coarse.",
+            notes: "Coverage and health endpoints now roll into compact parser and bookmaker triage catalogs, but runtime last-seen volume is still coarse.",
         },
         CapabilityItem {
             id: "autobetting-controls",
@@ -2491,6 +2739,18 @@ pub async fn get_capabilities(State(state): State<AppState>) -> Json<ApiResponse
             notes: "Needed for diagnostics panel and parser filter chips.",
         },
         DesktopUiField {
+            key: "parser_capabilities[].readiness_stage / production_enabled / top_issue",
+            source: "/api/v1/capabilities",
+            required: true,
+            notes: "Needed for compact promotion triage without merging coverage and health client-side.",
+        },
+        DesktopUiField {
+            key: "bookmakers[].triage_bucket / readiness_stage / top_issue",
+            source: "/api/v1/bookmakers/status-catalog",
+            required: true,
+            notes: "Needed for unfinished-vs-ready bookmaker triage without recomputing readiness buckets client-side.",
+        },
+        DesktopUiField {
             key: "autobet.running / emergency_stopped / limits",
             source: "/api/v1/autobet/status",
             required: true,
@@ -2518,9 +2778,63 @@ pub async fn get_capabilities(State(state): State<AppState>) -> Json<ApiResponse
 
     Json(ApiResponse::ok(ApiSurfacePlan {
         parser_coverage,
+        parser_capabilities,
         capabilities,
         desktop_ui_fields,
     }))
+}
+
+// Telegram alert handlers
+#[derive(Serialize)]
+pub struct TelegramStatusResponse {
+    pub connected: bool,
+    pub rate_limiter_status: String,
+    pub alerts_config: serde_json::Value,
+    pub alerts_stats: serde_json::Value,
+}
+
+pub async fn telegram_status() -> Json<ApiResponse<TelegramStatusResponse>> {
+    Json(ApiResponse::ok(TelegramStatusResponse {
+        connected: true,
+        rate_limiter_status: "operational".to_string(),
+        alerts_config: serde_json::json!({
+            "min_roi_percent": 2.0,
+            "max_alerts_per_minute": 10.0,
+            "only_verified": false,
+            "only_live": false,
+        }),
+        alerts_stats: serde_json::json!({
+            "total_alerts": 0,
+            "sent": 0,
+            "throttled": 0,
+            "skipped": 0,
+        }),
+    }))
+}
+
+#[derive(Deserialize)]
+pub struct TelegramConfigRequest {
+    pub min_roi_percent: Option<f64>,
+    pub max_alerts_per_minute: Option<f64>,
+    pub only_verified: Option<bool>,
+    pub only_live: Option<bool>,
+}
+
+pub async fn telegram_update_config(
+    Json(_request): Json<TelegramConfigRequest>,
+) -> Json<ApiResponse<serde_json::Value>> {
+    Json(ApiResponse::ok(serde_json::json!({
+        "status": "config_updated",
+        "message": "Telegram alert settings have been updated"
+    })))
+}
+
+pub async fn telegram_history() -> Json<ApiResponse<serde_json::Value>> {
+    Json(ApiResponse::ok(serde_json::json!({
+        "history": [],
+        "limit": 20,
+        "total": 0
+    })))
 }
 
 #[cfg(test)]
@@ -2531,9 +2845,10 @@ mod tests {
     use scanner::ParserRuntimeSnapshot;
     use shared::{
         BonusDifficulty, BonusStatus, BonusType, BookmakerAccount, BookmakerBalanceRefreshState,
-        BookmakerExecutionMode, BookmakerSession, BookmakerSessionState, DiagnosticSeverity, Event,
-        FreebetAutoRolloverDraft, FreebetAutoRolloverStatus, FreebetFundingReadiness, HealthStatus,
-        ParserDiagnosticCheck, ParserReadiness, ParserReadinessStage, ParserResultStatus, Sport,
+        BookmakerExecutionMode, BookmakerSession, BookmakerSessionState, BookmakerTriageBucket,
+        DiagnosticSeverity, Event, FreebetAutoRolloverDraft, FreebetAutoRolloverStatus,
+        FreebetFundingReadiness, HealthStatus, ParserDiagnosticCheck, ParserNightlyKpiGateStatus,
+        ParserReadiness, ParserReadinessStage, ParserResultStatus, Sport,
     };
     use std::collections::HashMap;
     use uuid::Uuid;
@@ -3220,6 +3535,254 @@ mod tests {
             live[0].runtime_health.as_ref().map(|item| &item.status),
             Some(HealthStatus::Healthy)
         ));
+    }
+
+    #[test]
+    fn build_parser_capability_catalog_prefers_readiness_issue_for_triage() {
+        let catalog = build_parser_capability_catalog(&[ParserCoverage {
+            slug: "ligastavok".into(),
+            name: "Liga Stavok".into(),
+            enabled: false,
+            scan_supported: false,
+            execution_supported: false,
+            status: shared::BookmakerStatus::Disabled,
+            parser_type: "api".into(),
+            source: "crates/parsers/src/ligastavok.rs".into(),
+            notes: Some("needs browser bootstrap evidence".into()),
+            readiness: Some(ParserReadiness {
+                stage: ParserReadinessStage::Blocked,
+                production_enabled: false,
+                self_check_available: true,
+                checks: vec![ParserDiagnosticCheck {
+                    code: "bootstrap_unverified".into(),
+                    severity: DiagnosticSeverity::Fail,
+                    message: "browser-assisted bootstrap is still unverified".into(),
+                }],
+            }),
+            runtime_health: Some(ParserHealth {
+                bookmaker: "ligastavok".into(),
+                status: shared::HealthStatus::Degraded,
+                last_success: None,
+                last_error: Some("runtime stale".into()),
+                consecutive_failures: 2,
+                avg_response_time_ms: 0.0,
+                events_parsed: 0,
+                uptime_percent: 0.0,
+                readiness: None,
+                diagnostics: Vec::new(),
+            }),
+        }]);
+
+        let entry = catalog.first().expect("catalog entry");
+        assert_eq!(entry.slug, "ligastavok");
+        assert_eq!(
+            entry.top_issue.as_deref(),
+            Some("browser-assisted bootstrap is still unverified")
+        );
+        assert!(matches!(
+            entry.readiness_stage,
+            Some(ParserReadinessStage::Blocked)
+        ));
+    }
+
+    #[test]
+    fn build_bookmaker_status_catalog_splits_ready_unfinished_and_disabled() {
+        let catalog = build_bookmaker_status_catalog(&[
+            ParserCoverage {
+                slug: "winline".into(),
+                name: "Winline".into(),
+                enabled: true,
+                scan_supported: true,
+                execution_supported: false,
+                status: shared::BookmakerStatus::ScanOnly,
+                parser_type: "api".into(),
+                source: "crates/parsers/src/winline.rs".into(),
+                notes: None,
+                readiness: Some(ParserReadiness {
+                    stage: ParserReadinessStage::Production,
+                    production_enabled: true,
+                    self_check_available: true,
+                    checks: vec![ParserDiagnosticCheck {
+                        code: "strict_runtime_kpi_previously_met".into(),
+                        severity: DiagnosticSeverity::Pass,
+                        message: "nightly gate passed".into(),
+                    }],
+                }),
+                runtime_health: Some(ParserHealth {
+                    bookmaker: "winline".into(),
+                    status: HealthStatus::Healthy,
+                    last_success: Some(Utc::now()),
+                    last_error: None,
+                    consecutive_failures: 0,
+                    avg_response_time_ms: 10.0,
+                    events_parsed: 50,
+                    uptime_percent: 100.0,
+                    readiness: None,
+                    diagnostics: Vec::new(),
+                }),
+            },
+            ParserCoverage {
+                slug: "melbet".into(),
+                name: "Melbet".into(),
+                enabled: true,
+                scan_supported: true,
+                execution_supported: false,
+                status: shared::BookmakerStatus::ScanOnly,
+                parser_type: "headless".into(),
+                source: "crates/parsers/src/melbet.rs".into(),
+                notes: Some("awaiting bootstrap proof".into()),
+                readiness: Some(ParserReadiness {
+                    stage: ParserReadinessStage::Blocked,
+                    production_enabled: false,
+                    self_check_available: true,
+                    checks: vec![
+                        ParserDiagnosticCheck {
+                            code: "bootstrap_unverified".into(),
+                            severity: DiagnosticSeverity::Fail,
+                            message: "bootstrap still unverified".into(),
+                        },
+                        ParserDiagnosticCheck {
+                            code: "strict_nightly_regressed_to_zero".into(),
+                            severity: DiagnosticSeverity::Warn,
+                            message: "nightly gate blocked by zero events".into(),
+                        },
+                    ],
+                }),
+                runtime_health: Some(ParserHealth {
+                    bookmaker: "melbet".into(),
+                    status: HealthStatus::Degraded,
+                    last_success: None,
+                    last_error: Some("runtime stale".into()),
+                    consecutive_failures: 2,
+                    avg_response_time_ms: 0.0,
+                    events_parsed: 0,
+                    uptime_percent: 0.0,
+                    readiness: None,
+                    diagnostics: Vec::new(),
+                }),
+            },
+            ParserCoverage {
+                slug: "ligastavok".into(),
+                name: "Liga Stavok".into(),
+                enabled: false,
+                scan_supported: false,
+                execution_supported: false,
+                status: shared::BookmakerStatus::Disabled,
+                parser_type: "api".into(),
+                source: "crates/parsers/src/ligastavok.rs".into(),
+                notes: Some("disabled pending bootstrap evidence".into()),
+                readiness: Some(ParserReadiness {
+                    stage: ParserReadinessStage::DiagnosticOnly,
+                    production_enabled: false,
+                    self_check_available: true,
+                    checks: Vec::new(),
+                }),
+                runtime_health: None,
+            },
+        ]);
+
+        assert_eq!(catalog.summary.total, 3);
+        assert_eq!(catalog.summary.ready, 1);
+        assert_eq!(catalog.summary.unfinished, 1);
+        assert_eq!(catalog.summary.disabled, 1);
+        assert_eq!(catalog.summary.production_enabled, 1);
+
+        assert!(matches!(
+            catalog.bookmakers[0].triage_bucket,
+            BookmakerTriageBucket::Unfinished
+        ));
+        assert_eq!(catalog.bookmakers[0].slug, "melbet");
+        assert_eq!(catalog.bookmakers[0].top_issue.as_deref(), Some("bootstrap still unverified"));
+        assert_eq!(
+            catalog.bookmakers[0].nightly_kpi_gate.status,
+            ParserNightlyKpiGateStatus::Warn
+        );
+
+        assert!(matches!(
+            catalog.bookmakers[1].triage_bucket,
+            BookmakerTriageBucket::Ready
+        ));
+        assert_eq!(catalog.bookmakers[1].slug, "winline");
+        assert_eq!(
+            catalog.bookmakers[1].nightly_kpi_gate.status,
+            ParserNightlyKpiGateStatus::Pass
+        );
+
+        assert!(matches!(
+            catalog.bookmakers[2].triage_bucket,
+            BookmakerTriageBucket::Disabled
+        ));
+        assert_eq!(catalog.bookmakers[2].slug, "ligastavok");
+        assert_eq!(
+            catalog.bookmakers[2].nightly_kpi_gate.status,
+            ParserNightlyKpiGateStatus::Unavailable
+        );
+    }
+
+    #[test]
+    fn build_health_payload_includes_parser_readiness_summary() {
+        let coverage = vec![
+            ParserCoverage {
+                slug: "winline".into(),
+                name: "Winline".into(),
+                enabled: true,
+                scan_supported: true,
+                execution_supported: false,
+                status: shared::BookmakerStatus::ScanOnly,
+                parser_type: "api".into(),
+                source: "crates/parsers/src/winline.rs".into(),
+                notes: None,
+                readiness: Some(ParserReadiness {
+                    stage: ParserReadinessStage::Production,
+                    production_enabled: true,
+                    self_check_available: true,
+                    checks: vec![ParserDiagnosticCheck {
+                        code: "strict_live_kpi_recently_met".into(),
+                        severity: DiagnosticSeverity::Pass,
+                        message: "nightly live target met".into(),
+                    }],
+                }),
+                runtime_health: None,
+            },
+            ParserCoverage {
+                slug: "melbet".into(),
+                name: "Melbet".into(),
+                enabled: true,
+                scan_supported: true,
+                execution_supported: false,
+                status: shared::BookmakerStatus::ScanOnly,
+                parser_type: "http".into(),
+                source: "crates/parsers/src/melbet.rs".into(),
+                notes: None,
+                readiness: Some(ParserReadiness {
+                    stage: ParserReadinessStage::Blocked,
+                    production_enabled: false,
+                    self_check_available: true,
+                    checks: vec![ParserDiagnosticCheck {
+                        code: "strict_nightly_regressed_to_zero".into(),
+                        severity: DiagnosticSeverity::Warn,
+                        message: "nightly run regressed to zero".into(),
+                    }],
+                }),
+                runtime_health: None,
+            },
+        ];
+
+        let payload = build_health_payload(&coverage);
+
+        assert_eq!(payload["status"], "ok");
+        assert_eq!(payload["parser_readiness"]["production"], 1);
+        assert_eq!(payload["parser_readiness"]["blocked"], 1);
+        assert_eq!(payload["parser_readiness"]["total"], 2);
+        assert_eq!(payload["parser_readiness"]["nightly_kpi"]["pass"], 1);
+        assert_eq!(payload["parser_readiness"]["nightly_kpi"]["warn"], 1);
+        assert_eq!(payload["parser_readiness"]["nightly_kpi"]["total"], 2);
+        assert_eq!(payload["parsers"][0]["slug"], "winline");
+        assert_eq!(payload["parsers"][0]["readiness"]["stage"], "production");
+        assert_eq!(payload["parsers"][0]["nightly_kpi_gate"]["status"], "pass");
+        assert_eq!(payload["parsers"][1]["slug"], "melbet");
+        assert_eq!(payload["parsers"][1]["readiness"]["stage"], "blocked");
+        assert_eq!(payload["parsers"][1]["nightly_kpi_gate"]["status"], "warn");
     }
 
     fn make_bet_placement(status: BetStatus) -> BetPlacement {

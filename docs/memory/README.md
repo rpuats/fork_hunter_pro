@@ -14,6 +14,8 @@ This folder exists to reduce token waste and keep active engineering truth in sh
 - `DECISIONS.md` — accepted architectural and workflow decisions
 - `BACKLOG.md` — compact prioritized next work
 - `HANDOFF_TEMPLATE.md` — required shape for worker handoff
+- `AUTONOMY_LOOP.md` — self-assignment and self-driving lane protocol
+- `IDEA_GENERATOR.md` — compact bounded next-task idea pool
 
 ## Rules
 
@@ -29,6 +31,7 @@ This folder exists to reduce token waste and keep active engineering truth in sh
 3. `ACTIVE_LANES.md`
 4. `DECISIONS.md`
 5. `BACKLOG.md`
+6. `AUTONOMY_LOOP.md`
 
 ## Control plane
 
@@ -39,5 +42,5 @@ This folder exists to reduce token waste and keep active engineering truth in sh
 
 ## Current focus
 
-- Keep the 4 bookmaker lanes, coordinator, and rotating service lane in sync with `docs/onboarding/SWARM_STATUS.md`.
+- Keep the expanded bookmaker wave, coordinator, and rotating service lane in sync with `docs/onboarding/SWARM_STATUS.md`.
 - Use `config/swarm/tasks.json` for the compact task board.

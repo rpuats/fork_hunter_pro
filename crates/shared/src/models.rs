@@ -82,6 +82,63 @@ pub struct ParserCoverage {
     pub runtime_health: Option<ParserHealth>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ParserCapabilityCatalogEntry {
+    pub slug: String,
+    pub name: String,
+    pub parser_type: String,
+    pub source: String,
+    pub status: BookmakerStatus,
+    pub scan_supported: bool,
+    pub execution_supported: bool,
+    pub readiness_stage: Option<ParserReadinessStage>,
+    pub production_enabled: bool,
+    pub self_check_available: bool,
+    pub health_status: Option<HealthStatus>,
+    pub top_issue: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum BookmakerTriageBucket {
+    Ready,
+    Unfinished,
+    Disabled,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BookmakerStatusCatalogEntry {
+    pub slug: String,
+    pub name: String,
+    pub triage_bucket: BookmakerTriageBucket,
+    pub status: BookmakerStatus,
+    pub parser_type: String,
+    pub source: String,
+    pub enabled: bool,
+    pub scan_supported: bool,
+    pub execution_supported: bool,
+    pub readiness_stage: Option<ParserReadinessStage>,
+    pub production_enabled: bool,
+    pub nightly_kpi_gate: ParserNightlyKpiGate,
+    pub health_status: Option<HealthStatus>,
+    pub top_issue: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct BookmakerStatusCatalogSummary {
+    pub total: usize,
+    pub ready: usize,
+    pub unfinished: usize,
+    pub disabled: usize,
+    pub production_enabled: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BookmakerStatusCatalog {
+    pub summary: BookmakerStatusCatalogSummary,
+    pub bookmakers: Vec<BookmakerStatusCatalogEntry>,
+}
+
 impl BookmakerMetadata {
     pub fn new(
         slug: impl Into<String>,
@@ -303,6 +360,147 @@ pub struct ParserHealth {
     pub uptime_percent: f64,
     pub readiness: Option<ParserReadiness>,
     pub diagnostics: Vec<ParserDiagnosticCheck>,
+}
+
+/// Compact parser promotion KPI strip for operator surfaces
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ParserPromotionKpi {
+    pub production: u32,
+    pub rollout_ready: u32,
+    pub diagnostic_only: u32,
+    pub blocked: u32,
+    pub total: u32,
+    pub nightly_kpi: ParserNightlyKpiSummary,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ParserNightlyKpiGateStatus {
+    Pass,
+    Warn,
+    Fail,
+    Unavailable,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ParserNightlyKpiGate {
+    pub status: ParserNightlyKpiGateStatus,
+    pub note: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ParserNightlyKpiSummary {
+    pub pass: u32,
+    pub warn: u32,
+    pub fail: u32,
+    pub unavailable: u32,
+    pub total: u32,
+}
+
+impl ParserPromotionKpi {
+    pub fn from_coverage(coverage: &[ParserCoverage]) -> Self {
+        let mut production = 0u32;
+        let mut rollout_ready = 0u32;
+        let mut diagnostic_only = 0u32;
+        let mut blocked = 0u32;
+        let mut nightly_kpi = ParserNightlyKpiSummary::default();
+
+        for c in coverage {
+            if let Some(ref readiness) = c.readiness {
+                match readiness.stage {
+                    ParserReadinessStage::Production => production += 1,
+                    ParserReadinessStage::RolloutReady => rollout_ready += 1,
+                    ParserReadinessStage::DiagnosticOnly => diagnostic_only += 1,
+                    ParserReadinessStage::Blocked => blocked += 1,
+                }
+            } else if c.enabled {
+                // Default enabled parsers to diagnostic_only if no readiness set
+                diagnostic_only += 1;
+            }
+
+            match ParserNightlyKpiGate::from_readiness(c.readiness.as_ref()).status {
+                ParserNightlyKpiGateStatus::Pass => nightly_kpi.pass += 1,
+                ParserNightlyKpiGateStatus::Warn => nightly_kpi.warn += 1,
+                ParserNightlyKpiGateStatus::Fail => nightly_kpi.fail += 1,
+                ParserNightlyKpiGateStatus::Unavailable => nightly_kpi.unavailable += 1,
+            }
+        }
+
+        let total = production + rollout_ready + diagnostic_only + blocked;
+        nightly_kpi.total = coverage.len() as u32;
+        Self {
+            production,
+            rollout_ready,
+            diagnostic_only,
+            blocked,
+            total,
+            nightly_kpi,
+        }
+    }
+}
+
+impl ParserNightlyKpiGate {
+    pub fn from_readiness(readiness: Option<&ParserReadiness>) -> Self {
+        let Some(readiness) = readiness else {
+            return Self {
+                status: ParserNightlyKpiGateStatus::Unavailable,
+                note: None,
+            };
+        };
+
+        let nightly_checks = readiness
+            .checks
+            .iter()
+            .filter(|check| is_nightly_kpi_check(check))
+            .collect::<Vec<_>>();
+
+        let pick_note = |severity: DiagnosticSeverity| {
+            nightly_checks
+                .iter()
+                .find(|check| check.severity == severity)
+                .map(|check| check.message.clone())
+        };
+
+        if nightly_checks.is_empty() {
+            return Self {
+                status: ParserNightlyKpiGateStatus::Unavailable,
+                note: None,
+            };
+        }
+
+        if let Some(note) = pick_note(DiagnosticSeverity::Fail) {
+            return Self {
+                status: ParserNightlyKpiGateStatus::Fail,
+                note: Some(note),
+            };
+        }
+
+        if let Some(note) = pick_note(DiagnosticSeverity::Warn) {
+            return Self {
+                status: ParserNightlyKpiGateStatus::Warn,
+                note: Some(note),
+            };
+        }
+
+        if let Some(note) = pick_note(DiagnosticSeverity::Pass) {
+            return Self {
+                status: ParserNightlyKpiGateStatus::Pass,
+                note: Some(note),
+            };
+        }
+
+        Self {
+            status: ParserNightlyKpiGateStatus::Unavailable,
+            note: nightly_checks.first().map(|check| check.message.clone()),
+        }
+    }
+}
+
+fn is_nightly_kpi_check(check: &ParserDiagnosticCheck) -> bool {
+    check.code.contains("nightly")
+        || check.code.contains("runtime_kpi")
+        || check.code.contains("live_kpi")
+        || check.code.contains("prematch_kpi")
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -1317,4 +1515,83 @@ pub struct FreebetLifecycleSummary {
     pub total_freebet_amount: f64,
     pub total_estimated_profit: f64,
     pub generated_at: DateTime<Utc>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn coverage_with_readiness(
+        slug: &str,
+        stage: ParserReadinessStage,
+        enabled: bool,
+        checks: Vec<ParserDiagnosticCheck>,
+    ) -> ParserCoverage {
+        ParserCoverage {
+            slug: slug.to_string(),
+            name: slug.to_string(),
+            enabled,
+            scan_supported: enabled,
+            execution_supported: false,
+            status: if enabled {
+                BookmakerStatus::ScanOnly
+            } else {
+                BookmakerStatus::Disabled
+            },
+            parser_type: "api".to_string(),
+            source: format!("crates/parsers/src/{slug}.rs"),
+            notes: None,
+            readiness: Some(ParserReadiness {
+                stage: stage.clone(),
+                production_enabled: matches!(stage, ParserReadinessStage::Production),
+                self_check_available: true,
+                checks,
+            }),
+            runtime_health: None,
+        }
+    }
+
+    #[test]
+    fn parser_promotion_kpi_counts_nightly_gate_statuses() {
+        let kpi = ParserPromotionKpi::from_coverage(&[
+            coverage_with_readiness(
+                "baltbet",
+                ParserReadinessStage::Production,
+                true,
+                vec![ParserDiagnosticCheck {
+                    code: "strict_live_kpi_recently_met".to_string(),
+                    severity: DiagnosticSeverity::Pass,
+                    message: "nightly passed".to_string(),
+                }],
+            ),
+            coverage_with_readiness(
+                "zenit",
+                ParserReadinessStage::RolloutReady,
+                true,
+                vec![ParserDiagnosticCheck {
+                    code: "strict_nightly_regressed_to_zero".to_string(),
+                    severity: DiagnosticSeverity::Warn,
+                    message: "nightly regressed".to_string(),
+                }],
+            ),
+            coverage_with_readiness(
+                "melbet",
+                ParserReadinessStage::Blocked,
+                false,
+                vec![ParserDiagnosticCheck {
+                    code: "bootstrap_unverified".to_string(),
+                    severity: DiagnosticSeverity::Fail,
+                    message: "not a nightly check".to_string(),
+                }],
+            ),
+        ]);
+
+        assert_eq!(kpi.production, 1);
+        assert_eq!(kpi.rollout_ready, 1);
+        assert_eq!(kpi.blocked, 1);
+        assert_eq!(kpi.nightly_kpi.pass, 1);
+        assert_eq!(kpi.nightly_kpi.warn, 1);
+        assert_eq!(kpi.nightly_kpi.unavailable, 1);
+        assert_eq!(kpi.nightly_kpi.total, 3);
+    }
 }

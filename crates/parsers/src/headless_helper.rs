@@ -39,6 +39,15 @@ const SELECTOR_READY_POST_WAIT_CAP_MS: u64 = 500;
 const SELECTOR_MISS_POST_WAIT_CAP_MS: u64 = 600;
 const SCROLL_STEP_WAIT_MS: u64 = 350;
 pub const SCROLL_PAGE_BUDGET_MS: u64 = SCROLL_STEP_WAIT_MS * 2;
+const NAVIGATION_START_BUDGET_MS: u64 = 1_000;
+const BOOTSTRAP_CAPTURE_ATTEMPTS: usize = 3;
+const BOOTSTRAP_CAPTURE_RETRY_DELAY_MS: u64 = 200;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum NavigationReadinessPolicy {
+    Default,
+    AllowCommittedShell,
+}
 
 impl HeadlessChromeHelper {
     pub fn new() -> Result<Self, Box<dyn std::error::Error + Send + Sync>> {
@@ -141,6 +150,26 @@ impl HeadlessChromeHelper {
         )
     }
 
+    /// Navigate to URL with profile, referer, timeout, and outer deadline.
+    pub fn navigate_with_profile_and_referer_with_timeout_and_deadline(
+        &self,
+        url: &str,
+        wait_ms: u64,
+        profile: HeadlessProfile,
+        referer: Option<&str>,
+        navigation_timeout_ms: u64,
+        deadline: Instant,
+    ) -> Result<Arc<headless_chrome::Tab>, Box<dyn std::error::Error + Send + Sync>> {
+        self.navigate_with_profile_and_referer_and_timeout(
+            url,
+            wait_ms,
+            profile,
+            referer,
+            Some(navigation_timeout_ms),
+            Some(deadline),
+        )
+    }
+
     fn navigate_with_profile_and_referer_and_timeout(
         &self,
         url: &str,
@@ -151,6 +180,7 @@ impl HeadlessChromeHelper {
         deadline: Option<Instant>,
     ) -> Result<Arc<headless_chrome::Tab>, Box<dyn std::error::Error + Send + Sync>> {
         let started = Instant::now();
+        Self::ensure_navigation_start_budget(url, "open_tab", deadline)?;
         let tab = self.browser.new_tab()?;
         let _ = tab.set_user_agent(
             profile.user_agent,
@@ -170,6 +200,7 @@ impl HeadlessChromeHelper {
             height: Some(profile.viewport.1 as f64),
         });
 
+        Self::ensure_navigation_start_budget(url, "navigate", deadline)?;
         debug!(url = url, "HeadlessChrome: navigating");
         tab.navigate_to(url)?;
         if let Some(timeout_ms) = navigation_timeout_ms {
@@ -272,12 +303,39 @@ impl HeadlessChromeHelper {
         }
     }
 
+    fn remaining_deadline_ms(deadline: Option<Instant>) -> Option<u64> {
+        deadline.map(|deadline| {
+            deadline
+                .saturating_duration_since(Instant::now())
+                .as_millis() as u64
+        })
+    }
+
+    fn ensure_navigation_start_budget(
+        url: &str,
+        stage: &str,
+        deadline: Option<Instant>,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        if let Some(remaining_budget_ms) = Self::remaining_deadline_ms(deadline) {
+            if remaining_budget_ms < NAVIGATION_START_BUDGET_MS {
+                return Err(format!(
+                    "headless navigation start budget exhausted before {} for {} (remaining={}ms, required={}ms)",
+                    stage, url, remaining_budget_ms, NAVIGATION_START_BUDGET_MS
+                )
+                .into());
+            }
+        }
+
+        Ok(())
+    }
+
     fn wait_for_navigation_readiness(
         tab: &headless_chrome::Tab,
         url: &str,
         timeout_ms: u64,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let deadline = Instant::now() + Duration::from_millis(timeout_ms.max(1));
+        let readiness_policy = Self::navigation_readiness_policy(url);
         let readiness_js = r#"(() => ({
             href: window.location.href || '',
             readyState: document.readyState || '',
@@ -304,10 +362,13 @@ impl HeadlessChromeHelper {
                     .and_then(|value| value.as_u64())
                     .unwrap_or_default();
 
-                let navigation_ready = matches!(ready_state, "interactive" | "complete")
-                    && href != "about:blank"
-                    && (!href.is_empty() || body_child_count > 0 || body_text_length > 0)
-                    && (body_child_count > 0 || body_text_length > 0);
+                let navigation_ready = Self::is_navigation_ready_for_policy(
+                    readiness_policy,
+                    ready_state,
+                    href,
+                    body_child_count,
+                    body_text_length,
+                );
                 if navigation_ready {
                     return Ok(());
                 }
@@ -325,9 +386,63 @@ impl HeadlessChromeHelper {
         }
     }
 
+    fn navigation_readiness_policy(url: &str) -> NavigationReadinessPolicy {
+        let normalized = url.trim_end_matches('/');
+        match normalized {
+            "https://winline.ru/stavki/sport/futbol" => {
+                NavigationReadinessPolicy::AllowCommittedShell
+            }
+            _ if Self::is_melbet_canonical_shell_route(normalized) => {
+                NavigationReadinessPolicy::AllowCommittedShell
+            }
+            _ if Self::is_melbet_sportsbook_shell_route(normalized) => {
+                NavigationReadinessPolicy::AllowCommittedShell
+            }
+            _ => NavigationReadinessPolicy::Default,
+        }
+    }
+
+    fn is_melbet_canonical_shell_route(url: &str) -> bool {
+        matches!(
+            url.to_ascii_lowercase().as_str(),
+            "https://melbet.ru/live"
+                | "https://melbet.ru/line"
+                | "https://melbet.ru/m/live"
+                | "https://melbet.ru/m/line"
+                | "https://m.melbet.com/live"
+                | "https://m.melbet.com/line"
+        )
+    }
+
+    fn is_melbet_sportsbook_shell_route(url: &str) -> bool {
+        let normalized = url.to_ascii_lowercase();
+        normalized.starts_with("https://sport.melbet.ru/")
+            && (normalized.contains("/partner/sportsbook/home")
+                || normalized.contains("/sportsbook/home"))
+    }
+
+    fn is_navigation_ready_for_policy(
+        policy: NavigationReadinessPolicy,
+        ready_state: &str,
+        href: &str,
+        body_child_count: u64,
+        body_text_length: u64,
+    ) -> bool {
+        let committed = matches!(ready_state, "interactive" | "complete")
+            && href != "about:blank"
+            && (!href.is_empty() || body_child_count > 0 || body_text_length > 0);
+
+        match policy {
+            NavigationReadinessPolicy::Default => {
+                committed && (body_child_count > 0 || body_text_length > 0)
+            }
+            NavigationReadinessPolicy::AllowCommittedShell => committed,
+        }
+    }
+
     /// Capture lightweight session bootstrap details without intercepting transport.
     pub fn capture_session_bootstrap(tab: &headless_chrome::Tab) -> Option<Value> {
-        Self::evaluate_json(
+        Self::evaluate_json_with_retry(
             tab,
             r#"(() => {
                 const storageToObject = (storage) => {
@@ -661,6 +776,8 @@ impl HeadlessChromeHelper {
                     appMarker: window.__kiloAppMarker || ''
                 };
             })()"#,
+            BOOTSTRAP_CAPTURE_ATTEMPTS,
+            BOOTSTRAP_CAPTURE_RETRY_DELAY_MS,
         )
     }
 
@@ -685,7 +802,7 @@ impl HeadlessChromeHelper {
 
     /// Capture lightweight runtime route/DOM state for parser diagnostics.
     pub fn capture_runtime_state(tab: &headless_chrome::Tab) -> Option<Value> {
-        Self::evaluate_json(
+        Self::evaluate_json_with_retry(
             tab,
             r#"(() => {
                 const count = (selector) => {
@@ -696,6 +813,25 @@ impl HeadlessChromeHelper {
                     }
                 };
                 const normalizeText = (value) => String(value || '').replace(/\s+/g, ' ').trim();
+                const bootstrapMarkers = [];
+                const bootstrapMarkerKeys = new Set();
+                const pushBootstrapMarker = (value) => {
+                    const normalizedValue = normalizeText(value);
+                    if (!normalizedValue || bootstrapMarkerKeys.has(normalizedValue)) return;
+                    bootstrapMarkerKeys.add(normalizedValue);
+                    bootstrapMarkers.push(normalizedValue);
+                };
+                const markRouteHint = (value, source) => {
+                    const normalizedValue = normalizeText(value);
+                    if (!normalizedValue) return;
+                    pushBootstrapMarker(`route:${source}:${normalizedValue}`);
+                    const lower = normalizedValue.toLowerCase();
+                    if (lower.includes('/live')) pushBootstrapMarker(`route_family:${source}:live`);
+                    if (lower.includes('/line')) pushBootstrapMarker(`route_family:${source}:line`);
+                    if (lower.includes('/ru/sport') || lower.includes('sport.melbet.ru') || lower.includes('sportsbook/home')) {
+                        pushBootstrapMarker(`route_family:${source}:sportsbook`);
+                    }
+                };
                 const detectBlocker = (href, title, bodyText) => {
                     const checks = [
                         { kind: 'captcha', pattern: /captcha|капча|каптча/i },
@@ -740,6 +876,69 @@ impl HeadlessChromeHelper {
                 const title = String(document.title || '');
                 const bodyText = normalizeText(document.body?.innerText || document.body?.textContent || '');
                 const blocker = detectBlocker(href, title, bodyText);
+                const historyState = (() => {
+                    try {
+                        return window.history?.state || null;
+                    } catch (_) {
+                        return null;
+                    }
+                })();
+                markRouteHint(href, 'href');
+                markRouteHint(window.location.pathname || '', 'path');
+                markRouteHint(window.location.search || '', 'search');
+                markRouteHint(window.location.hash || '', 'hash');
+                markRouteHint(document.referrer || '', 'referrer');
+                markRouteHint(historyState?.as || historyState?.url || historyState?.path, 'history');
+                markRouteHint(historyState?.initialRoute?.path, 'history_initial_route');
+                Array.from(document.querySelectorAll('iframe[src], a[href]'))
+                    .slice(0, 12)
+                    .forEach((node) => {
+                        const source = node.tagName.toLowerCase();
+                        const route = node.getAttribute('src') || node.getAttribute('href') || '';
+                        markRouteHint(route, source);
+                        if (source === 'iframe') {
+                            const lower = String(route || '').toLowerCase();
+                            if (lower.includes('sport.melbet.ru') || lower.includes('sportsbook/home')) {
+                                pushBootstrapMarker('iframe:sportsbook');
+                            }
+                        }
+                    });
+                ['ww-app-dsk', 'ww-feature-header-dsk', 'ww-feature-nav-bar-dsk', 'ww-feature-sport-menu-dsk', 'ww-feature-coupon-dsk', '#root', '#app', '[data-reactroot]', '[id="__next"]', '[id="__nuxt"]']
+                    .forEach((selector) => {
+                        try {
+                            if (document.querySelector(selector)) {
+                                pushBootstrapMarker(`shell:${selector}`);
+                            }
+                        } catch (_) {}
+                    });
+                const sportsbookRouteLinkCount = count('a[href*="/live"], a[href*="/line"], a[href*="/ru/sport"], a[href*="sport.melbet.ru"], iframe[src*="sport.melbet.ru"], iframe[src*="SportsBook/Home"]');
+                if (sportsbookRouteLinkCount > 0) {
+                    pushBootstrapMarker(`shell:route_links:${sportsbookRouteLinkCount}`);
+                }
+                if (title.toLowerCase().includes('melbet')) {
+                    pushBootstrapMarker('title:melbet');
+                }
+                if (bodyText.toLowerCase().includes('melbet') || bodyText.toLowerCase().includes('sport')) {
+                    pushBootstrapMarker('body:sportsbook_text');
+                }
+                if (window.$globalSettings) {
+                    pushBootstrapMarker('runtime:$globalSettings');
+                }
+                if (window.$P) {
+                    pushBootstrapMarker('runtime:$P');
+                }
+                if (window.$httpApi) {
+                    pushBootstrapMarker('runtime:$httpApi');
+                }
+                if (Number(window.$P?.Id || window.$globalSettings?.partner?.Id || 0) > 0) {
+                    pushBootstrapMarker('runtime:partnerId');
+                }
+                if (Number(window.$globalSettings?.language?.Id || 0) > 0) {
+                    pushBootstrapMarker('runtime:langId');
+                }
+                if (String(window.$globalSettings?.user?.CountryCode || '').trim()) {
+                    pushBootstrapMarker('runtime:countryCode');
+                }
 
                 return {
                     href,
@@ -761,8 +960,11 @@ impl HeadlessChromeHelper {
                     bodyTextSample: bodyText.slice(0, 220),
                     navigationEntry,
                     blocker,
+                    bootstrapMarkers: bootstrapMarkers.slice(0, 12),
                 };
             })()"#,
+            BOOTSTRAP_CAPTURE_ATTEMPTS,
+            BOOTSTRAP_CAPTURE_RETRY_DELAY_MS,
         )
     }
 
@@ -1061,7 +1263,10 @@ pub fn extract_odds_from_text(text: &str) -> Vec<f64> {
 
 #[cfg(test)]
 mod tests {
-    use super::{HeadlessChromeHelper, SELECTOR_READY_POST_WAIT_CAP_MS};
+    use super::{
+        HeadlessChromeHelper, NavigationReadinessPolicy, NAVIGATION_START_BUDGET_MS,
+        SELECTOR_READY_POST_WAIT_CAP_MS,
+    };
     use std::time::{Duration, Instant};
 
     #[test]
@@ -1093,5 +1298,86 @@ mod tests {
             HeadlessChromeHelper::cap_with_deadline(500, Some(deadline)),
             0
         );
+    }
+
+    #[test]
+    fn navigation_start_budget_stays_open_with_enough_remaining_time() {
+        let deadline = Instant::now() + Duration::from_millis(NAVIGATION_START_BUDGET_MS + 250);
+        assert!(HeadlessChromeHelper::ensure_navigation_start_budget(
+            "https://winline.ru/live",
+            "navigate",
+            Some(deadline)
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn navigation_start_budget_rejects_late_navigation_steps() {
+        let deadline =
+            Instant::now() + Duration::from_millis(NAVIGATION_START_BUDGET_MS.saturating_sub(250));
+        let error = HeadlessChromeHelper::ensure_navigation_start_budget(
+            "https://winline.ru/live",
+            "navigate",
+            Some(deadline),
+        )
+        .expect_err("late navigation step should be rejected");
+
+        assert!(error
+            .to_string()
+            .contains("headless navigation start budget exhausted before navigate"));
+    }
+
+    #[test]
+    fn uses_shell_tolerant_readiness_policy_for_winline_football_discovery() {
+        assert_eq!(
+            HeadlessChromeHelper::navigation_readiness_policy(
+                "https://winline.ru/stavki/sport/futbol/"
+            ),
+            NavigationReadinessPolicy::AllowCommittedShell
+        );
+        assert_eq!(
+            HeadlessChromeHelper::navigation_readiness_policy("https://winline.ru/live"),
+            NavigationReadinessPolicy::Default
+        );
+    }
+
+    #[test]
+    fn uses_shell_tolerant_readiness_policy_for_melbet_sportsbook_home() {
+        assert_eq!(
+            HeadlessChromeHelper::navigation_readiness_policy(
+                "https://sport.melbet.ru/partner/SportsBook/Home?initialRoute=%7B%22path%22%3A%22%2Flive%22%7D"
+            ),
+            NavigationReadinessPolicy::AllowCommittedShell
+        );
+        assert_eq!(
+            HeadlessChromeHelper::navigation_readiness_policy("https://melbet.ru/live"),
+            NavigationReadinessPolicy::AllowCommittedShell
+        );
+        assert_eq!(
+            HeadlessChromeHelper::navigation_readiness_policy("https://melbet.ru/m/live"),
+            NavigationReadinessPolicy::AllowCommittedShell
+        );
+        assert_eq!(
+            HeadlessChromeHelper::navigation_readiness_policy("https://m.melbet.com/line"),
+            NavigationReadinessPolicy::AllowCommittedShell
+        );
+    }
+
+    #[test]
+    fn shell_tolerant_readiness_accepts_committed_empty_shell() {
+        assert!(HeadlessChromeHelper::is_navigation_ready_for_policy(
+            NavigationReadinessPolicy::AllowCommittedShell,
+            "interactive",
+            "https://winline.ru/stavki/sport/futbol/",
+            0,
+            0,
+        ));
+        assert!(!HeadlessChromeHelper::is_navigation_ready_for_policy(
+            NavigationReadinessPolicy::Default,
+            "interactive",
+            "https://winline.ru/stavki/sport/futbol/",
+            0,
+            0,
+        ));
     }
 }

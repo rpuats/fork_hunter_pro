@@ -2,19 +2,23 @@
 
 ## Now
 
-1. `winline` — decide whether validated bounded path can promote to a stable feed path
-2. `melbet` — push from tightened transport blocker toward one concrete feed/bootstrap next step
-3. `betboom` — promote compact fallback into a clearer runtime feed decision
-4. `ligastavok` — keep anti-bot dependency explicit while collecting stronger browser-assisted bootstrap evidence
-5. `api/ui follow-up` — use the new execution preflight safety flags where operator triage benefits
+1. `tennisi` — lock direct-response readiness truth without drifting back to DOM-only assumptions
+2. `betm` — capture one real live-proof signal or keep DiagnosticOnly blocker explicit
+3. `betcity` — decide whether zero-event regression is noise or promotion blocker
+4. `zenit` — add one explicit readiness snapshot instead of scan-by-omission truth
+5. `baltbet` — lock production-ready readiness truth in factory/tests
+6. `olimp` — confirm post-reenable live fetch/event-volume truth
+7. `service` — land compact bookmaker status catalog for ready-vs-unfinished triage
+8. `coordinator` — keep expanded wave 4 board, blockers, and queue rotation compact and synced
 
 ## Next
 
-1. parser capability catalog across parser factory + API/operator
+1. promote follow-up tasks for completed wave-3 lanes only after worker handoff confirms a bounded next move
 2. nightly KPI diagnostics as promotion gate
 3. fixture-driven discovery-to-parser harness
 4. operator execution center with approval/rejection clarity
 5. bankroll guidance with opportunity-aware allocation
+6. bridge layer for browser/intercept candidates
 
 ## Later
 

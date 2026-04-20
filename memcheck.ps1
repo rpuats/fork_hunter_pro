@@ -1,0 +1,1 @@
+Get-Process | Sort-Object WorkingSet64 -Descending | Select-Object -First 20 Name,@{N='MB';E={$_.WorkingSet64/1MB}} | Format-Table -AutoSize

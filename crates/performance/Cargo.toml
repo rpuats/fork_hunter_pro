@@ -1,0 +1,51 @@
+[package]
+name = "performance"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+shared = { path = "../shared" }
+parsers = { path = "../parsers" }
+engine = { path = "../engine" }
+
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+futures.workspace = true
+tracing.workspace = true
+thiserror.workspace = true
+anyhow.workspace = true
+parking_lot.workspace = true
+dashmap.workspace = true
+chrono.workspace = true
+moka.workspace = true
+uuid.workspace = true
+reqwest.workspace = true
+
+rayon = "1.8"
+lru = "0.12"
+flurry = "0.5"
+crossbeam = "0.8"
+backon = "0.4"
+criterion = { version = "0.5", features = ["async_tokio"] }
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["async_tokio"] }
+tokio-test = "0.4"
+proptest = "1.4"
+
+[[bench]]
+name = "cache_benchmarks"
+harness = false
+
+[[bench]]
+name = "parser_parallel_benchmarks"
+harness = false
+
+[[bench]]
+name = "batch_calculator_benchmarks"
+harness = false
+
+[[bench]]
+name = "rayon_thread_pool_benchmarks"
+harness = false

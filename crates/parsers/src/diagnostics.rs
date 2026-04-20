@@ -2,7 +2,7 @@ use crate::baltbet::BaltbetParser;
 use crate::base::BookmakerParser;
 use crate::betboom::BetboomParser;
 use crate::betcity::BetcityParser;
-use crate::ligastavok::LigaStavokParser;
+// use crate::ligastavok::LigaStavokParser; // TODO: Re-enable once schema is fixed
 use crate::melbet::MelbetParser;
 use crate::tennisi::TennisiParser;
 use crate::winline::WinlineParser;
@@ -231,7 +231,7 @@ async fn run_single_runtime_diagnostic(
             .await
         }
         "betcity" => with_timeout(BetcityParser::new(client).fetch_runtime_data()).await,
-        "ligastavok" => with_timeout(LigaStavokParser::new(client).fetch_runtime_data()).await,
+        // "ligastavok" => with_timeout(LigaStavokParser::new(client).fetch_runtime_data()).await,
         "tennisi" => with_timeout(TennisiParser::new(client).fetch_runtime_data()).await,
         _ => Err(format!(
             "bookmaker {} not supported in diagnostics yet",

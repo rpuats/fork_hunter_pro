@@ -1,5 +1,8 @@
 pub mod adapters;
 pub mod approval;
+pub mod account_pool;
+pub mod bet_command;
+pub mod bet_state_machine;
 pub mod engine;
 pub mod execution;
 pub mod executor;
@@ -14,10 +17,15 @@ pub use adapters::{
     builtin_adapter, register_builtin_adapters, supported_bookmakers, FonbetExecutionAdapter,
     PariExecutionAdapter,
 };
+pub use account_pool::{
+    AccountManager, AccountPool, AccountType, BettingAccount, PoolStatistics, SelectionStrategy,
+};
 pub use approval::{
     build_surebet_execution_plan, ApprovalGateDecision, RankedLegPlan, SurebetExecutionPlan,
     PARI_ROLLOUT_BOOKMAKER,
 };
+pub use bet_command::{BetCommandStatus, PlaceBeautifulBetCommand};
+pub use bet_state_machine::{BetPlacementEvent, BetPlacementState, BetPlacementStateMachine};
 pub use engine::AutoBetEngine;
 pub use execution::{BookmakerExecutionAdapter, NoopExecutionAdapter};
 pub use executor::BetExecutor;

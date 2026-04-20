@@ -23,17 +23,18 @@ const SCROLL_STEPS: usize = 1;
 const PREMATCH_FILTER_TEXT: &str = "1н";
 const MIN_SNAPSHOT_TEXT_LEN: usize = 80;
 const SNAPSHOT_PREVIEW_CHARS: usize = 96;
+const PROBE_RESULT_SLACK_MS: u64 = 4_000;
 const RUNTIME_PROBE_BUDGET_MS: u64 = 28_000;
 const RUNTIME_WALL_CLOCK_CUTOFF_MS: u64 = 45_000;
 const RUNTIME_SUCCESS_EVENT_THRESHOLD: usize = 2;
 const PRIMARY_FOCUSED_PROBE_EXIT_THRESHOLD: usize = 2;
-const EMPTY_RENDERED_DIAGNOSTIC_EXIT_THRESHOLD: usize = 4;
+const EMPTY_RENDERED_DIAGNOSTIC_EXIT_THRESHOLD: usize = 3;
 const KNOWN_BLOCKER_LIVE_FOOTBALL_URL: &str = "https://betboom.ru/sport/live/football";
+const KNOWN_BLOCKER_PREMATCH_FOOTBALL_URL: &str = "https://betboom.ru/sport/football";
 const FOCUSED_RUNTIME_PROBE_URLS: &[&str] = &[
-    "https://betboom.ru/sport/football",
     "https://betboom.ru/sport/live/tennis",
     "https://betboom.ru/sport/tennis",
-    "https://betboom.ru/sport/live/football",
+    "https://betboom.ru/sport/live/basketball",
 ];
 
 #[cfg_attr(not(test), allow(dead_code))]
@@ -700,27 +701,48 @@ impl BetboomParser {
     }
 
     fn runtime_probe_plan() -> Vec<Probe> {
-        let focused = FOCUSED_RUNTIME_PROBE_URLS
+        let mut plan = FOCUSED_RUNTIME_PROBE_URLS
             .iter()
             .filter_map(|url| PROBES.iter().copied().find(|probe| probe.url == *url))
             .collect::<Vec<_>>();
 
-        if focused.is_empty() {
-            return PROBES.to_vec();
+        if plan.is_empty() {
+            return PROBES
+                .iter()
+                .copied()
+                .filter(|probe| {
+                    probe.url != KNOWN_BLOCKER_LIVE_FOOTBALL_URL
+                        && probe.url != KNOWN_BLOCKER_PREMATCH_FOOTBALL_URL
+                })
+                .collect();
         }
 
-        focused
+        let seen = plan.iter().map(|probe| probe.url).collect::<HashSet<_>>();
+        plan.extend(
+            PROBES
+                .iter()
+                .copied()
+                .filter(|probe| {
+                    probe.url != KNOWN_BLOCKER_LIVE_FOOTBALL_URL
+                        && probe.url != KNOWN_BLOCKER_PREMATCH_FOOTBALL_URL
+                        && !seen.contains(probe.url)
+                }),
+        );
+
+        plan
     }
 
     fn headless_navigation_timeout_ms(probe: &Probe) -> u64 {
-        if probe.url == KNOWN_BLOCKER_LIVE_FOOTBALL_URL {
+        if probe.url == KNOWN_BLOCKER_LIVE_FOOTBALL_URL
+            || probe.url == KNOWN_BLOCKER_PREMATCH_FOOTBALL_URL
+        {
             HEADLESS_KNOWN_BLOCKER_NAVIGATION_TIMEOUT_MS
         } else {
             HEADLESS_NAVIGATION_TIMEOUT_MS
         }
     }
 
-    fn probe_wall_clock_timeout_ms(probe: &Probe) -> u64 {
+    fn probe_wall_clock_timeout_ms(probe: &Probe, executed_probes: usize) -> u64 {
         Self::headless_navigation_timeout_ms(probe)
             + HEADLESS_WAIT_MS
             + if probe.prematch_filter.is_some() {
@@ -728,16 +750,26 @@ impl BetboomParser {
             } else {
                 0
             }
-            + 4_000
+            + if executed_probes == 0 {
+                0
+            } else {
+                PROBE_RESULT_SLACK_MS
+            }
     }
 
     fn is_navigation_readiness_timeout(error: &str) -> bool {
         error.contains("headless navigation readiness timeout")
     }
 
+    fn is_navigation_timeout(error: &str) -> bool {
+        error.to_ascii_lowercase().contains("navigation timeout")
+    }
+
     fn navigation_root_cause(error: &str) -> &'static str {
         if Self::is_navigation_readiness_timeout(error) {
             "navigation_readiness_timeout"
+        } else if Self::is_navigation_timeout(error) {
+            "navigation_timeout"
         } else {
             "navigation_failed"
         }
@@ -808,11 +840,33 @@ impl BetboomParser {
                 break;
             }
 
-            let probe_timeout_ms = Self::probe_wall_clock_timeout_ms(probe);
+            let probe_timeout_ms = Self::probe_wall_clock_timeout_ms(probe, reports.len());
             let probe_result = match Self::execute_probe_with_timeout(*probe, probe_timeout_ms) {
                 Ok(result) => result,
                 Err(report) => {
+                    let probe_wall_clock_cutoff = Self::is_probe_wall_clock_cutoff_report(&report);
+                    let executed_probes = reports.len();
+                    let immediate_blocker =
+                        Self::is_useful_first_probe_blocker(&report, executed_probes);
                     reports.push(report);
+                    if immediate_blocker {
+                        warn!(
+                            root_cause = reports
+                                .last()
+                                .and_then(|report| report.root_cause.as_deref())
+                                .unwrap_or("-"),
+                            planned_probes = probes.len(),
+                            "BetBoom: stopping runtime probe loop after first executed probe exposed a blocker"
+                        );
+                        break;
+                    }
+                    if probe_wall_clock_cutoff {
+                        warn!(
+                            executed_probes = reports.len(),
+                            planned_probes = probes.len(),
+                            "BetBoom: probe wall-clock cutoff observed, continuing with remaining probes"
+                        );
+                    }
                     continue;
                 }
             };
@@ -882,7 +936,10 @@ impl BetboomParser {
             Ok(Ok(result)) => Ok(result),
             Ok(Err(report)) => Err(report),
             Err(mpsc::RecvTimeoutError::Timeout) => {
-                warn!(url = probe.url, timeout_ms, "BetBoom: probe wall-clock timeout reached");
+                warn!(
+                    url = probe.url,
+                    timeout_ms, "BetBoom: probe wall-clock timeout reached"
+                );
                 Err(ProbeReport {
                     url: probe.url,
                     sport: probe.sport,
@@ -923,7 +980,9 @@ impl BetboomParser {
         }
     }
 
-    fn fetch_probe_runtime_data_blocking(probe: Probe) -> Result<ProbeExecutionResult, ProbeReport> {
+    fn fetch_probe_runtime_data_blocking(
+        probe: Probe,
+    ) -> Result<ProbeExecutionResult, ProbeReport> {
         let helper = HeadlessChromeHelper::new().map_err(|error| ProbeReport {
             url: probe.url,
             sport: probe.sport,
@@ -1019,7 +1078,8 @@ impl BetboomParser {
                 if let Some(diagnostic) = Self::diagnose_empty_rendered_text(&snapshot.text) {
                     if best_empty_root_cause_score.is_none_or(|current| score >= current) {
                         best_empty_root_cause_score = Some(score);
-                        best_empty_root_cause = Some(format!("{}:{}", snapshot.strategy, diagnostic));
+                        best_empty_root_cause =
+                            Some(format!("{}:{}", snapshot.strategy, diagnostic));
                     }
                 }
             }
@@ -1109,6 +1169,29 @@ impl BetboomParser {
         }
     }
 
+    fn is_probe_wall_clock_cutoff_report(report: &ProbeReport) -> bool {
+        report
+            .root_cause
+            .as_deref()
+            .is_some_and(|root_cause| root_cause.starts_with("probe_wall_clock_cutoff["))
+    }
+
+    fn is_useful_first_probe_blocker(report: &ProbeReport, executed_probes: usize) -> bool {
+        if executed_probes != 0 || report.navigation_ok || report.events > 0 || report.odds > 0 {
+            return false;
+        }
+
+        report.root_cause.as_deref().is_some_and(|root_cause| {
+            matches!(
+                Self::normalize_root_cause(root_cause),
+                // A first-probe wall clock cutoff is recoverable enough to justify
+                // continuing into the alternate focused probes instead of aborting
+                // the whole runtime pass on a single stalled worker.
+                "navigation_readiness_timeout" | "navigation_timeout"
+            )
+        })
+    }
+
     fn format_empty_runtime_diagnostic(
         reports: &[ProbeReport],
         planned_probes: usize,
@@ -1128,9 +1211,10 @@ impl BetboomParser {
             .iter()
             .map(|report| {
                 format!(
-                    "{}:{}: nav={}, snapshots={}, chars={}, strategies={}, events={}, odds={}, preview={}, rendered_probe={}, nav_error={}, root_cause={}",
+                    "{}:{}: url={}, nav={}, snapshots={}, chars={}, strategies={}, events={}, odds={}, preview={}, rendered_probe={}, nav_error={}, root_cause={}",
                     if report.is_live { "live" } else { "prematch" },
                     report.sport,
+                    report.url,
                     report.navigation_ok,
                     report.snapshots,
                     report.rendered_chars,
@@ -1243,13 +1327,27 @@ impl BetboomParser {
             Some("rendered_signal_missing_after_primary_pair")
         } else if Self::has_stable_empty_parse_root_cause(focused_reports) {
             Some("stable_parse_empty_after_primary_pair")
+        } else if Self::has_empty_parse_signal(focused_reports) {
+            Some("parse_empty_after_primary_pair")
         } else {
             None
         }
     }
 
+    fn has_empty_parse_signal(reports: &[ProbeReport]) -> bool {
+        !reports.is_empty()
+            && reports.iter().all(|report| {
+                report.navigation_ok
+                    && report.events == 0
+                    && report.odds == 0
+                    && (report.rendered_probe.is_some() || report.root_cause.is_some())
+            })
+    }
+
     fn has_stable_empty_parse_root_cause(reports: &[ProbeReport]) -> bool {
-        if reports.is_empty() || reports.iter().any(|report| report.rendered_probe.is_none()) {
+        if !Self::has_empty_parse_signal(reports)
+            || reports.iter().any(|report| report.rendered_probe.is_none())
+        {
             return false;
         }
 
@@ -1626,10 +1724,7 @@ impl BetboomParser {
             return None;
         }
 
-        let status_regex = regex::Regex::new(
-            r"(?:Сегодня|Завтра|Перерыв|Тайм|Матч начнется|\d{1,2}:\d{2}|\d+Т,\s*\d{1,2}\s*мин)",
-        )
-        .expect("compact runtime status regex");
+        let status_regex = Self::compact_status_regex();
         let market_regex = regex::Regex::new(r"(?:П1|П2|X|1|2|ничья)\s*\d+[.,]\d+")
             .expect("compact runtime market regex");
         let validation_probe = Probe {
@@ -2463,27 +2558,16 @@ impl BetboomParser {
     }
 
     fn find_status_marker(text: &str) -> Option<(usize, usize)> {
-        let markers = ["Сегодня", "Завтра", "Перерыв", "Тайм", "Матч начнется"];
-        let mut best: Option<(usize, usize)> = None;
-
-        for marker in markers {
-            if let Some(index) = text.find(marker) {
-                if best.is_none_or(|(best_index, _)| index < best_index) {
-                    best = Some((index, marker.len()));
-                }
-            }
-        }
-
-        if let Some(status_match) = regex::Regex::new(r"\d+Т,\s*\d{1,2}\s*мин")
-            .expect("compact live status regex")
+        Self::compact_status_regex()
             .find(text)
-        {
-            if best.is_none_or(|(best_index, _)| status_match.start() < best_index) {
-                best = Some((status_match.start(), status_match.as_str().len()));
-            }
-        }
+            .map(|status_match| (status_match.start(), status_match.as_str().len()))
+    }
 
-        best
+    fn compact_status_regex() -> regex::Regex {
+        regex::Regex::new(
+            r"(?:Сегодня|Завтра|Перерыв|Тайм|Матч начнется|\d{1,2} [а-я]+ в \d{1,2}:\d{2}|\d{1,2}:\d{2}|\d+Т,\s*\d{1,2}\s*мин)",
+        )
+        .expect("compact runtime status regex")
     }
 
     fn extract_market_pairs(text: &str) -> Vec<(String, f64)> {
@@ -2632,7 +2716,9 @@ mod tests {
         sporthub_helper, BetboomParser, Probe, ProbeReport, FILTER_WAIT_MS,
         FOCUSED_RUNTIME_PROBE_URLS, HEADLESS_KNOWN_BLOCKER_NAVIGATION_TIMEOUT_MS,
         HEADLESS_NAVIGATION_TIMEOUT_MS, HEADLESS_WAIT_MS, KNOWN_BLOCKER_LIVE_FOOTBALL_URL,
-        PREMATCH_FILTER_TEXT, PROBES, RUNTIME_PROBE_BUDGET_MS, RUNTIME_WALL_CLOCK_CUTOFF_MS,
+        KNOWN_BLOCKER_PREMATCH_FOOTBALL_URL, PREMATCH_FILTER_TEXT, PROBES,
+        PROBE_RESULT_SLACK_MS,
+        RUNTIME_PROBE_BUDGET_MS, RUNTIME_WALL_CLOCK_CUTOFF_MS,
     };
     use shared::Sport;
 
@@ -3070,6 +3156,28 @@ mod tests {
     }
 
     #[test]
+    fn parses_compact_prematch_card_with_calendar_date_status() {
+        let text = include_str!("../tests/fixtures/betboom_compact_prematch_date_fixture.txt");
+        let probe = Probe {
+            url: "https://betboom.ru/sport/football",
+            sport: Sport::Football,
+            is_live: false,
+            prematch_filter: Some(PREMATCH_FILTER_TEXT),
+        };
+
+        let derived = BetboomParser::derive_compact_runtime_snapshot(text).expect("snapshot");
+        let (events, odds) = BetboomParser::parse_rendered_text(text, probe);
+
+        assert!(derived.contains("19 апр в 14:30"));
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].league, "Футбол. Испания. Ла Лига");
+        assert_eq!(events[0].home_team, "Реал Мадрид");
+        assert_eq!(events[0].away_team, "Барселона");
+        assert!(!events[0].is_live);
+        assert_eq!(odds.len(), 3);
+    }
+
+    #[test]
     fn extracts_sporthub_bootstrap_hints_from_fixture() {
         let html = include_str!("../tests/fixtures/betboom_sporthub_bootstrap_fixture.html");
 
@@ -3232,7 +3340,7 @@ mod tests {
     fn prioritizes_focused_runtime_probe_plan() {
         let plan = BetboomParser::runtime_probe_plan();
 
-        assert_eq!(plan.len(), FOCUSED_RUNTIME_PROBE_URLS.len());
+        assert_eq!(plan.len(), PROBES.len() - 2);
         assert_eq!(
             plan.iter()
                 .take(FOCUSED_RUNTIME_PROBE_URLS.len())
@@ -3240,9 +3348,24 @@ mod tests {
                 .collect::<Vec<_>>(),
             FOCUSED_RUNTIME_PROBE_URLS
         );
-        assert_eq!(plan[0].url, "https://betboom.ru/sport/football");
-        assert_eq!(plan[1].url, "https://betboom.ru/sport/live/tennis");
-        assert_eq!(plan[3].url, KNOWN_BLOCKER_LIVE_FOOTBALL_URL);
+        assert_eq!(plan[0].url, "https://betboom.ru/sport/live/tennis");
+        assert_eq!(plan[1].url, "https://betboom.ru/sport/tennis");
+        assert_eq!(plan[2].url, "https://betboom.ru/sport/live/basketball");
+        assert!(plan
+            .iter()
+            .all(|probe| probe.url != KNOWN_BLOCKER_LIVE_FOOTBALL_URL));
+        assert!(plan
+            .iter()
+            .all(|probe| probe.url != KNOWN_BLOCKER_PREMATCH_FOOTBALL_URL));
+        assert_eq!(
+            plan.iter()
+                .filter(|probe| probe.url == "https://betboom.ru/sport/live/tennis")
+                .count(),
+            1
+        );
+        assert!(plan
+            .iter()
+            .any(|probe| probe.url == "https://betboom.ru/sport/live/basketball"));
     }
 
     #[test]
@@ -3259,14 +3382,65 @@ mod tests {
             is_live: true,
             prematch_filter: None,
         };
+        let prematch_blocker_probe = Probe {
+            url: KNOWN_BLOCKER_PREMATCH_FOOTBALL_URL,
+            sport: Sport::Football,
+            is_live: false,
+            prematch_filter: Some(PREMATCH_FILTER_TEXT),
+        };
 
         assert_eq!(
             BetboomParser::headless_navigation_timeout_ms(&blocker_probe),
             HEADLESS_KNOWN_BLOCKER_NAVIGATION_TIMEOUT_MS
         );
         assert_eq!(
+            BetboomParser::headless_navigation_timeout_ms(&prematch_blocker_probe),
+            HEADLESS_KNOWN_BLOCKER_NAVIGATION_TIMEOUT_MS
+        );
+        assert_eq!(
             BetboomParser::headless_navigation_timeout_ms(&healthy_probe),
             HEADLESS_NAVIGATION_TIMEOUT_MS
+        );
+    }
+
+    #[test]
+    fn trims_first_probe_wall_clock_slack_for_earlier_blocker_return() {
+        let first_probe = Probe {
+            url: "https://betboom.ru/sport/live/tennis",
+            sport: Sport::Tennis,
+            is_live: true,
+            prematch_filter: None,
+        };
+
+        assert_eq!(
+            BetboomParser::probe_wall_clock_timeout_ms(&first_probe, 0),
+            HEADLESS_NAVIGATION_TIMEOUT_MS + HEADLESS_WAIT_MS
+        );
+        assert_eq!(
+            BetboomParser::probe_wall_clock_timeout_ms(&first_probe, 1),
+            HEADLESS_NAVIGATION_TIMEOUT_MS + HEADLESS_WAIT_MS + PROBE_RESULT_SLACK_MS
+        );
+    }
+
+    #[test]
+    fn keeps_prematch_filter_budget_while_trimming_first_probe_slack() {
+        let prematch_probe = Probe {
+            url: "https://betboom.ru/sport/tennis",
+            sport: Sport::Tennis,
+            is_live: false,
+            prematch_filter: Some(PREMATCH_FILTER_TEXT),
+        };
+
+        assert_eq!(
+            BetboomParser::probe_wall_clock_timeout_ms(&prematch_probe, 0),
+            HEADLESS_NAVIGATION_TIMEOUT_MS + HEADLESS_WAIT_MS + FILTER_WAIT_MS
+        );
+        assert_eq!(
+            BetboomParser::probe_wall_clock_timeout_ms(&prematch_probe, 2),
+            HEADLESS_NAVIGATION_TIMEOUT_MS
+                + HEADLESS_WAIT_MS
+                + FILTER_WAIT_MS
+                + PROBE_RESULT_SLACK_MS
         );
     }
 
@@ -3277,6 +3451,10 @@ mod tests {
                 "headless navigation readiness timeout after 12000ms for https://betboom.ru/sport/live/football"
             ),
             "navigation_readiness_timeout"
+        );
+        assert_eq!(
+            BetboomParser::navigation_root_cause("navigation timeout after 12000ms"),
+            "navigation_timeout"
         );
         assert_eq!(
             BetboomParser::navigation_root_cause("connection reset by peer"),
@@ -3473,7 +3651,7 @@ mod tests {
         ));
         assert!(!BetboomParser::runtime_budget_allows_probe(
             RUNTIME_PROBE_BUDGET_MS
-                - (HEADLESS_NAVIGATION_TIMEOUT_MS + HEADLESS_WAIT_MS + FILTER_WAIT_MS)
+                - (HEADLESS_KNOWN_BLOCKER_NAVIGATION_TIMEOUT_MS + HEADLESS_WAIT_MS + FILTER_WAIT_MS)
                 + 1,
             &prematch_probe,
         ));
@@ -3533,6 +3711,59 @@ mod tests {
     }
 
     #[test]
+    fn stops_after_divergent_parse_empty_primary_pair() {
+        let reports = vec![
+            ProbeReport {
+                url: "https://betboom.ru/sport/live/football",
+                sport: Sport::Football,
+                is_live: true,
+                navigation_ok: true,
+                navigation_error: None,
+                snapshots: 2,
+                rendered_chars: 320,
+                strategies: vec!["structured_event_cards".to_string()],
+                events: 0,
+                odds: 0,
+                preview: Some("Футбол П1 1.54 X 4.7 П2 4.0".to_string()),
+                rendered_probe: Some(
+                    "structured_event_cards:lines=8,blocks=1,teams=2,markets=3,prices=3,pairs=3,inline_pairs=0,inline_status=0,inline_forms=0,boundaries=0,implicit=0"
+                        .to_string(),
+                ),
+                root_cause: Some(
+                    "structured_event_cards:single_flattened_block[lines=8,teams=2,markets=3,prices=3,inline_pairs=0,inline_status=0,inline_forms=0,boundaries=0,implicit=0,misclassified=league=0,status=0,market=0,counter=0]"
+                        .to_string(),
+                ),
+            },
+            ProbeReport {
+                url: "https://betboom.ru/sport/football",
+                sport: Sport::Football,
+                is_live: false,
+                navigation_ok: true,
+                navigation_error: None,
+                snapshots: 3,
+                rendered_chars: 410,
+                strategies: vec!["compact_event_cards".to_string()],
+                events: 0,
+                odds: 0,
+                preview: Some("Футбол П1 1.91 X 3.25 П2 4.5".to_string()),
+                rendered_probe: Some(
+                    "compact_event_cards:lines=8,blocks=1,teams=2,markets=3,prices=3,pairs=3,inline_pairs=0,inline_status=0,inline_forms=0,boundaries=0,implicit=0"
+                        .to_string(),
+                ),
+                root_cause: Some(
+                    "compact_event_cards:missing_team_pairs:misclassified_as_status[lines=8,teams=0,markets=3,prices=3,inline_pairs=0,inline_status=2,inline_forms=0,boundaries=0,implicit=0,misclassified=league=0,status=2,market=0,counter=0]"
+                        .to_string(),
+                ),
+            },
+        ];
+
+        assert_eq!(
+            BetboomParser::empty_rendered_probe_exit_status(&reports),
+            Some("parse_empty_after_primary_pair")
+        );
+    }
+
+    #[test]
     fn formats_wall_clock_cutoff_runtime_blocker() {
         let result = BetboomParser::wall_clock_cutoff_result(
             Some(Probe {
@@ -3556,7 +3787,7 @@ mod tests {
         );
         assert_eq!(
             result.reports[0].root_cause.as_deref(),
-            Some("wall_clock_cutoff[cutoff_ms=45000,planned_probes=4]")
+            Some("wall_clock_cutoff[cutoff_ms=45000,planned_probes=3]")
         );
 
         let diagnostic = BetboomParser::format_empty_runtime_diagnostic(
@@ -3564,14 +3795,69 @@ mod tests {
             result.planned_probes,
             result.budget_exhausted,
         );
-        assert!(diagnostic.contains("planned=4, budget_exhausted=true"));
+        assert!(diagnostic.contains("planned=3, budget_exhausted=true"));
         assert!(diagnostic.contains("status=navigation_blocked"));
         assert!(diagnostic.contains("root_cause_counts=wall_clock_cutoff:1"));
+        assert!(diagnostic.contains("url=https://betboom.ru/sport/live/football"));
         assert!(diagnostic
             .contains("nav_error=wall clock cutoff after 45000ms before a useful runtime result"));
         assert!(
-            diagnostic.contains("root_cause=wall_clock_cutoff[cutoff_ms=45000,planned_probes=4]")
+            diagnostic.contains("root_cause=wall_clock_cutoff[cutoff_ms=45000,planned_probes=3]")
         );
+    }
+
+    #[test]
+    fn treats_first_probe_wall_clock_cutoff_as_immediate_blocker() {
+        let report = ProbeReport {
+            url: "https://betboom.ru/sport/football",
+            sport: Sport::Football,
+            is_live: false,
+            navigation_ok: false,
+            navigation_error: Some(
+                "probe wall clock timeout after 18300ms before a useful runtime result".to_string(),
+            ),
+            snapshots: 0,
+            rendered_chars: 0,
+            strategies: Vec::new(),
+            events: 0,
+            odds: 0,
+            preview: None,
+            rendered_probe: None,
+            root_cause: Some("probe_wall_clock_cutoff[timeout_ms=18300]".to_string()),
+        };
+
+        assert!(!BetboomParser::is_useful_first_probe_blocker(&report, 0));
+        assert!(!BetboomParser::is_useful_first_probe_blocker(&report, 1));
+    }
+
+    #[test]
+    fn treats_first_probe_navigation_readiness_timeout_as_immediate_blocker() {
+        let report = ProbeReport {
+            url: "https://betboom.ru/sport/live/football",
+            sport: Sport::Football,
+            is_live: true,
+            navigation_ok: false,
+            navigation_error: Some(
+                "headless navigation readiness timeout after 12000ms".to_string(),
+            ),
+            snapshots: 0,
+            rendered_chars: 0,
+            strategies: Vec::new(),
+            events: 0,
+            odds: 0,
+            preview: None,
+            rendered_probe: None,
+            root_cause: Some("navigation_readiness_timeout".to_string()),
+        };
+
+        assert!(BetboomParser::is_useful_first_probe_blocker(&report, 0));
+        assert!(!BetboomParser::is_useful_first_probe_blocker(
+            &ProbeReport {
+                navigation_ok: true,
+                ..report.clone()
+            },
+            0,
+        ));
     }
 }
 

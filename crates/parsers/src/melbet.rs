@@ -9,7 +9,9 @@ use shared::{
     Sport,
 };
 use std::collections::{HashMap, HashSet};
+use std::sync::mpsc;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 use tracing::{debug, info, warn};
 
 const BOOKMAKER_SLUG: &str = "melbet";
@@ -19,6 +21,7 @@ const SPORTSBOOK_HOME_URL: &str =
     "https://sport.melbet.ru/partner/SportsBook/Home?initialRoute=%7B%22path%22%3A%22%2F%22%7D";
 const HEADLESS_WAIT_MS: u64 = 3_500;
 const SPORTSBOOK_NAVIGATION_TIMEOUT_MS: u64 = 5_000;
+const MELBET_RUNTIME_WALL_CLOCK_TIMEOUT_MS: u64 = 25_000;
 const HEADLESS_RETRY_DELAY_MS: u64 = 1_500;
 const HEADLESS_EVAL_ATTEMPTS: usize = 3;
 const HEADLESS_SCROLL_ROUNDS: usize = 2;
@@ -314,6 +317,7 @@ struct MelbetRuntimeState {
     body_text_length: usize,
     custom_element_count: usize,
     button_count: usize,
+    interactive_node_count: usize,
     link_count: usize,
     route_link_count: usize,
     router_shell_count: usize,
@@ -325,6 +329,7 @@ struct MelbetRuntimeState {
     blocker_kind: String,
     blocker_source: String,
     blocker_text: String,
+    bootstrap_markers: Vec<String>,
 }
 
 impl MelbetRuntimeState {
@@ -382,6 +387,10 @@ impl MelbetRuntimeState {
                 .get("buttonCount")
                 .and_then(|value| value.as_u64())
                 .unwrap_or_default() as usize,
+            interactive_node_count: value
+                .get("interactiveNodeCount")
+                .and_then(|value| value.as_u64())
+                .unwrap_or_default() as usize,
             link_count: value
                 .get("linkCount")
                 .and_then(|value| value.as_u64())
@@ -435,12 +444,22 @@ impl MelbetRuntimeState {
                 .and_then(|value| value.as_str())
                 .unwrap_or_default()
                 .to_string(),
+            bootstrap_markers: value
+                .get("bootstrapMarkers")
+                .and_then(|value| value.as_array())
+                .map(|items| {
+                    items
+                        .iter()
+                        .filter_map(|item| item.as_str().map(str::to_string))
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default(),
         }
     }
 
     fn as_summary(&self) -> String {
         format!(
-            "href={},path={},search={},hash={},state={},history={},shells={},route_links={},links={},buttons={},custom_elements={},body_children={},body_len={},nav_type={},dcl_ms={},load_ms={},blocker={}@{}:{}",
+            "href={},path={},search={},hash={},state={},history={},shells={},route_links={},links={},buttons={},interactive_nodes={},custom_elements={},body_children={},body_len={},nav_type={},dcl_ms={},load_ms={},blocker={}@{}:{},bootstrap_markers={}",
             if self.href.is_empty() { "none" } else { self.href.as_str() },
             if self.pathname.is_empty() { "none" } else { self.pathname.as_str() },
             if self.search.is_empty() { "none" } else { self.search.as_str() },
@@ -451,6 +470,7 @@ impl MelbetRuntimeState {
             self.route_link_count,
             self.link_count,
             self.button_count,
+            self.interactive_node_count,
             self.custom_element_count,
             self.body_child_count,
             self.body_text_length,
@@ -460,6 +480,11 @@ impl MelbetRuntimeState {
             if self.blocker_kind.is_empty() { "none" } else { self.blocker_kind.as_str() },
             if self.blocker_source.is_empty() { "none" } else { self.blocker_source.as_str() },
             if self.blocker_text.is_empty() { "-" } else { self.blocker_text.as_str() },
+            if self.bootstrap_markers.is_empty() {
+                "none".to_string()
+            } else {
+                self.bootstrap_markers.join("|")
+            },
         )
     }
 
@@ -476,6 +501,7 @@ impl MelbetRuntimeState {
             "bodyTextLength": self.body_text_length,
             "customElementCount": self.custom_element_count,
             "buttonCount": self.button_count,
+            "interactiveNodeCount": self.interactive_node_count,
             "linkCount": self.link_count,
             "routeLinkCount": self.route_link_count,
             "routerShellCount": self.router_shell_count,
@@ -491,6 +517,7 @@ impl MelbetRuntimeState {
                 "source": self.blocker_source,
                 "matchedText": self.blocker_text,
             },
+            "bootstrapMarkers": self.bootstrap_markers,
         })
     }
 
@@ -498,15 +525,23 @@ impl MelbetRuntimeState {
         self.router_shell_count > 0
             || self.route_link_count > 0
             || self.custom_element_count > 0
+            || self.bootstrap_markers.iter().any(|marker| {
+                let marker = marker.to_lowercase();
+                marker.contains("route_family:") && marker.contains("sportsbook")
+                    || marker.contains("iframe:sportsbook")
+                    || marker.contains("shell:")
+            })
             || self.pathname.eq_ignore_ascii_case("/ru/sport")
             || self.pathname.eq_ignore_ascii_case("/ru/sport/")
             || self.href.to_lowercase().contains("/ru/sport")
     }
 
     fn has_bootstrap_markers(&self) -> bool {
-        self.has_sportsbook_shell_markers()
+        !self.bootstrap_markers.is_empty()
+            || self.has_sportsbook_shell_markers()
             || self.body_child_count > 0
             || self.body_text_length > 0
+            || self.interactive_node_count > 0
             || self.link_count > 0
             || self.button_count > 0
             || matches!(self.ready_state.as_str(), "interactive" | "complete")
@@ -1754,6 +1789,33 @@ impl MelbetParser {
             })
     }
 
+    fn has_useful_desktop_bootstrap(snapshot: &MelbetBootstrapSnapshot) -> bool {
+        let runtime = &snapshot.runtime_state;
+        let readiness = &snapshot.readiness;
+        let title = format!("{} {}", snapshot.title, runtime.title).to_lowercase();
+        let body =
+            format!("{} {}", snapshot.body_text_sample, runtime.body_text_sample).to_lowercase();
+
+        (matches!(runtime.ready_state.as_str(), "interactive" | "complete")
+            || matches!(readiness.ready_state.as_str(), "interactive" | "complete"))
+            && (runtime.router_shell_count > 0
+                || runtime.route_link_count > 0
+                || runtime.link_count > 0
+                || runtime.interactive_node_count > 0
+                || runtime.body_child_count > 0
+                || runtime.body_text_length > 0
+                || readiness.body_child_count > 0
+                || readiness.body_text_length > 0
+                || readiness.has_visible_app_shell
+                || readiness.fetch_like_count > 0)
+            && (title.contains("melbet")
+                || title.contains("live")
+                || body.contains("melbet")
+                || body.contains("sport")
+                || body.contains("live")
+                || runtime.has_sportsbook_shell_markers())
+    }
+
     fn select_embedded_route(
         probe: &HeadlessProbe,
         snapshot: &MelbetBootstrapSnapshot,
@@ -1806,6 +1868,7 @@ impl MelbetParser {
             && snapshot.readiness.body_text_length == 0
             && snapshot.runtime_state.body_child_count == 0
             && snapshot.runtime_state.body_text_length == 0
+            && snapshot.runtime_state.interactive_node_count == 0
             && !snapshot.runtime_state.has_bootstrap_markers()
             && !snapshot.runtime_context.has_bootstrap_source_markers()
     }
@@ -1953,13 +2016,14 @@ impl MelbetParser {
             && runtime_state.ready_state.trim().is_empty()
             && runtime_state.body_child_count == 0
             && runtime_state.body_text_length == 0
+            && runtime_state.interactive_node_count == 0
             && !runtime_state.has_bootstrap_markers()
         {
             return None;
         }
 
         let parsed = Url::parse(&runtime_state.href).ok();
-        let mut bootstrap_markers = Vec::new();
+        let mut bootstrap_markers = runtime_state.bootstrap_markers.clone();
         if !runtime_state.href.trim().is_empty() {
             bootstrap_markers.push(format!("route:runtime:{}", runtime_state.href));
         }
@@ -2030,7 +2094,8 @@ impl MelbetParser {
                 body_child_count: runtime_state.body_child_count,
                 dom_content_loaded_ms: runtime_state.dom_content_loaded_ms,
                 load_event_ms: runtime_state.load_ms,
-                has_visible_app_shell: runtime_state.has_bootstrap_markers(),
+                has_visible_app_shell: runtime_state.has_bootstrap_markers()
+                    || runtime_state.interactive_node_count > 0,
                 ..MelbetReadinessDiagnostics::from_value(&serde_json::Value::Null)
             },
             runtime_state: runtime_state.clone(),
@@ -2283,6 +2348,7 @@ impl MelbetParser {
         helper: &HeadlessChromeHelper,
         probe: &HeadlessProbe,
         snapshot: &MelbetBootstrapSnapshot,
+        deadline: Instant,
     ) -> MelbetSportsbookHttpApiAttempt {
         let route_candidates = Self::sportsbook_route_candidates(probe, snapshot);
         if route_candidates.is_empty() {
@@ -2305,12 +2371,13 @@ impl MelbetParser {
         }
 
         for direct_route in route_candidates {
-            let tab = match helper.navigate_with_profile_and_referer_with_timeout(
+            let tab = match helper.navigate_with_profile_and_referer_with_timeout_and_deadline(
                 &direct_route,
                 HEADLESS_WAIT_MS,
                 probe.profile,
                 Some(referer),
                 SPORTSBOOK_NAVIGATION_TIMEOUT_MS,
+                deadline,
             ) {
                 Ok(tab) => tab,
                 Err(_) => {
@@ -2459,7 +2526,9 @@ impl MelbetParser {
         }
         let has_bootstrapped_shell = Self::has_bootstrap_markers(probe, snapshot)
             && (Self::has_sportsbook_shell_markers(snapshot)
-                || Self::has_explicit_sportsbook_route_candidate(snapshot));
+                || Self::has_explicit_sportsbook_route_candidate(snapshot)
+                || (probe.surface == MelbetSurface::Desktop
+                    && Self::has_useful_desktop_bootstrap(snapshot)));
 
         if has_bootstrapped_shell {
             return MelbetSportsbookHttpApiAttempt {
@@ -2602,7 +2671,8 @@ impl MelbetParser {
                 && Self::route_matches_probe(probe, snapshot))
                 || (probe.surface == MelbetSurface::Desktop
                     && (Self::has_sportsbook_shell_markers(snapshot)
-                        || Self::has_explicit_sportsbook_route_candidate(snapshot))))
+                        || Self::has_explicit_sportsbook_route_candidate(snapshot)
+                        || Self::has_useful_desktop_bootstrap(snapshot))))
         {
             return MelbetRouteStatus::BootstrapOnly;
         }
@@ -2840,26 +2910,62 @@ impl MelbetParser {
             &result.bootstrap,
             &result.extraction.blocker,
         );
+        let canonical_navigation_failed = result.payload_len == 0
+            && result.probe.surface == MelbetSurface::Desktop
+            && result.extraction.blocker == "navigation_failed";
+        let preserve_early_blocker_path = result.payload_len == 0
+            && result.probe.surface == MelbetSurface::Desktop
+            && bootstrap_plan.confirmed_blocker == "additional_bootstrap_source_required";
+        let summary_status = if preserve_early_blocker_path || canonical_navigation_failed {
+            MelbetRouteStatus::Blocked.as_str()
+        } else {
+            result.status.as_str()
+        };
+        let (summary_state, summary_reason) = if canonical_navigation_failed {
+            (
+                "blocked_or_unconfirmed",
+                "canonical_navigation_failed_before_bootstrap_capture",
+            )
+        } else if preserve_early_blocker_path {
+            ("blocked_or_unconfirmed", "insufficient_bootstrap_signals")
+        } else {
+            (readiness.state.as_str(), readiness.reason.as_str())
+        };
+        let summary_blocker = if canonical_navigation_failed {
+            "navigation_failed:retry_known_sportsbook_route"
+        } else if result.extraction.blocker.is_empty() {
+            "unknown"
+        } else {
+            result.extraction.blocker.as_str()
+        };
+        let (confirmed_blocker, next_step) = if canonical_navigation_failed {
+            (
+                "desktop_live_navigation_failed",
+                "retry_known_sportsbook_route",
+            )
+        } else {
+            (
+                bootstrap_plan.confirmed_blocker.as_str(),
+                bootstrap_plan.next_step.as_str(),
+            )
+        };
+
         format!(
             "route_hint={},route_family={},status={},source={},blocker={},confirmed_blocker={},next_step={},target_route={},state={},reason={},payload_len={},final_url={}",
             result.probe.route_hint,
             result.probe.route_family,
-            result.status.as_str(),
+            summary_status,
             if result.extraction.source.is_empty() {
                 "none"
             } else {
                 result.extraction.source.as_str()
             },
-            if result.extraction.blocker.is_empty() {
-                "unknown"
-            } else {
-                result.extraction.blocker.as_str()
-            },
-            bootstrap_plan.confirmed_blocker,
-            bootstrap_plan.next_step,
+            summary_blocker,
+            confirmed_blocker,
+            next_step,
             bootstrap_plan.primary_target,
-            readiness.state,
-            readiness.reason,
+            summary_state,
+            summary_reason,
             result.payload_len,
             if result.bootstrap.final_url.is_empty() {
                 result.probe.url
@@ -3157,6 +3263,7 @@ impl MelbetParser {
         helper: &HeadlessChromeHelper,
         probe: &HeadlessProbe,
         snapshot: &MelbetBootstrapSnapshot,
+        deadline: Instant,
     ) -> Option<(Vec<serde_json::Value>, MelbetBootstrapSnapshot)> {
         let embedded_route = Self::select_embedded_route(probe, snapshot)?;
         let referer = if snapshot.final_url.is_empty() {
@@ -3165,11 +3272,13 @@ impl MelbetParser {
             snapshot.final_url.as_str()
         };
         let tab = helper
-            .navigate_with_profile_and_referer(
+            .navigate_with_profile_and_referer_with_timeout_and_deadline(
                 &embedded_route,
                 HEADLESS_WAIT_MS,
                 probe.profile,
                 Some(referer),
+                SPORTSBOOK_NAVIGATION_TIMEOUT_MS,
+                deadline,
             )
             .ok()?;
         for _ in 0..HEADLESS_SCROLL_ROUNDS {
@@ -3183,7 +3292,36 @@ impl MelbetParser {
         Some((payload, embedded_snapshot))
     }
 
-    fn fetch_runtime_data_blocking(
+    fn run_blocking_with_wall_clock_timeout<T, F>(
+        timeout_ms: u64,
+        worker: F,
+    ) -> Result<T, Box<dyn std::error::Error + Send + Sync>>
+    where
+        T: Send + 'static,
+        F: FnOnce(Instant) -> Result<T, Box<dyn std::error::Error + Send + Sync>> + Send + 'static,
+    {
+        let timeout = Duration::from_millis(timeout_ms.max(1));
+        let deadline = Instant::now() + timeout;
+        let (tx, rx) = mpsc::channel();
+
+        std::thread::spawn(move || {
+            let _ = tx.send(worker(deadline));
+        });
+
+        match rx.recv_timeout(timeout) {
+            Ok(result) => result,
+            Err(mpsc::RecvTimeoutError::Timeout) => Err(format!(
+                "melbet runtime wall clock timeout after {timeout_ms}ms before a useful blocker/result"
+            )
+            .into()),
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                Err("melbet runtime worker disconnected before returning a blocker/result".into())
+            }
+        }
+    }
+
+    fn fetch_runtime_data_blocking_with_deadline(
+        deadline: Instant,
     ) -> Result<(Vec<Event>, Vec<Odd>), Box<dyn std::error::Error + Send + Sync>> {
         let helper = HeadlessChromeHelper::new()?;
         let mut all_events = Vec::new();
@@ -3193,10 +3331,26 @@ impl MelbetParser {
         let mut route_matrix = Vec::new();
 
         for probe in Self::runtime_probe_plan() {
-            let tab = match helper.navigate_with_profile_and_wait(
+            if Instant::now() >= deadline {
+                let blocker = route_matrix
+                    .first()
+                    .map(Self::summarize_runtime_blocker)
+                    .unwrap_or_else(|| {
+                        format!(
+                            "route_hint={},route_family={},status=blocked,source=none,blocker=runtime_budget_exhausted,confirmed_blocker=runtime_budget_exhausted,next_step=reduce_probe_scope,target_route={},state=blocked,reason=wall_clock_cutoff,payload_len=0,final_url={}",
+                            probe.route_hint, probe.route_family, probe.url, probe.url,
+                        )
+                    });
+                return Err(blocker.into());
+            }
+
+            let tab = match helper.navigate_with_profile_and_referer_with_timeout_and_deadline(
                 probe.url,
                 HEADLESS_WAIT_MS,
                 probe.profile,
+                None,
+                SPORTSBOOK_NAVIGATION_TIMEOUT_MS,
+                deadline,
             ) {
                 Ok(tab) => tab,
                 Err(error) => {
@@ -3283,7 +3437,7 @@ impl MelbetParser {
                     extraction.embedded_route =
                         Self::select_embedded_route(probe, &bootstrap).unwrap_or_default();
                     if let Some((embedded_payload, embedded_bootstrap)) =
-                        Self::extract_embedded_payload(&helper, probe, &bootstrap)
+                        Self::extract_embedded_payload(&helper, probe, &bootstrap, deadline)
                     {
                         extraction.embedded_payload_len = embedded_payload.len();
                         if embedded_payload.len() > payload.len() {
@@ -3302,7 +3456,7 @@ impl MelbetParser {
             }
             if payload.is_empty() && !bootstrap_is_empty {
                 let http_api_attempt =
-                    Self::extract_sportsbook_http_api_payload(&helper, probe, &bootstrap);
+                    Self::extract_sportsbook_http_api_payload(&helper, probe, &bootstrap, deadline);
                 extraction.sportsbook_route = http_api_attempt.route.clone();
                 extraction.http_api_seed_count = http_api_attempt.seed_count;
                 extraction.http_api_payload_len = http_api_attempt.payload.len();
@@ -3483,9 +3637,14 @@ impl MelbetParser {
         &self,
     ) -> Result<(Vec<Event>, Vec<Odd>), Box<dyn std::error::Error + Send + Sync>> {
         let _ = &self.client;
-        let (events, odds) = tokio::task::spawn_blocking(Self::fetch_runtime_data_blocking)
-            .await
-            .map_err(|error| -> Box<dyn std::error::Error + Send + Sync> { Box::new(error) })??;
+        let (events, odds) = tokio::task::spawn_blocking(move || {
+            Self::run_blocking_with_wall_clock_timeout(
+                MELBET_RUNTIME_WALL_CLOCK_TIMEOUT_MS,
+                Self::fetch_runtime_data_blocking_with_deadline,
+            )
+        })
+        .await
+        .map_err(|error| -> Box<dyn std::error::Error + Send + Sync> { Box::new(error) })??;
 
         let live_count = events.iter().filter(|event| event.is_live).count();
         let prematch_count = events.len().saturating_sub(live_count);
@@ -3506,9 +3665,11 @@ impl MelbetParser {
 mod tests {
     use super::{
         MelbetBootstrapSnapshot, MelbetParser, MelbetReadinessDiagnostics, MelbetRouteProbeResult,
-        MelbetRouteStatus, HEADLESS_PROBES, SPORTSBOOK_BASE_URL, SPORTSBOOK_HOME_URL,
+        MelbetRouteStatus, HEADLESS_PROBES, MELBET_RUNTIME_WALL_CLOCK_TIMEOUT_MS,
+        SPORTSBOOK_BASE_URL, SPORTSBOOK_HOME_URL,
     };
     use shared::Sport;
+    use std::time::Duration;
 
     #[test]
     fn parses_fixture_three_way_headless_payload() {
@@ -3977,6 +4138,73 @@ mod tests {
     }
 
     #[test]
+    fn desktop_live_navigation_fallback_keeps_useful_blocker_for_sportsbook_shell_route() {
+        let snapshot = MelbetBootstrapSnapshot::from_value(&serde_json::json!({
+            "url": "https://sport.melbet.ru/partner/SportsBook/Home?initialRoute=%7B%22path%22%3A%22%2Flive%22%7D",
+            "origin": "https://sport.melbet.ru",
+            "path": "/partner/SportsBook/Home",
+            "title": "Melbet sportsbook",
+            "runtimeContext": {
+                "hasHttpApi": false,
+                "httpApiMethods": [],
+                "partnerId": 0,
+                "langId": 0,
+                "countryCode": "",
+                "hasGlobalSettings": true,
+                "hasPartnerConfig": true,
+                "inlineScriptCount": 1,
+                "bootstrapMarkers": ["inline:$globalSettings", "route_family:href:sportsbook"]
+            },
+            "readinessDiagnostics": {
+                "readyState": "interactive",
+                "bodyTextLength": 0,
+                "bodyChildCount": 0,
+                "fetchLikeCount": 1,
+                "hasVisibleAppShell": true
+            },
+            "runtimeState": {
+                "href": "https://sport.melbet.ru/partner/SportsBook/Home?initialRoute=%7B%22path%22%3A%22%2Flive%22%7D",
+                "pathname": "/partner/SportsBook/Home",
+                "title": "Melbet sportsbook",
+                "readyState": "interactive",
+                "bodyChildCount": 0,
+                "bodyTextLength": 0,
+                "routeLinkCount": 1,
+                "routerShellCount": 1,
+                "bodyTextSample": ""
+            }
+        }));
+
+        let fallback = MelbetParser::sportsbook_navigation_failure_fallback(
+            &HEADLESS_PROBES[0],
+            &snapshot,
+            Some(
+                "https://sport.melbet.ru/partner/SportsBook/Home?initialRoute=%7B%22path%22%3A%22%2Flive%22%7D"
+                    .to_string(),
+            ),
+        );
+
+        assert_eq!(
+            fallback.blocker,
+            "missing_http_api_context:http_api_runtime|partner_id|lang_id|country_code|getTopLiveSports|getTopLiveEvents:additional_bootstrap_source_required"
+        );
+        assert_eq!(
+            fallback.bootstrap.as_ref().map(|item| item.final_url.as_str()),
+            Some(
+                "https://sport.melbet.ru/partner/SportsBook/Home?initialRoute=%7B%22path%22%3A%22%2Flive%22%7D"
+            )
+        );
+        assert_eq!(
+            MelbetParser::classify_route_status(
+                &HEADLESS_PROBES[0],
+                fallback.bootstrap.as_ref().expect("sportsbook bootstrap"),
+                fallback.payload.len(),
+            ),
+            MelbetRouteStatus::BootstrapOnly
+        );
+    }
+
+    #[test]
     fn short_circuits_http_api_route_probe_when_runtime_blocker_is_detected() {
         let snapshot = MelbetBootstrapSnapshot::from_value(&serde_json::json!({
             "url": "https://melbet.ru/live",
@@ -4078,6 +4306,54 @@ mod tests {
         assert_eq!(
             attempt.blocker,
             "missing_http_api_context:http_api_runtime|partner_id|lang_id|country_code|getTopLiveSports|getTopLiveEvents:additional_bootstrap_source_required"
+        );
+    }
+
+    #[test]
+    fn classifies_sparse_desktop_live_runtime_as_bootstrap_only() {
+        let snapshot = MelbetBootstrapSnapshot::from_value(&serde_json::json!({
+            "url": "https://melbet.ru/live",
+            "origin": "https://melbet.ru",
+            "path": "/live",
+            "title": "Melbet Live",
+            "runtimeContext": {
+                "hasHttpApi": false,
+                "httpApiMethods": [],
+                "partnerId": 0,
+                "langId": 0,
+                "countryCode": "",
+                "hasGlobalSettings": false,
+                "hasPartnerConfig": false,
+                "inlineScriptCount": 0,
+                "bootstrapMarkers": []
+            },
+            "readinessDiagnostics": {
+                "readyState": "complete",
+                "bodyTextLength": 18,
+                "bodyChildCount": 2,
+                "resourceCount": 0,
+                "fetchLikeCount": 0,
+                "hasVisibleAppShell": false
+            },
+            "runtimeState": {
+                "href": "https://melbet.ru/live",
+                "pathname": "/live",
+                "title": "Melbet Live",
+                "readyState": "complete",
+                "bodyChildCount": 2,
+                "bodyTextLength": 18,
+                "linkCount": 1,
+                "routeLinkCount": 0,
+                "routerShellCount": 0,
+                "bodyTextSample": "Live events",
+                "bootstrapMarkers": []
+            }
+        }));
+
+        assert!(MelbetParser::has_useful_desktop_bootstrap(&snapshot));
+        assert_eq!(
+            MelbetParser::classify_route_status(&HEADLESS_PROBES[0], &snapshot, 0),
+            MelbetRouteStatus::BootstrapOnly
         );
     }
 
@@ -4444,6 +4720,77 @@ mod tests {
     }
 
     #[test]
+    fn preserves_early_blocker_summary_when_classifier_keeps_bootstrap_only() {
+        let bootstrap = MelbetBootstrapSnapshot::from_value(&serde_json::json!({
+            "url": "https://melbet.ru/live",
+            "origin": "https://melbet.ru",
+            "path": "/live",
+            "title": "Melbet Live",
+            "readinessDiagnostics": {
+                "readyState": "complete",
+                "bodyTextLength": 24,
+                "bodyChildCount": 3,
+                "hasVisibleAppShell": true
+            },
+            "runtimeState": {
+                "href": "https://melbet.ru/live",
+                "pathname": "/live",
+                "title": "Melbet Live",
+                "readyState": "complete",
+                "bodyChildCount": 3,
+                "bodyTextLength": 24,
+                "routeLinkCount": 1,
+                "routerShellCount": 1,
+                "bodyTextSample": "Live events"
+            }
+        }));
+
+        let blocker = MelbetParser::summarize_runtime_blocker(&MelbetRouteProbeResult {
+            probe: HEADLESS_PROBES[0],
+            status: MelbetRouteStatus::BootstrapOnly,
+            payload_len: 0,
+            bootstrap,
+            extraction: super::MelbetExtractionDiagnostics {
+                source: "none".to_string(),
+                blocker: "missing_http_api_context:http_api_runtime|partner_id|lang_id|country_code|getTopLiveSports|getTopLiveEvents:additional_bootstrap_source_required".to_string(),
+                ..super::MelbetExtractionDiagnostics::default()
+            },
+        });
+
+        assert!(blocker.contains("status=blocked"));
+        assert!(blocker.contains("confirmed_blocker=additional_bootstrap_source_required"));
+        assert!(blocker.contains("next_step=manual_bootstrap_acquisition"));
+        assert!(blocker.contains("state=blocked_or_unconfirmed"));
+    }
+
+    #[test]
+    fn rewrites_desktop_live_navigation_failure_into_actionable_blocker() {
+        let bootstrap = MelbetParser::synthetic_navigation_failure_snapshot(&HEADLESS_PROBES[0]);
+
+        let blocker = MelbetParser::summarize_runtime_blocker(&MelbetRouteProbeResult {
+            probe: HEADLESS_PROBES[0],
+            status: MelbetRouteStatus::Blocked,
+            payload_len: 0,
+            bootstrap,
+            extraction: super::MelbetExtractionDiagnostics {
+                source: "none".to_string(),
+                blocker: "navigation_failed".to_string(),
+                ..super::MelbetExtractionDiagnostics::default()
+            },
+        });
+
+        assert!(blocker.contains("blocker=navigation_failed:retry_known_sportsbook_route"));
+        assert!(blocker.contains("confirmed_blocker=desktop_live_navigation_failed"));
+        assert!(blocker.contains("next_step=retry_known_sportsbook_route"));
+        assert!(blocker.contains(
+            "reason=canonical_navigation_failed_before_bootstrap_capture"
+        ));
+        assert!(blocker.contains(
+            "target_route=https://sport.melbet.ru/partner/SportsBook/Home?initialRoute=%7B%22path%22%3A%22%2Flive%22%7D"
+        ));
+    }
+
+    #[test]
     fn builds_manual_bootstrap_acquisition_plan_for_confirmed_blocker() {
         let snapshot = MelbetBootstrapSnapshot::from_value(&serde_json::json!({
             "url": "https://melbet.ru/ru/sport",
@@ -4734,6 +5081,66 @@ mod tests {
     }
 
     #[test]
+    fn runtime_state_bootstrap_markers_recover_desktop_live_shell() {
+        let runtime_state = super::MelbetRuntimeState::from_value(&serde_json::json!({
+            "href": "https://melbet.ru/live",
+            "pathname": "/live",
+            "readyState": "complete",
+            "bodyChildCount": 0,
+            "bodyTextLength": 0,
+            "bootstrapMarkers": [
+                "route:iframe:https://sport.melbet.ru/partner/SportsBook/Home?initialRoute=%7B%22path%22%3A%22%2Flive%22%7D",
+                "route_family:iframe:sportsbook",
+                "iframe:sportsbook",
+                "shell:route_links:1"
+            ]
+        }));
+
+        let snapshot =
+            MelbetParser::recovered_bootstrap_snapshot_from_runtime_state(&runtime_state)
+                .expect("recovered snapshot");
+
+        assert!(snapshot.runtime_state.has_bootstrap_markers());
+        assert!(snapshot.runtime_state.has_sportsbook_shell_markers());
+        assert!(!MelbetParser::has_empty_runtime_bootstrap(&snapshot));
+        assert_eq!(
+            MelbetParser::classify_route_status(&HEADLESS_PROBES[0], &snapshot, 0),
+            MelbetRouteStatus::BootstrapOnly
+        );
+    }
+
+    #[test]
+    fn interactive_runtime_nodes_keep_sparse_desktop_live_bootstrap_useful() {
+        let snapshot = MelbetBootstrapSnapshot::from_value(&serde_json::json!({
+            "url": "https://melbet.ru/live",
+            "origin": "https://melbet.ru",
+            "path": "/live",
+            "title": "Melbet Live",
+            "runtimeState": {
+                "href": "https://melbet.ru/live",
+                "pathname": "/live",
+                "title": "Melbet Live",
+                "readyState": "complete",
+                "bodyChildCount": 0,
+                "bodyTextLength": 0,
+                "buttonCount": 0,
+                "interactiveNodeCount": 6,
+                "linkCount": 0,
+                "routeLinkCount": 0,
+                "routerShellCount": 0,
+                "bodyTextSample": ""
+            }
+        }));
+
+        assert!(MelbetParser::has_useful_desktop_bootstrap(&snapshot));
+        assert!(!MelbetParser::has_empty_runtime_bootstrap(&snapshot));
+        assert_eq!(
+            MelbetParser::classify_route_status(&HEADLESS_PROBES[0], &snapshot, 0),
+            MelbetRouteStatus::BootstrapOnly
+        );
+    }
+
+    #[test]
     fn recovers_bootstrap_snapshot_from_runtime_state_when_full_capture_is_missing() {
         let runtime_state = super::MelbetRuntimeState::from_value(&serde_json::json!({
             "href": "https://melbet.ru/ru/sport",
@@ -4750,8 +5157,9 @@ mod tests {
             }
         }));
 
-        let snapshot = MelbetParser::recovered_bootstrap_snapshot_from_runtime_state(&runtime_state)
-            .expect("recovered snapshot");
+        let snapshot =
+            MelbetParser::recovered_bootstrap_snapshot_from_runtime_state(&runtime_state)
+                .expect("recovered snapshot");
 
         assert_eq!(snapshot.final_url, "https://melbet.ru/ru/sport");
         assert_eq!(snapshot.path, "/ru/sport");
@@ -4761,6 +5169,33 @@ mod tests {
             .bootstrap_markers
             .iter()
             .any(|item| item == "route_family:runtime:sportsbook"));
+        assert!(!MelbetParser::has_empty_runtime_bootstrap(&snapshot));
+        assert_eq!(
+            MelbetParser::classify_route_status(&HEADLESS_PROBES[0], &snapshot, 0),
+            MelbetRouteStatus::BootstrapOnly
+        );
+    }
+
+    #[test]
+    fn recovers_sparse_runtime_state_with_interactive_nodes() {
+        let runtime_state = super::MelbetRuntimeState::from_value(&serde_json::json!({
+            "href": "https://melbet.ru/live",
+            "pathname": "/live",
+            "title": "Melbet Live",
+            "readyState": "complete",
+            "bodyChildCount": 0,
+            "bodyTextLength": 0,
+            "interactiveNodeCount": 4,
+            "linkCount": 0,
+            "routeLinkCount": 0,
+            "routerShellCount": 0
+        }));
+
+        let snapshot =
+            MelbetParser::recovered_bootstrap_snapshot_from_runtime_state(&runtime_state)
+                .expect("recovered snapshot");
+
+        assert!(snapshot.readiness.has_visible_app_shell);
         assert!(!MelbetParser::has_empty_runtime_bootstrap(&snapshot));
         assert_eq!(
             MelbetParser::classify_route_status(&HEADLESS_PROBES[0], &snapshot, 0),
@@ -4794,6 +5229,42 @@ mod tests {
         assert!(snapshot.runtime_context.has_bootstrap_source_markers());
         assert!(MelbetParser::summarize_runtime_context(&snapshot)
             .contains("bootstrap_markers=inline:$globalSettings|runtime:$globalSettings|runtime:$httpApi|runtime:partnerId|runtime:langId|runtime:countryCode"));
+    }
+
+    #[test]
+    fn recovered_runtime_state_preserves_bootstrap_source_blocker_context() {
+        let runtime_state = super::MelbetRuntimeState::from_value(&serde_json::json!({
+            "href": "https://melbet.ru/live",
+            "pathname": "/live",
+            "title": "Melbet Live",
+            "readyState": "complete",
+            "bodyChildCount": 1,
+            "bodyTextLength": 0,
+            "bootstrapMarkers": [
+                "route:href:https://melbet.ru/live",
+                "route_family:href:live",
+                "runtime:$globalSettings",
+                "runtime:$httpApi",
+                "runtime:partnerId",
+                "runtime:langId",
+                "runtime:countryCode"
+            ]
+        }));
+
+        let snapshot =
+            MelbetParser::recovered_bootstrap_snapshot_from_runtime_state(&runtime_state)
+                .expect("recovered snapshot");
+
+        assert!(snapshot.runtime_context.has_bootstrap_source_markers());
+        assert!(snapshot
+            .runtime_context
+            .bootstrap_markers
+            .iter()
+            .any(|item| item == "runtime:$httpApi"));
+        assert_eq!(
+            snapshot.runtime_context.http_api_blocker(true),
+            "missing_http_api_context:partner_id|lang_id|country_code|getTopLiveSports|getTopLiveEvents:additional_bootstrap_source_required"
+        );
     }
 
     #[test]
@@ -4957,6 +5428,23 @@ mod tests {
             .checks
             .iter()
             .any(|check| check.code == "melbet_transport_runtime_guardrail"));
+    }
+
+    #[test]
+    fn returns_wall_clock_blocker_before_outer_timeout() {
+        let error = MelbetParser::run_blocking_with_wall_clock_timeout(25, |_deadline| {
+            std::thread::sleep(Duration::from_millis(80));
+            Ok::<_, Box<dyn std::error::Error + Send + Sync>>((
+                Vec::<shared::Event>::new(),
+                Vec::<shared::Odd>::new(),
+            ))
+        })
+        .expect_err("wall clock timeout expected");
+
+        let message = error.to_string();
+        assert!(message.contains("melbet runtime wall clock timeout after 25ms"));
+        assert!(message.contains("useful blocker/result"));
+        assert!(MELBET_RUNTIME_WALL_CLOCK_TIMEOUT_MS < 90_000);
     }
 }
 

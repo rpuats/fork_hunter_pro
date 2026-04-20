@@ -1,0 +1,21 @@
+[package]
+name = "monitoring"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+shared = { path = "../shared" }
+engine = { path = "../engine" }
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+chrono.workspace = true
+uuid.workspace = true
+dashmap.workspace = true
+parking_lot.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["full"] }

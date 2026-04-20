@@ -46,6 +46,9 @@
 | 24bet | ✅ (fixed) | ~6500 | bet24.rs |
 | Leon | ✅ | ~3600 | leon.rs |
 | Sportbet | ✅ | ~250 | sportbet.rs |
+| **SBObet** | ✅ | **~2700** | **international_bundle.rs** |
+| **1xBet Alt** | ✅ | **~2700** | **international_bundle.rs** |
+| **Betscope** | ✅ | **~2600** | **international_bundle.rs** |
 | Olimp | ⚠️ blocked | — | olimp.rs |
 | Winline | ❌ not_ported | — | legacy/python |
 | Betcity | ❌ not_ported | — | legacy/python |
@@ -59,6 +62,9 @@
 - GET `/api/v1/surebets` — вилки
 - GET `/api/v1/freebets` — фрибеты
 - GET `/api/v1/bookmakers` — список БК
+- GET `/api/v1/parsers/coverage` — покрытие парсеров
+- GET `/api/v1/parsers/health` — здоровье парсеров
+- GET `/api/v1/parsers/promotion-kpi` — KPI продвижения парсеров
 - GET `/api/v1/analytics/generosity` — индекс щедрости
 - GET `/api/v1/corridors` — коридоры
 - GET `/api/v1/express-forks` — экспресс-вилки

@@ -74,6 +74,14 @@ def load_config() -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     return lanes, tasks
 
 
+def save_tasks_config(tasks: list[dict[str, Any]]) -> None:
+    payload = {
+        "version": 1,
+        "tasks": tasks,
+    }
+    write_json(CONFIG_ROOT / "tasks.json", payload)
+
+
 def default_state() -> dict[str, Any]:
     lanes, tasks = load_config()
     task_states = []
@@ -117,12 +125,67 @@ def default_state() -> dict[str, Any]:
     }
 
 
+def sync_state_with_config(state: dict[str, Any]) -> dict[str, Any]:
+    lanes, tasks = load_config()
+
+    existing_lanes = {lane["id"]: lane for lane in state.get("lanes", [])}
+    synced_lanes = []
+    for lane in sorted(lanes, key=lambda item: (item["priority"], item["id"])):
+        previous = existing_lanes.get(lane["id"], {})
+        active_task_id = previous.get("activeTaskId")
+        synced_lanes.append(
+            {
+                "id": lane["id"],
+                "title": lane["title"],
+                "type": lane["type"],
+                "worktree": lane["worktree"],
+                "ownership": lane["ownership"],
+                "priority": lane["priority"],
+                "status": previous.get("status", lane["default_status"]),
+                "activeTaskId": active_task_id,
+                "lastUpdatedAt": previous.get("lastUpdatedAt"),
+            }
+        )
+
+    existing_tasks = {task["id"]: task for task in state.get("tasks", [])}
+    valid_task_ids = {task["id"] for task in tasks}
+    synced_tasks = []
+    for task in sorted(tasks, key=lambda item: (item["lane"], item["priority"], item["id"])):
+        previous = existing_tasks.get(task["id"], {})
+        synced_tasks.append(
+            {
+                "id": task["id"],
+                "lane": task["lane"],
+                "priority": task["priority"],
+                "title": task["title"],
+                "objective": task["objective"],
+                "doneCriteria": task["doneCriteria"],
+                "status": previous.get("status", "queued"),
+                "claimedAt": previous.get("claimedAt"),
+                "completedAt": previous.get("completedAt"),
+                "note": previous.get("note"),
+            }
+        )
+
+    for lane in synced_lanes:
+        if lane["activeTaskId"] not in valid_task_ids:
+            lane["activeTaskId"] = None
+
+    synced_state = {
+        "createdAt": state.get("createdAt", now_iso()),
+        "updatedAt": state.get("updatedAt", now_iso()),
+        "lanes": synced_lanes,
+        "tasks": synced_tasks,
+    }
+    return synced_state
+
+
 def load_state() -> dict[str, Any]:
     if not STATE_PATH.exists():
         state = default_state()
         write_json(STATE_PATH, state)
         return state
-    return read_json(STATE_PATH)
+    return sync_state_with_config(read_json(STATE_PATH))
 
 
 def save_state(state: dict[str, Any]) -> None:
@@ -186,12 +249,74 @@ def claim_next(args: argparse.Namespace) -> int:
     return 0
 
 
+def claim_wave(_: argparse.Namespace) -> int:
+    with state_lock():
+        state = load_state()
+        claimed: list[tuple[str, str]] = []
+
+        for lane in sorted(state["lanes"], key=lambda item: (item["priority"], item["id"])):
+            if lane["activeTaskId"]:
+                continue
+
+            queued = [
+                task
+                for task in state["tasks"]
+                if task["lane"] == lane["id"] and task["status"] == "queued"
+            ]
+            queued.sort(key=lambda item: (item["priority"], item["id"]))
+            if not queued:
+                continue
+
+            task = queued[0]
+            task["status"] = "in_progress"
+            task["claimedAt"] = now_iso()
+            lane["activeTaskId"] = task["id"]
+            lane["lastUpdatedAt"] = now_iso()
+            claimed.append((lane["id"], task["id"]))
+
+        save_state(state)
+
+    if not claimed:
+        print("No queued tasks available for wave claim")
+        return 0
+
+    for lane_id, task_id in claimed:
+        print(f"claimed lane={lane_id} task={task_id}")
+    return 0
+
+
+def claim_available_tasks(state: dict[str, Any]) -> list[tuple[str, str]]:
+    claimed: list[tuple[str, str]] = []
+
+    for lane in sorted(state["lanes"], key=lambda item: (item["priority"], item["id"])):
+        if lane["activeTaskId"]:
+            continue
+
+        queued = [
+            task
+            for task in state["tasks"]
+            if task["lane"] == lane["id"] and task["status"] == "queued"
+        ]
+        queued.sort(key=lambda item: (item["priority"], item["id"]))
+        if not queued:
+            continue
+
+        task = queued[0]
+        task["status"] = "in_progress"
+        task["claimedAt"] = now_iso()
+        lane["activeTaskId"] = task["id"]
+        lane["lastUpdatedAt"] = now_iso()
+        claimed.append((lane["id"], task["id"]))
+
+    return claimed
+
+
 def complete_task(args: argparse.Namespace) -> int:
     with state_lock():
         state = load_state()
         task = next((item for item in state["tasks"] if item["id"] == args.task_id), None)
         if task is None:
-            raise SystemExit(f"Unknown task '{args.task_id}'")
+            raise SystemExit(f"Task '{args.task_id}' not found")
 
         task["status"] = "completed"
         task["completedAt"] = now_iso()
@@ -201,19 +326,57 @@ def complete_task(args: argparse.Namespace) -> int:
             if lane["activeTaskId"] == task["id"]:
                 lane["activeTaskId"] = None
                 lane["lastUpdatedAt"] = now_iso()
+                
+                queued = [
+                    t for t in state["tasks"]
+                    if t["lane"] == lane["id"] and t["status"] == "queued"
+                ]
+                queued.sort(key=lambda t: (t["priority"], t["id"]))
+                if queued:
+                    next_task = queued[0]
+                    next_task["status"] = "in_progress"
+                    next_task["claimedAt"] = now_iso()
+                    lane["activeTaskId"] = next_task["id"]
+                    lane["lastUpdatedAt"] = now_iso()
+                    print(f"Auto-claimed next: lane={lane['id']} task={next_task['id']}")
 
         save_state(state)
     print(f"Completed: {task['id']}")
     return 0
 
 
+def dispatch(args: argparse.Namespace) -> int:
+    iterations = args.iterations
+    interval_secs = args.interval_secs
+    dry_run = args.dry_run
+
+    for tick in range(1, iterations + 1):
+        with state_lock():
+            state = load_state()
+            claimed = claim_available_tasks(state)
+            if not dry_run:
+                save_state(state)
+
+        print(f"tick={tick} claimed={len(claimed)}")
+        for lane_id, task_id in claimed:
+            print(f"claimed lane={lane_id} task={task_id}")
+
+        if tick < iterations:
+            time.sleep(interval_secs)
+
+    return 0
+
+
 def add_task(args: argparse.Namespace) -> int:
     with state_lock():
         state = load_state()
-        if any(item["id"] == args.task_id for item in state["tasks"]):
+        lanes, tasks = load_config()
+        del lanes  # loaded only to keep config access symmetrical
+
+        if any(item["id"] == args.task_id for item in tasks):
             raise SystemExit(f"Task '{args.task_id}' already exists")
 
-        state["tasks"].append(
+        tasks.append(
             {
                 "id": args.task_id,
                 "lane": args.lane,
@@ -221,12 +384,11 @@ def add_task(args: argparse.Namespace) -> int:
                 "title": args.title,
                 "objective": args.objective,
                 "doneCriteria": args.done_criteria,
-                "status": "queued",
-                "claimedAt": None,
-                "completedAt": None,
-                "note": None,
             }
         )
+
+        save_tasks_config(tasks)
+        state = load_state()
         save_state(state)
     print(f"Added: {args.task_id}")
     return 0
@@ -245,6 +407,15 @@ def main() -> int:
     claim_parser = subparsers.add_parser("claim-next")
     claim_parser.add_argument("--lane", required=True)
     claim_parser.set_defaults(func=claim_next)
+
+    claim_wave_parser = subparsers.add_parser("claim-wave")
+    claim_wave_parser.set_defaults(func=claim_wave)
+
+    dispatch_parser = subparsers.add_parser("dispatch")
+    dispatch_parser.add_argument("--iterations", type=int, default=1)
+    dispatch_parser.add_argument("--interval-secs", type=float, default=5.0)
+    dispatch_parser.add_argument("--dry-run", action="store_true")
+    dispatch_parser.set_defaults(func=dispatch)
 
     complete_parser = subparsers.add_parser("complete")
     complete_parser.add_argument("--task-id", required=True)

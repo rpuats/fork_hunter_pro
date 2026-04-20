@@ -413,6 +413,39 @@ export interface ParserHealth {
   diagnostics: ParserDiagnosticCheck[]
 }
 
+export type BackendNightlyKpiGateStatus = 'pass' | 'warn' | 'fail' | 'unavailable'
+export type BackendBookmakerTriageBucket = 'ready' | 'unfinished' | 'disabled'
+
+export interface ParserNightlyKpiGate {
+  status: BackendNightlyKpiGateStatus
+  checks: ParserDiagnosticCheck[]
+}
+
+export interface BookmakerStatusCatalogEntry {
+  slug: string
+  name: string
+  enabled: boolean
+  triage_bucket: BackendBookmakerTriageBucket
+  readiness_stage: BackendParserReadinessStage
+  production_enabled: boolean
+  scan_supported: boolean
+  execution_supported: boolean
+  top_issue: string | null
+  nightly_kpi_gate: ParserNightlyKpiGate
+}
+
+export interface BookmakerStatusCatalogSummary {
+  ready: number
+  unfinished: number
+  disabled: number
+  total: number
+}
+
+export interface BookmakerStatusCatalog {
+  summary: BookmakerStatusCatalogSummary
+  bookmakers: BookmakerStatusCatalogEntry[]
+}
+
 export interface CorridorOpportunity {
   id: string
   sport: string

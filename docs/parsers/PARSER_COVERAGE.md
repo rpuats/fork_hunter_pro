@@ -23,10 +23,10 @@ Acquisition classes used here:
 | Sportbet | `crates/parsers/src/sportbet.rs` | yes | HTTP API | Appears actively used. |
 | 24bet | `crates/parsers/src/bet24.rs` | yes | HTTP API | Canonical parser slug is `_24bet`; factory keeps `bet24` as legacy alias. |
 | Winline | `crates/parsers/src/winline.rs` | no | Bridge | Rust shell-outs to `scanner/parsers/parse_winline_json.py`. Good migration candidate, but still bridge-bound. |
-| Betcity | `crates/parsers/src/betcity.rs` | no | HTTP API | Module exists, but is not currently registered. |
-| Baltbet | `crates/parsers/src/baltbet.rs` | no | HTTP API | Module exists, but is not currently registered. |
-| Zenit | `crates/parsers/src/zenit.rs` | no | HTTP API | Module exists, but is not currently registered. |
-| Olimp | `crates/parsers/src/olimp.rs` | no | HTTP API | Explicitly disabled in factory due to response shape complexity (`competitions` map). |
+| Betcity | `crates/parsers/src/betcity.rs` | yes | HTTP API | Registered in `ParserFactory` and default runtime diagnostics; a fresh direct endpoint probe shows healthy live/prematch volume, so the zero-event nightly currently looks like transient noise rather than a structural feed blocker. |
+| Baltbet | `crates/parsers/src/baltbet.rs` | yes | HTTP API | Registered in `ParserFactory`, included in default runtime diagnostics, and marked production-ready from strict nightly KPI evidence. |
+| Zenit | `crates/parsers/src/zenit.rs` | yes | HTTP API | Registered in `ParserFactory` and default runtime diagnostics; readiness now records an earlier runtime pass but keeps Zenit below production because recent strict nightly runs regressed to zero events. |
+| Olimp | `crates/parsers/src/olimp.rs` | yes | HTTP API | Re-enabled behind the direct `competitionsWithEvents` path; readiness now locks one bounded 2026-04-18 runtime probe with non-empty live/prematch event volume while production promotion stays gated. |
 
 ## Gaps with strongest repo evidence
 
@@ -44,7 +44,7 @@ These bookmakers have concrete discovery artifacts in the repo, but no active Ru
 ## Prioritized expansion order
 
 1. **Re-enable existing Rust modules before adding new bookmakers**
-   - `betcity`, `baltbet`, `zenit`, `olimp`, `winline`
+   - `olimp`, `winline`
    - Reason: code already exists, so recovery cost is lower than net-new onboarding.
 2. **1xStavka**
    - Best chance of becoming a clean direct HTTP parser.
@@ -98,6 +98,6 @@ Do not add scraper code whose only purpose is to defeat anti-bot systems. If bro
 ## Suggested next implementation tickets
 
 1. Add a fixture-driven test harness for parser payload samples.
-2. Re-enable `olimp` behind a narrow sample-based parser test once `competitions` map handling is normalized.
+2. Promote `olimp` from sample-backed registration to broader live runtime validation and volume checks.
 3. Introduce explicit parser metadata in Rust (slug, acquisition class, maturity, source-of-truth fixture path).
 4. Build a lightweight browser-intercept bridge abstraction for candidates like BetBoom and Liga Stavok, instead of ad-hoc per-parser subprocess behavior.

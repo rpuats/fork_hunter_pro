@@ -2,59 +2,59 @@
   "version": 1,
   "tasks": [
     {
-      "id": "winline-fanout-bounds",
+      "id": "winline-feed-decision",
       "lane": "winline",
       "priority": 1,
-      "title": "Cut expensive route/page fanout",
-      "objective": "Reduce wasteful Winline route/page fanout and make runtime failure bounded and honest.",
+      "title": "Promote bounded path into feed decision",
+      "objective": "Decide whether the validated Winline bounded path can become a stable structured feed path or must remain an explicit blocker.",
       "doneCriteria": [
-        "main expensive fanout path identified or reduced",
-        "runtime behavior becomes more bounded or more productive",
+        "structured payload path is validated or rejected with evidence",
+        "runtime feed decision becomes clearer",
         "local validation steps documented"
       ]
     },
     {
-      "id": "melbet-bootstrap-truth",
+      "id": "melbet-transport-truth",
       "lane": "melbet",
       "priority": 1,
-      "title": "Tighten route/bootstrap blocker",
-      "objective": "Promote Melbet from vague partial runtime to a clearer feed/bootstrap decision point.",
+      "title": "Turn transport blocker into feed decision",
+      "objective": "Push Melbet from a tightened transport/runtime blocker to one concrete feed/bootstrap decision point with narrower evidence.",
       "doneCriteria": [
-        "route/bootstrap blocker isolated more tightly",
+        "transport blocker is narrowed again or converted into a feed/bootstrap path",
         "runtime signals become more honest",
         "next task is obvious without re-reading logs"
       ]
     },
     {
-      "id": "betboom-feed-path",
+      "id": "betboom-runtime-path",
       "lane": "betboom",
       "priority": 1,
-      "title": "Connect runtime feed path",
-      "objective": "Use existing probes/contracts groundwork to connect Betboom to a real runtime feed path or a more honest blocker.",
+      "title": "Advance guarded runtime feed path",
+      "objective": "Advance Betboom from compact fallback behavior toward a stable runtime feed path or a tighter explicit blocker around the Sporthub/runtime layer.",
       "doneCriteria": [
-        "feed path advanced",
-        "empty-result root cause narrowed",
+        "runtime feed path advances or blocker tightens",
+        "empty-result root cause narrows further",
         "local validation documented"
       ]
     },
     {
-      "id": "ligastavok-session-readiness",
+      "id": "ligastavok-bootstrap-evidence",
       "lane": "ligastavok",
       "priority": 1,
-      "title": "Strengthen anti-bot readiness diagnostics",
-      "objective": "Improve honest session/bootstrap readiness and blocker reporting without fake bypasses.",
+      "title": "Collect stronger bootstrap evidence",
+      "objective": "Improve honest LigaStavok anti-bot/bootstrap evidence and readiness reporting without bypass claims.",
       "doneCriteria": [
-        "readiness/blocker layer improved",
-        "anti-bot dependency made explicit",
+        "bootstrap evidence becomes stronger or blocker becomes more explicit",
+        "anti-bot dependency stays explicit",
         "local validation documented"
       ]
     },
     {
-      "id": "coordinator-wave-board",
+      "id": "coordinator-wave-2-board",
       "lane": "coordinator",
       "priority": 1,
-      "title": "Maintain current wave board",
-      "objective": "Keep current wave, next wave, and task rotation compact and current in docs/memory and onboarding docs.",
+      "title": "Maintain wave 2 board",
+      "objective": "Keep wave 2 assignments, next queue, and service rotation compact and current in docs/memory and onboarding docs.",
       "doneCriteria": [
         "current active wave is current",
         "next queued tasks are compact",
@@ -62,48 +62,503 @@
       ]
     },
     {
-      "id": "service-core-truthfulness",
+      "id": "service-ui-operator-patch",
       "lane": "service",
       "priority": 1,
-      "title": "Improve runtime truthfulness",
-      "objective": "Strengthen parser health, validators, staleness, or verifier via a bounded core-safety patch.",
+      "title": "Land bounded UI/operator follow-up",
+      "objective": "Use the new readiness, lifecycle, and execution safety surfaces in one bounded operator-facing UI/operator improvement.",
       "doneCriteria": [
-        "one bounded core-safety improvement lands",
-        "validation result recorded",
-        "follow-up queued"
+        "one bounded operator-facing improvement lands",
+        "validation documented",
+        "follow-up stays clear for the next service rotation"
       ]
     },
     {
-      "id": "service-operator-readiness",
+      "id": "service-swarm-autonomy",
       "lane": "service",
       "priority": 2,
-      "title": "Improve operator readiness surfaces",
-      "objective": "Improve readiness/triage/operator surfacing in API or UI after the core-safety slot finishes.",
+      "title": "Improve swarm autonomy surfaces",
+      "objective": "Strengthen memory, handoff, token compression, and self-assignment surfaces so lanes can continue with less human prompting.",
       "doneCriteria": [
-        "bounded operator-facing improvement lands",
+        "one bounded swarm-autonomy improvement lands",
+        "handoff or memory gets shorter and clearer",
+        "next autonomous move is easier"
+      ]
+    },
+    {
+      "id": "coordinator-self-driving-board",
+      "lane": "coordinator",
+      "priority": 2,
+      "title": "Promote self-driving board maintenance",
+      "objective": "Keep a compact protocol for accepting worker-proposed next tasks and maintaining an idea pool without long narratives.",
+      "doneCriteria": [
+        "self-driving board rules are explicit",
+        "idea pool stays compact",
+        "board maintenance remains short"
+      ]
+    },
+    {
+      "id": "service-parser-kpi-strip",
+      "lane": "service",
+      "priority": 1,
+      "title": "Add parser promotion KPI strip",
+      "objective": "Add one compact parser promotion KPI strip to operator/API surfaces showing bookmaker readiness.",
+      "doneCriteria": [
+        "one bounded KPI strip lands",
         "validation documented"
       ]
     },
     {
-      "id": "service-execution-safety",
+      "id": "service-lane-status-panel",
+      "lane": "service",
+      "priority": 2,
+      "title": "Surface lane/task status panel",
+      "objective": "Surface lane/task status from swarm board in a read-only developer panel.",
+      "doneCriteria": [
+        "one bounded panel improvement lands",
+        "validation documented"
+      ]
+    },
+    {
+      "id": "winline-promotion-gate",
+      "lane": "winline",
+      "priority": 1,
+      "title": "Convert to promotion gate",
+      "objective": "Convert validated structured path evidence into a hard accept/reject promotion gate.",
+      "doneCriteria": [
+        "promotion gate is explicit",
+        "validation documented"
+      ]
+    },
+    {
+      "id": "melbet-bootstrap-boundary",
+      "lane": "melbet",
+      "priority": 1,
+      "title": "Isolate bootstrap dependency",
+      "objective": "Isolate exact bootstrap dependency boundary with one tighter runtime probe.",
+      "doneCriteria": [
+        "bootstrap boundary is isolated",
+        "validation documented"
+      ]
+    },
+    {
+      "id": "betboom-prove-emptiness",
+      "lane": "betboom",
+      "priority": 1,
+      "title": "Prove Sporthub emptiness cause",
+      "objective": "Prove whether Sporthub/runtime emptiness is transport, parse, or payload shape.",
+      "doneCriteria": [
+        "root cause identified",
+        "validation documented"
+      ]
+    },
+    {
+      "id": "ligastavok-make-diffable",
+      "lane": "ligastavok",
+      "priority": 1,
+      "title": "Make bootstrap evidence diffable",
+      "objective": "Make browser-assisted bootstrap evidence diffable across runs.",
+      "doneCriteria": [
+        "evidence is diffable",
+        "validation documented"
+      ]
+    },
+    {
+      "id": "winline-next-promotion",
+      "lane": "winline",
+      "priority": 2,
+      "title": "Next Winline promotion step",
+      "objective": "Work on the next bounded Winline improvement from the current blocker.",
+      "doneCriteria": [
+        "bounded improvement lands",
+        "validation documented"
+      ]
+    },
+    {
+      "id": "melbet-next-transport",
+      "lane": "melbet",
+      "priority": 2,
+      "title": "Next Melbet transport step",
+      "objective": "Work on the next bounded Melbet improvement from the current blocker.",
+      "doneCriteria": [
+        "bounded improvement lands",
+        "validation documented"
+      ]
+    },
+    {
+      "id": "betboom-fix-blocksplit",
+      "lane": "betboom",
+      "priority": 1,
+      "title": "Fix block splitting or accept diagnostic",
+      "objective": "Fix block splitting logic for flattened cards or accept diagnostic-only mode.",
+      "doneCriteria": [
+        "blocksplit fixed OR diagnostic-only accepted",
+        "validation documented"
+      ]
+    },
+    {
+      "id": "melbet-test-bootstrap",
+      "lane": "melbet",
+      "priority": 1,
+      "title": "Test live bootstrap barrier",
+      "objective": "Test actual bootstrap against live melbet.ru to confirm cloudflare barrier.",
+      "doneCriteria": [
+        "live barrier confirmed",
+        "validation documented"
+      ]
+    },
+    {
+      "id": "coordinator-generate-wave",
+      "lane": "coordinator",
+      "priority": 1,
+      "title": "Generate next wave",
+      "objective": "Generate next wave from current blockers and idea pool.",
+      "doneCriteria": [
+        "next wave tasks added",
+        "board synced"
+      ]
+    },
+    {
+      "id": "service-health-readiness",
+      "lane": "service",
+      "priority": 2,
+      "title": "Add parser readiness to health",
+      "objective": "Add parser readiness to API health endpoint.",
+      "doneCriteria": [
+        "readiness in health endpoint",
+        "validation documented"
+      ]
+    },
+    {
+      "id": "winline-readiness-factory-test",
+      "lane": "winline",
+      "priority": 1,
+      "title": "Add readiness factory test",
+      "objective": "Add one bounded test that locks Winline readiness metadata in factory/API surfaces.",
+      "doneCriteria": [
+        "factory readiness covered",
+        "validation documented"
+      ]
+    },
+    {
+      "id": "ligastavok-bootstrap-source-signal",
+      "lane": "ligastavok",
+      "priority": 1,
+      "title": "Surface bootstrap source signal",
+      "objective": "Surface actual bootstrap-source presence in LigaStavok diagnostics without changing production guardrails.",
+      "doneCriteria": [
+        "bootstrap source signal added",
+        "validation documented"
+      ]
+    },
+    {
+      "id": "winline-stable-feed-proof",
+      "lane": "winline",
+      "priority": 2,
+      "title": "Prove stable structured feed",
+      "objective": "Use readiness and factory evidence to prove whether the Winline structured payload path is stable enough for feed promotion or must stay blocked.",
+      "doneCriteria": [
+        "stable feed path proven or rejected",
+        "blocker state stays explicit",
+        "validation documented"
+      ]
+    },
+    {
+      "id": "melbet-bootstrap-evidence-pack",
+      "lane": "melbet",
+      "priority": 2,
+      "title": "Package bootstrap barrier evidence",
+      "objective": "Turn the live Melbet bootstrap barrier test into reusable evidence that supports either a browser-assisted path or an explicit external blocker.",
+      "doneCriteria": [
+        "barrier evidence is reusable",
+        "external blocker or path becomes clearer",
+        "validation documented"
+      ]
+    },
+    {
+      "id": "betboom-runtime-shape-decision",
+      "lane": "betboom",
+      "priority": 2,
+      "title": "Decide runtime card shape path",
+      "objective": "Use the block-splitting result to prove whether flattened runtime cards can yield a real feed path or must remain diagnostic-only.",
+      "doneCriteria": [
+        "runtime shape path advanced or rejected",
+        "blocker stays explicit",
+        "validation documented"
+      ]
+    },
+    {
+      "id": "ligastavok-browser-bootstrap-capture",
+      "lane": "ligastavok",
+      "priority": 2,
+      "title": "Capture browser bootstrap signal",
+      "objective": "Capture one stronger browser-assisted LigaStavok bootstrap signal while keeping the anti-bot dependency explicit and unchanged.",
+      "doneCriteria": [
+        "stronger bootstrap signal captured",
+        "anti-bot boundary stays explicit",
+        "validation documented"
+      ]
+    },
+    {
+      "id": "service-parser-capability-catalog",
       "lane": "service",
       "priority": 3,
-      "title": "Improve execution safety groundwork",
-      "objective": "Improve approval/safety/drift/readiness groundwork before any real-money automation.",
+      "title": "Add parser capability catalog",
+      "objective": "Add one compact parser capability/readiness catalog across parser factory and API/operator surfaces for faster promotion triage.",
       "doneCriteria": [
-        "bounded execution safety improvement lands",
+        "capability catalog lands",
+        "promotion triage gets clearer",
         "validation documented"
       ]
     },
     {
-      "id": "service-agent-throughput",
-      "lane": "service",
-      "priority": 4,
-      "title": "Improve swarm throughput",
-      "objective": "Improve lane handoff, task compression, or queue tooling to reduce overhead.",
+      "id": "coordinator-wave-3-board",
+      "lane": "coordinator",
+      "priority": 2,
+      "title": "Maintain wave 3 board",
+      "objective": "Keep wave 3 assignments, generated follow-ups, and service rotation compact and current in coordinator-owned docs.",
       "doneCriteria": [
-        "one bounded throughput improvement lands",
-        "new handoff path is simpler"
+        "wave 3 board stays current",
+        "queue remains compact",
+        "handoff stays short"
+      ]
+    },
+    {
+      "id": "tennisi-response-classification",
+      "lane": "tennisi",
+      "priority": 1,
+      "title": "Classify Tennisi response path",
+      "objective": "Classify whether Tennisi should advance via response capture/interception or remain DOM-brittle diagnostic-only.",
+      "doneCriteria": [
+        "response/interception path is clearer",
+        "blocker stays explicit",
+        "validation documented"
+      ]
+    },
+    {
+      "id": "betm-readiness-proof",
+      "lane": "betm",
+      "priority": 1,
+      "title": "Prove BetM readiness path",
+      "objective": "Use current BetM parser and readiness metadata to prove whether the Rust path is ready for stronger promotion or still bounded/diagnostic.",
+      "doneCriteria": [
+        "readiness path proven or rejected",
+        "blocker stays explicit",
+        "validation documented"
+      ]
+    },
+    {
+      "id": "betcity-registration-truth",
+      "lane": "betcity",
+      "priority": 1,
+      "title": "Tighten Betcity registration truth",
+      "objective": "Tighten why Betcity exists in parser coverage but is not promoted/registered as production-ready runtime.",
+      "doneCriteria": [
+        "registration/runtime truth is clearer",
+        "next promotion step is bounded",
+        "validation documented"
+      ]
+    },
+    {
+      "id": "zenit-registration-truth",
+      "lane": "zenit",
+      "priority": 1,
+      "title": "Tighten Zenit registration truth",
+      "objective": "Tighten why Zenit exists in parser coverage but is not promoted/registered as production-ready runtime.",
+      "doneCriteria": [
+        "registration/runtime truth is clearer",
+        "next promotion step is bounded",
+        "validation documented"
+      ]
+    },
+    {
+      "id": "baltbet-registration-truth",
+      "lane": "baltbet",
+      "priority": 1,
+      "title": "Tighten Baltbet registration truth",
+      "objective": "Tighten why Baltbet exists in parser coverage but is not promoted/registered as production-ready runtime.",
+      "doneCriteria": [
+        "registration/runtime truth is clearer",
+        "next promotion step is bounded",
+        "validation documented"
+      ]
+    },
+    {
+      "id": "olimp-reenable-decision",
+      "lane": "olimp",
+      "priority": 1,
+      "title": "Make Olimp re-enable decision",
+      "objective": "Decide whether Olimp can be re-enabled behind a narrow normalized sample path or must remain explicitly disabled.",
+      "doneCriteria": [
+        "re-enable decision is explicit",
+        "blocker stays honest",
+        "validation documented"
+      ]
+    },
+    {
+      "id": "tennisi-readiness-assertion",
+      "lane": "tennisi",
+      "priority": 1,
+      "title": "Add Tennisi readiness assertion",
+      "objective": "Add one bounded readiness/coverage assertion that locks Tennisi as direct-response HTML fetch rather than DOM-brittle interception.",
+      "doneCriteria": [
+        "readiness assertion added",
+        "validation documented"
+      ]
+    },
+    {
+      "id": "betm-live-proof",
+      "lane": "betm",
+      "priority": 1,
+      "title": "Capture BetM live proof",
+      "objective": "Capture one bounded runtime proof that BetM either has a real public path or must remain DiagnosticOnly.",
+      "doneCriteria": [
+        "live proof captured or blocker confirmed",
+        "validation documented"
+      ]
+    },
+    {
+      "id": "betcity-regression-truth",
+      "lane": "betcity",
+      "priority": 1,
+      "title": "Tighten Betcity regression truth",
+      "objective": "Decide whether Betcity zero-event regression is runtime noise or a real promotion blocker.",
+      "doneCriteria": [
+        "regression truth is clearer",
+        "validation documented"
+      ]
+    },
+    {
+      "id": "zenit-add-readiness",
+      "lane": "zenit",
+      "priority": 1,
+      "title": "Add Zenit readiness snapshot",
+      "objective": "Add one bounded Zenit readiness snapshot so coverage no longer relies on scan-only truth by omission.",
+      "doneCriteria": [
+        "readiness snapshot added",
+        "validation documented"
+      ]
+    },
+    {
+      "id": "baltbet-readiness-lock",
+      "lane": "baltbet",
+      "priority": 1,
+      "title": "Lock Baltbet readiness truth",
+      "objective": "Add one bounded readiness/coverage assertion that locks Baltbet production-ready truth in parser factory/tests.",
+      "doneCriteria": [
+        "readiness truth locked",
+        "validation documented"
+      ]
+    },
+    {
+      "id": "olimp-live-fetch-proof",
+      "lane": "olimp",
+      "priority": 1,
+      "title": "Run Olimp live fetch proof",
+      "objective": "Run one narrow Olimp live fetch proof after sample-backed re-enable and confirm event/odds volume truth.",
+      "doneCriteria": [
+        "live fetch proof captured",
+        "validation documented"
+      ]
+    },
+    {
+      "id": "coordinator-wave-4-board",
+      "lane": "coordinator",
+      "priority": 1,
+      "title": "Maintain wave 4 board",
+      "objective": "Keep the expanded bookmaker wave compact and current across coordinator-owned docs and queue rotation.",
+      "doneCriteria": [
+        "wave 4 board is current",
+        "queue remains compact",
+        "handoff stays short"
+      ]
+    },
+    {
+      "id": "service-bookmaker-status-catalog",
+      "lane": "service",
+      "priority": 1,
+      "title": "Add bookmaker status catalog",
+      "objective": "Add one compact bookmaker status catalog/API surface for unfinished-vs-ready bookmaker triage.",
+      "doneCriteria": [
+        "status catalog lands",
+        "validation documented"
+      ]
+    },
+    {
+      "id": "olimp-runtime-diagnostics-lock",
+      "lane": "olimp",
+      "priority": 1,
+      "title": "Lock Olimp runtime diagnostics",
+      "objective": "Lock the new Olimp live/prematch event-volume truth into one bounded runtime/readiness diagnostic assertion.",
+      "doneCriteria": [
+        "runtime truth locked",
+        "validation documented"
+      ]
+    },
+    {
+      "id": "zenit-runtime-regression-probe",
+      "lane": "zenit",
+      "priority": 1,
+      "title": "Probe Zenit runtime regression",
+      "objective": "Capture one bounded probe that identifies which Zenit request branch regresses to zero events.",
+      "doneCriteria": [
+        "regression branch is clearer",
+        "validation documented"
+      ]
+    },
+    {
+      "id": "betm-browser-surface-proof",
+      "lane": "betm",
+      "priority": 1,
+      "title": "Probe BetM browser surface",
+      "objective": "Capture one bounded browser-assisted proof for any surviving BetM sportsbook/API surface or confirm the external blocker.",
+      "doneCriteria": [
+        "browser surface proof or blocker captured",
+        "validation documented"
+      ]
+    },
+    {
+      "id": "service-nightly-kpi-gate",
+      "lane": "service",
+      "priority": 1,
+      "title": "Add nightly KPI gate",
+      "objective": "Add one compact nightly parser KPI diagnostics gate to promotion surfaces.",
+      "doneCriteria": [
+        "nightly KPI gate added",
+        "validation documented"
+      ]
+    },
+    {
+      "id": "olimp-fetchall-rollout-gate",
+      "lane": "olimp",
+      "priority": 1,
+      "title": "Run Olimp fetch_all rollout gate",
+      "objective": "Use one bounded Rust-side or fixture-backed fetch_all-style check to decide whether Olimp stays rollout-ready or can move closer to production gating.",
+      "doneCriteria": [
+        "fetch_all rollout gate is clearer",
+        "validation documented"
+      ]
+    },
+    {
+      "id": "zenit-zero-regression-isolation",
+      "lane": "zenit",
+      "priority": 1,
+      "title": "Isolate Zenit zero regression",
+      "objective": "Isolate whether Zenit zero-event regression comes from environment drift, nightly harness assumptions, or a parser/runtime branch mismatch.",
+      "doneCriteria": [
+        "zero regression source is clearer",
+        "validation documented"
+      ]
+    },
+    {
+      "id": "service-discovery-parser-harness",
+      "lane": "service",
+      "priority": 1,
+      "title": "Build discovery-parser harness",
+      "objective": "Add one compact fixture-driven discovery-to-parser harness for future bookmaker onboarding and regression checks.",
+      "doneCriteria": [
+        "harness lands",
+        "validation documented"
       ]
     }
   ]

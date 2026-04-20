@@ -21,6 +21,8 @@ data/
 # Rust
 target/
 target_zenit/
+target_diag_winline/
+target_rt_diag/
 
 # IDE / OS
 .vscode/
@@ -36,6 +38,7 @@ AGENT_TASK.md
 agent-output.md
 artifacts/
 desktop-ui/node_modules/
+desktop-ui/dist/
 desktop-ui/tsconfig.tsbuildinfo
 *_results.txt
 *_output.txt
@@ -83,3 +86,6 @@ _*.py
 
 # Windows junk
 NUL
+
+# Local Kilo project config
+kilo.json

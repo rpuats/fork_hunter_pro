@@ -50,10 +50,82 @@
       "default_status": "active"
     },
     {
+      "id": "tennisi",
+      "type": "bookmaker",
+      "worktree": ".worktrees/swarm-tennisi",
+      "priority": 5,
+      "title": "Tennisi lane",
+      "ownership": [
+        "crates/parsers",
+        "related parser diagnostics/tests/docs only"
+      ],
+      "default_status": "active"
+    },
+    {
+      "id": "betm",
+      "type": "bookmaker",
+      "worktree": ".worktrees/swarm-betm",
+      "priority": 6,
+      "title": "BetM lane",
+      "ownership": [
+        "crates/parsers",
+        "related parser diagnostics/tests/docs only"
+      ],
+      "default_status": "active"
+    },
+    {
+      "id": "betcity",
+      "type": "bookmaker",
+      "worktree": ".worktrees/swarm-betcity",
+      "priority": 7,
+      "title": "Betcity lane",
+      "ownership": [
+        "crates/parsers",
+        "related parser diagnostics/tests/docs only"
+      ],
+      "default_status": "active"
+    },
+    {
+      "id": "zenit",
+      "type": "bookmaker",
+      "worktree": ".worktrees/swarm-zenit",
+      "priority": 8,
+      "title": "Zenit lane",
+      "ownership": [
+        "crates/parsers",
+        "related parser diagnostics/tests/docs only"
+      ],
+      "default_status": "active"
+    },
+    {
+      "id": "baltbet",
+      "type": "bookmaker",
+      "worktree": ".worktrees/swarm-baltbet",
+      "priority": 9,
+      "title": "Baltbet lane",
+      "ownership": [
+        "crates/parsers",
+        "related parser diagnostics/tests/docs only"
+      ],
+      "default_status": "active"
+    },
+    {
+      "id": "olimp",
+      "type": "bookmaker",
+      "worktree": ".worktrees/swarm-olimp",
+      "priority": 10,
+      "title": "Olimp lane",
+      "ownership": [
+        "crates/parsers",
+        "related parser diagnostics/tests/docs only"
+      ],
+      "default_status": "active"
+    },
+    {
       "id": "coordinator",
       "type": "service",
       "worktree": ".",
-      "priority": 5,
+      "priority": 11,
       "title": "Coordinator lane",
       "ownership": [
         "docs/onboarding",
@@ -66,7 +138,7 @@
       "id": "service",
       "type": "service",
       "worktree": ".",
-      "priority": 6,
+      "priority": 12,
       "title": "Service lane",
       "ownership": [
         "swarm-core-safety",

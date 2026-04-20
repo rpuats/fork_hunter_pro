@@ -14,6 +14,7 @@ import type {
   BackendGenerosityIndex,
   ExecutionOverview,
   FreebetLifecycleSummary,
+  BookmakerStatusCatalog,
   ParserCoverage,
   ParserHealth,
   BackendSurebet,
@@ -221,6 +222,7 @@ export function useScanner() {
   const [bankrollState, setBankrollState] = useState<BankrollState | null>(null)
   const [bankrollRecommendations, setBankrollRecommendations] = useState<BankrollRecommendationsResponse | null>(null)
   const [freebetSummary, setFreebetSummary] = useState<FreebetLifecycleSummary | null>(null)
+  const [bookmakerStatusCatalog, setBookmakerStatusCatalog] = useState<BookmakerStatusCatalog | null>(null)
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const notifiedIds = useRef<Set<string>>(new Set())
@@ -229,7 +231,7 @@ export function useScanner() {
   // Fetch real data from API
   const fetchRealData = useCallback(async () => {
     try {
-      const [statusData, metricsData, bookmakersData, surebetsData, corridorsData, expressForksData, valueBetsData, generosityData, executionOverviewData, executionLedgerData, executionStateData, parserCoverageData, parserHealthData, accountsData, accountsSummaryData, bankrollStateData, bankrollRecommendationsData, freebetSummaryData] = await Promise.all([
+      const [statusData, metricsData, bookmakersData, surebetsData, corridorsData, expressForksData, valueBetsData, generosityData, executionOverviewData, executionLedgerData, executionStateData, parserCoverageData, parserHealthData, accountsData, accountsSummaryData, bankrollStateData, bankrollRecommendationsData, freebetSummaryData, bookmakerStatusCatalogData] = await Promise.all([
         fetchApiData<ScannerStatus>('/api/v1/scanner/status'),
         fetchApiData<ScannerMetrics>('/api/v1/metrics'),
         fetchApiData<BackendBookmaker[] | LegacyBookmakersResponse>('/api/v1/bookmakers'),
@@ -248,6 +250,7 @@ export function useScanner() {
         fetchApiData<BankrollState>('/api/v1/bankroll'),
         fetchApiData<BankrollRecommendationsResponse>('/api/v1/bankroll/recommendations'),
         fetchApiData<FreebetLifecycleSummary>('/api/v1/freebets/summary'),
+        fetchApiData<BookmakerStatusCatalog>('/api/v1/bookmakers/status-catalog'),
       ])
 
       if (statusData) {
@@ -313,6 +316,10 @@ export function useScanner() {
 
       if (freebetSummaryData) {
         setFreebetSummary(freebetSummaryData)
+      }
+
+      if (bookmakerStatusCatalogData) {
+        setBookmakerStatusCatalog(bookmakerStatusCatalogData)
       }
 
       const normalizedSurebets = unwrapCollection(surebetsData, 'surebets').map(mapSurebet)
@@ -447,5 +454,6 @@ export function useScanner() {
     bankrollState,
     bankrollRecommendations,
     freebetSummary,
+    bookmakerStatusCatalog,
   }
 }

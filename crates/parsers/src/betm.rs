@@ -17,6 +17,98 @@ const HEADLESS_WAIT_MS: u64 = 6_000;
 const HEADLESS_RETRY_DELAY_MS: u64 = 1_000;
 const HEADLESS_EVAL_ATTEMPTS: usize = 3;
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum RouteKind {
+    Live,
+    Prematch,
+    Unknown,
+}
+
+impl RouteKind {
+    fn from_source_url(source_url: &str) -> Self {
+        let normalized = source_url.trim().to_ascii_lowercase();
+        if normalized.is_empty() {
+            return Self::Unknown;
+        }
+
+        if normalized.contains("/live") {
+            Self::Live
+        } else if normalized.contains("/line") {
+            Self::Prematch
+        } else {
+            Self::Unknown
+        }
+    }
+
+    fn is_live(self, fallback_live: bool) -> bool {
+        match self {
+            Self::Live => true,
+            Self::Prematch => false,
+            Self::Unknown => fallback_live,
+        }
+    }
+
+    fn league_label(self, fallback_live: bool) -> String {
+        if self.is_live(fallback_live) {
+            "Live".to_string()
+        } else {
+            "Pre-match".to_string()
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum MarketKind {
+    ThreeWay,
+    Moneyline,
+}
+
+impl MarketKind {
+    fn from_odds_len(odds_len: usize) -> Option<Self> {
+        if odds_len >= 3 {
+            Some(Self::ThreeWay)
+        } else if odds_len >= 2 {
+            Some(Self::Moneyline)
+        } else {
+            None
+        }
+    }
+
+    fn market_name(self) -> &'static str {
+        match self {
+            Self::ThreeWay => "1X2",
+            Self::Moneyline => "Moneyline",
+        }
+    }
+
+    fn selections(self, odds_values: &[f64]) -> [Option<(&'static str, OddsType, f64)>; 3] {
+        match self {
+            Self::ThreeWay => [
+                Some(("1", OddsType::Home, odds_values[0])),
+                Some(("X", OddsType::Draw, odds_values[1])),
+                Some(("2", OddsType::Away, odds_values[2])),
+            ],
+            Self::Moneyline => [
+                Some(("1", OddsType::Home, odds_values[0])),
+                Some(("2", OddsType::Away, odds_values[1])),
+                None,
+            ],
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+struct RuntimeProbeStats {
+    probes_attempted: usize,
+    probes_with_payload: usize,
+    navigation_failures: usize,
+    unavailable_pages: usize,
+    empty_payloads: usize,
+    payload_items: usize,
+    parsed_events: usize,
+    parsed_odds: usize,
+}
+
 #[derive(Clone, Copy, Debug)]
 struct Probe {
     url: &'static str,
@@ -140,9 +232,19 @@ impl BetMParser {
                     message: "The Rust path probes legacy bet-m.net routes and current betm.ru aliases for line/live pages.".to_string(),
                 },
                 ParserDiagnosticCheck {
+                    code: "legacy_net_routes_return_placeholder_404".to_string(),
+                    severity: DiagnosticSeverity::Pass,
+                    message: "Bounded live proof: the public bet-m.net /live and /line routes answer with the same 404/marketing shell instead of sportsbook content.".to_string(),
+                },
+                ParserDiagnosticCheck {
+                    code: "betm_ru_alias_resets_transport".to_string(),
+                    severity: DiagnosticSeverity::Warn,
+                    message: "Bounded live proof: the current betm.ru /live and /line aliases terminate TLS/HTTP before a public payload is served, so the route cannot be promoted beyond diagnostics.".to_string(),
+                },
+                ParserDiagnosticCheck {
                     code: "public_feed_not_confirmed".to_string(),
                     severity: DiagnosticSeverity::Warn,
-                    message: "Current public routes resolve to 404/marketing shells or reset the connection, so scan enablement remains off.".to_string(),
+                    message: "Current public routes have one bounded blocker profile: bet-m.net resolves to a placeholder 404 shell and betm.ru resets transport before feed content is exposed, so scan enablement remains off.".to_string(),
                 },
                 ParserDiagnosticCheck {
                     code: "product_target_unverified".to_string(),
@@ -216,18 +318,7 @@ impl BetMParser {
     }
 
     fn detect_live_state(source_url: &str, fallback_live: bool) -> bool {
-        let normalized = source_url.trim().to_ascii_lowercase();
-        if normalized.is_empty() {
-            return fallback_live;
-        }
-
-        if normalized.contains("/live") {
-            true
-        } else if normalized.contains("/line") {
-            false
-        } else {
-            fallback_live
-        }
+        RouteKind::from_source_url(source_url).is_live(fallback_live)
     }
 
     fn parse_headless_item(
@@ -275,9 +366,11 @@ impl BetMParser {
             .get("sourceUrl")
             .and_then(|value| value.as_str())
             .unwrap_or("");
-        let is_live = Self::detect_live_state(source_url, fallback_live);
+        let route_kind = RouteKind::from_source_url(source_url);
+        let is_live = route_kind.is_live(fallback_live);
         let event_id = Self::build_event_id(&home_team, &away_team, is_live);
-        let league = if is_live { "Live" } else { "Pre-match" }.to_string();
+        let league = route_kind.league_label(fallback_live);
+        let market_kind = MarketKind::from_odds_len(odds_values.len())?;
 
         let event = Event {
             id: event_id.clone(),
@@ -294,41 +387,18 @@ impl BetMParser {
 
         let now = Utc::now();
         let mut odds = Vec::new();
-        if odds_values.len() >= 3 {
-            for (selection, odds_type, value) in [
-                ("1", OddsType::Home, odds_values[0]),
-                ("X", OddsType::Draw, odds_values[1]),
-                ("2", OddsType::Away, odds_values[2]),
-            ] {
-                odds.push(Odd {
-                    id: format!("{}-{}", event_id, selection),
-                    event_id: event_id.clone(),
-                    bookmaker_slug: BOOKMAKER_SLUG.to_string(),
-                    market: "1X2".into(),
-                    selection: selection.into(),
-                    odds: value,
-                    odds_type,
-                    line: None,
-                    timestamp: now,
-                });
-            }
-        } else {
-            for (selection, odds_type, value) in [
-                ("1", OddsType::Home, odds_values[0]),
-                ("2", OddsType::Away, odds_values[1]),
-            ] {
-                odds.push(Odd {
-                    id: format!("{}-{}", event_id, selection),
-                    event_id: event_id.clone(),
-                    bookmaker_slug: BOOKMAKER_SLUG.to_string(),
-                    market: "Moneyline".into(),
-                    selection: selection.into(),
-                    odds: value,
-                    odds_type,
-                    line: None,
-                    timestamp: now,
-                });
-            }
+        for (selection, odds_type, value) in market_kind.selections(&odds_values).into_iter().flatten() {
+            odds.push(Odd {
+                id: format!("{}-{}", event_id, selection),
+                event_id: event_id.clone(),
+                bookmaker_slug: BOOKMAKER_SLUG.to_string(),
+                market: market_kind.market_name().into(),
+                selection: selection.into(),
+                odds: value,
+                odds_type,
+                line: None,
+                timestamp: now,
+            });
         }
 
         Some((event, odds))
@@ -361,11 +431,15 @@ impl BetMParser {
         let mut all_odds = Vec::new();
         let mut seen_event_ids = HashSet::new();
         let mut seen_odd_ids = HashSet::new();
+        let mut stats = RuntimeProbeStats::default();
 
         for probe in PROBES {
+            stats.probes_attempted += 1;
+
             let tab = match helper.navigate_and_wait(probe.url, HEADLESS_WAIT_MS) {
                 Ok(tab) => tab,
                 Err(error) => {
+                    stats.navigation_failures += 1;
                     debug!(url = probe.url, error = %error, "BetM: navigation failed");
                     continue;
                 }
@@ -373,6 +447,7 @@ impl BetMParser {
 
             let page_text = HeadlessChromeHelper::get_page_text(&tab).unwrap_or_default();
             if Self::is_unavailable_page_text(&page_text) {
+                stats.unavailable_pages += 1;
                 debug!(
                     url = probe.url,
                     "BetM: route returned unavailable placeholder page"
@@ -386,8 +461,8 @@ impl BetMParser {
                 HEADLESS_EVAL_ATTEMPTS,
                 HEADLESS_RETRY_DELAY_MS,
             )
-            .and_then(|value| value.as_array().cloned())
-            .unwrap_or_default();
+                .and_then(|value| value.as_array().cloned())
+                .unwrap_or_default();
 
             if payload.is_empty() {
                 let _ = HeadlessChromeHelper::scroll_page(&tab);
@@ -401,7 +476,17 @@ impl BetMParser {
                 .unwrap_or_default();
             }
 
+            if payload.is_empty() {
+                stats.empty_payloads += 1;
+                debug!(url = probe.url, "BetM: probe returned empty payload");
+                continue;
+            }
+
             let (events, odds) = Self::parse_headless_payload(&payload, probe.is_live);
+            stats.probes_with_payload += 1;
+            stats.payload_items += payload.len();
+            stats.parsed_events += events.len();
+            stats.parsed_odds += odds.len();
             let new_events = events
                 .iter()
                 .filter(|event| !seen_event_ids.contains(&event.id))
@@ -431,6 +516,20 @@ impl BetMParser {
                 }
             }
         }
+
+        info!(
+            probes_attempted = stats.probes_attempted,
+            probes_with_payload = stats.probes_with_payload,
+            navigation_failures = stats.navigation_failures,
+            unavailable_pages = stats.unavailable_pages,
+            empty_payloads = stats.empty_payloads,
+            payload_items = stats.payload_items,
+            parsed_events = stats.parsed_events,
+            parsed_odds = stats.parsed_odds,
+            unique_events = all_events.len(),
+            unique_odds = all_odds.len(),
+            "BetM: runtime probe summary"
+        );
 
         Ok((all_events, all_odds))
     }
@@ -501,7 +600,7 @@ impl BookmakerParser for BetMParser {
 
 #[cfg(test)]
 mod tests {
-    use super::BetMParser;
+    use super::{BetMParser, MarketKind, RouteKind};
     use shared::OddsType;
 
     #[test]
@@ -563,6 +662,21 @@ mod tests {
     }
 
     #[test]
+    fn classifies_route_kind_explicitly() {
+        assert_eq!(RouteKind::from_source_url("https://bet-m.net/live"), RouteKind::Live);
+        assert_eq!(RouteKind::from_source_url("https://betm.ru/line"), RouteKind::Prematch);
+        assert_eq!(RouteKind::from_source_url("https://betm.ru/sports"), RouteKind::Unknown);
+        assert_eq!(RouteKind::from_source_url(""), RouteKind::Unknown);
+    }
+
+    #[test]
+    fn infers_market_kind_from_odds_arity() {
+        assert_eq!(MarketKind::from_odds_len(3), Some(MarketKind::ThreeWay));
+        assert_eq!(MarketKind::from_odds_len(2), Some(MarketKind::Moneyline));
+        assert_eq!(MarketKind::from_odds_len(1), None);
+    }
+
+    #[test]
     fn treats_marketing_and_404_pages_as_unavailable() {
         assert!(BetMParser::is_unavailable_page_text(
             "404 Not Found\nHome\nBet-M"
@@ -573,5 +687,38 @@ mod tests {
         assert!(!BetMParser::is_unavailable_page_text(
             "Лига чемпионов\nСпартак Москва\nЗенит"
         ));
+    }
+
+    #[test]
+    fn readiness_snapshot_keeps_betm_diagnostic_only() {
+        let readiness = BetMParser::readiness_snapshot();
+
+        assert_eq!(readiness.stage, shared::ParserReadinessStage::DiagnosticOnly);
+        assert!(!readiness.production_enabled);
+        assert!(readiness.self_check_available);
+        assert!(readiness
+            .checks
+            .iter()
+            .any(|check| check.code == "legacy_dom_path_ported"));
+        assert!(readiness
+            .checks
+            .iter()
+            .any(|check| check.code == "legacy_and_current_domains_probed"));
+        assert!(readiness
+            .checks
+            .iter()
+            .any(|check| check.code == "legacy_net_routes_return_placeholder_404"));
+        assert!(readiness
+            .checks
+            .iter()
+            .any(|check| check.code == "betm_ru_alias_resets_transport"));
+        assert!(readiness
+            .checks
+            .iter()
+            .any(|check| check.code == "public_feed_not_confirmed"));
+        assert!(readiness
+            .checks
+            .iter()
+            .any(|check| check.code == "product_target_unverified"));
     }
 }

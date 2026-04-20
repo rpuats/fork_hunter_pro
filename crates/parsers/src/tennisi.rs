@@ -5,6 +5,7 @@ use futures::stream::{self, StreamExt};
 use regex::Regex;
 use reqwest::Client;
 use scraper::{ElementRef, Html, Selector};
+use serde_json::Value;
 use shared::odds::OddsType;
 use shared::{Event, Odd, Sport};
 use std::collections::{HashMap, HashSet};
@@ -17,86 +18,110 @@ const LIVE_CATEGORY_ID: &str = "29010669";
 const LIVE_LINES_URL: &str = "https://tennisi.bet/rt/cgi/!book2_free.LiveBetsLines?val=1&gameid=5&categoryid=29010669&lang=rus&tbnohdr=1";
 const SPORT_PAGE_URL_TEMPLATE: &str = "https://tennisi.bet/sport/{slug}";
 const CATEGORY_INFO_URL_TEMPLATE: &str = "https://tennisi.bet/rt/cgi/!rt_home.CategoryInfo?gameid=5&categoryid={category_id}&more=today&lang=rus";
-const PREMATCH_FETCH_CONCURRENCY: usize = 4;
+const PREMATCH_FETCH_CONCURRENCY: usize = 8;
 
 #[derive(Clone, Copy, Debug)]
 struct PrematchProbe {
     slug: &'static str,
     sport: Sport,
+    category_id: Option<&'static str>,
 }
 
 const PREMATCH_PROBES: &[PrematchProbe] = &[
     PrematchProbe {
         slug: "football",
         sport: Sport::Football,
+        category_id: Some("137"),
     },
     PrematchProbe {
         slug: "hockey",
         sport: Sport::Hockey,
+        category_id: Some("138"),
     },
     PrematchProbe {
         slug: "tennis",
         sport: Sport::Tennis,
+        category_id: Some("139"),
     },
     PrematchProbe {
         slug: "basketball",
         sport: Sport::Basketball,
+        category_id: Some("140"),
     },
     PrematchProbe {
         slug: "volleyball",
         sport: Sport::Volleyball,
+        category_id: Some("9027116"),
     },
     PrematchProbe {
         slug: "cybersport",
         sport: Sport::Esports,
+        category_id: Some("439908280"),
     },
     PrematchProbe {
         slug: "pingpong",
         sport: Sport::TableTennis,
+        category_id: Some("1085860065"),
     },
     PrematchProbe {
         slug: "baseball",
         sport: Sport::Baseball,
+        category_id: Some("326835"),
     },
     PrematchProbe {
         slug: "handball",
         sport: Sport::Handball,
+        category_id: Some("5662396"),
     },
     PrematchProbe {
         slug: "waterpolo",
         sport: Sport::WaterPolo,
+        category_id: Some("8029783"),
     },
     PrematchProbe {
         slug: "futsal",
         sport: Sport::Futsal,
+        category_id: Some("23565786"),
     },
     PrematchProbe {
         slug: "rugby",
         sport: Sport::Rugby,
+        category_id: Some("466447415"),
     },
     PrematchProbe {
         slug: "box",
         sport: Sport::Boxing,
+        category_id: Some("8152637"),
     },
     PrematchProbe {
         slug: "billiard",
         sport: Sport::Snooker,
+        category_id: Some("17076577"),
     },
     PrematchProbe {
         slug: "races",
         sport: Sport::Motorsport,
+        category_id: Some("17076134"),
     },
     PrematchProbe {
         slug: "amfootball",
         sport: Sport::Other,
+        category_id: Some("4076387"),
     },
     PrematchProbe {
         slug: "other",
         sport: Sport::Other,
+        category_id: Some("1960530"),
+    },
+    PrematchProbe {
+        slug: "darts",
+        sport: Sport::Other,
+        category_id: Some("58446467"),
     },
     PrematchProbe {
         slug: "trends",
         sport: Sport::Other,
+        category_id: Some("491109347"),
     },
 ];
 
@@ -130,7 +155,7 @@ impl TennisiParser {
             return Err(format!("Tennisi returned HTTP {} for {url}", response.status()).into());
         }
 
-        Ok(response.text().await?)
+        Ok(response.text_with_charset("windows-1251").await?)
     }
 
     async fn discover_category_id(
@@ -151,7 +176,10 @@ impl TennisiParser {
         &self,
         probe: PrematchProbe,
     ) -> Result<(Vec<Event>, Vec<Odd>), Box<dyn std::error::Error + Send + Sync>> {
-        let category_id = self.discover_category_id(probe.slug).await?;
+        let category_id = match probe.category_id {
+            Some(category_id) => category_id.to_string(),
+            None => self.discover_category_id(probe.slug).await?,
+        };
         let url = CATEGORY_INFO_URL_TEMPLATE.replace("{category_id}", &category_id);
         let html = self.fetch_text(&url).await?;
         Ok(Self::parse_prematch_page(
@@ -222,7 +250,9 @@ impl TennisiParser {
                     .map(|value| Self::normalize_whitespace(&value))
                     .unwrap_or_default();
                 let title = Self::sanitize_event_title(&title);
-                let Some((home_team, away_team)) = Self::split_match_title(&title) else {
+                let Some((home_team, away_team, is_outright)) =
+                    Self::classify_event_title(&title, is_live)
+                else {
                     continue;
                 };
                 if !Self::is_valid_competitor(&home_team) || !Self::is_valid_competitor(&away_team)
@@ -256,6 +286,14 @@ impl TennisiParser {
                     })
                 };
 
+                let mut extra = HashMap::new();
+                if is_outright {
+                    extra.insert(
+                        "tennisi_event_kind".to_string(),
+                        Value::String("outright".to_string()),
+                    );
+                }
+
                 events.push(Event {
                     id: event_id.clone(),
                     sport,
@@ -266,7 +304,7 @@ impl TennisiParser {
                     is_live,
                     bookmaker_slug: BOOKMAKER_SLUG.to_string(),
                     raw_url,
-                    extra: HashMap::new(),
+                    extra,
                 });
 
                 odds.extend(Self::extract_primary_odds(
@@ -645,6 +683,39 @@ impl TennisiParser {
         None
     }
 
+    fn classify_event_title(title: &str, is_live: bool) -> Option<(String, String, bool)> {
+        if let Some((home_team, away_team)) = Self::split_match_title(title) {
+            return Some((home_team, away_team, false));
+        }
+
+        if !is_live && Self::is_valid_outright_title(title) {
+            return Some((title.to_string(), "Field".to_string(), true));
+        }
+
+        None
+    }
+
+    fn is_valid_outright_title(title: &str) -> bool {
+        let normalized = Self::normalize_whitespace(title);
+        if !Self::is_valid_competitor(&normalized) {
+            return false;
+        }
+
+        let lower = normalized.to_lowercase();
+        ![
+            "лучший",
+            "количество",
+            "тотал",
+            "гандикап",
+            "фора",
+            "точный счет",
+            "специальные ставки",
+            "спец. ставки",
+        ]
+        .iter()
+        .any(|needle| lower.contains(needle))
+    }
+
     fn is_valid_competitor(name: &str) -> bool {
         let trimmed = name.trim();
         if trimmed.len() < 2 || trimmed.len() > 120 {
@@ -917,7 +988,8 @@ impl BookmakerParser for TennisiParser {
 
 #[cfg(test)]
 mod tests {
-    use super::TennisiParser;
+    use super::{TennisiParser, PREMATCH_PROBES};
+    use serde_json::Value;
     use shared::OddsType;
     use shared::Sport;
 
@@ -1057,6 +1129,59 @@ mod tests {
     }
 
     #[test]
+    fn falls_back_to_outright_event_for_two_way_rows_without_matchup_separator() {
+        let html = r##"
+<html>
+<body>
+<table>
+<tr><td>Бейсбол :: Итоги</td></tr>
+<tr bgcolor="#FF8A4C">
+<td>№</td><td>Дата</td><td>Событие</td><td>П 1</td><td>П 2</td><td></td><td>Ф 1</td><td>К 1</td><td>Ф 2</td><td>К 2</td><td></td><td>&lt;</td><td>TM</td><td>&gt;</td>
+</tr>
+<tr><td>Сегодня</td></tr>
+<tr id="el2319990001" bgcolor="#FFF2C5">
+<td>101</td>
+<td><a href="!rt_home.EventInfo?gameid=5&amp;eventid=2319990001&amp;more=allbets&amp;lang=rus">21:45</a></td>
+<td><a id="evtl2319990001" href="!rt_home.EventInfo?gameid=5&amp;eventid=2319990001&amp;more=allbets&amp;lang=rus">Нью-Йорк Янкиз</a></td>
+<td><a href="#">1.87</a></td>
+<td><a href="#">1.93</a></td>
+<td></td>
+<td><b><a href="#">-1.5</a></b></td>
+<td><a href="#">2.10</a></td>
+<td><b><a href="#">1.5</a></b></td>
+<td><a href="#">1.70</a></td>
+<td></td>
+<td><a href="#">1.95</a></td>
+<td><b>8.5</b></td>
+<td><a href="#">1.85</a></td>
+</tr>
+</table>
+</body>
+</html>
+"##;
+
+        let (events, odds) =
+            TennisiParser::parse_prematch_page(html, Sport::Baseball, "baseball", "326835");
+
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].home_team, "Нью-Йорк Янкиз");
+        assert_eq!(events[0].away_team, "Field");
+        assert_eq!(
+            events[0]
+                .extra
+                .get("tennisi_event_kind")
+                .and_then(Value::as_str),
+            Some("outright")
+        );
+        assert!(odds.iter().any(|odd| {
+            odd.market == "Moneyline"
+                && odd.selection == "1"
+                && odd.odds_type == OddsType::Home
+                && (odd.odds - 1.87).abs() < f64::EPSILON
+        }));
+    }
+
+    #[test]
     fn parses_live_fixture_and_detects_sport() {
         let html = include_str!("../tests/fixtures/tennisi_live_fixture.html");
 
@@ -1089,5 +1214,30 @@ mod tests {
                 && odd.line == Some(3.5)
                 && (odd.odds - 1.70).abs() < f64::EPSILON
         }));
+    }
+
+    #[test]
+    fn prematch_probes_pin_known_category_ids_for_core_sports() {
+        let football = PREMATCH_PROBES
+            .iter()
+            .find(|probe| probe.slug == "football")
+            .expect("football probe should exist");
+        let basketball = PREMATCH_PROBES
+            .iter()
+            .find(|probe| probe.slug == "basketball")
+            .expect("basketball probe should exist");
+        let darts = PREMATCH_PROBES
+            .iter()
+            .find(|probe| probe.slug == "darts")
+            .expect("darts probe should exist");
+        let trends = PREMATCH_PROBES
+            .iter()
+            .find(|probe| probe.slug == "trends")
+            .expect("trends probe should exist");
+
+        assert_eq!(football.category_id, Some("137"));
+        assert_eq!(basketball.category_id, Some("140"));
+        assert_eq!(darts.category_id, Some("58446467"));
+        assert_eq!(trends.category_id, Some("491109347"));
     }
 }

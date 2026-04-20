@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import { Activity, AlertTriangle, CheckCircle2, Clock3, PauseCircle, PlayCircle, Search, ShieldAlert, ShieldCheck, ShieldX, Siren, TimerReset, Wallet } from 'lucide-react'
 import { CompactSignalOverlay } from '../components/CompactSignalOverlay'
-import type { AccountStateResponse, BackendParserHealthStatus, BackendParserReadinessStage, Bookmaker, BookmakerExecutionMode, ExecutionBookmakerReadinessRecord, ExecutionLedgerAudit, ExecutionOverview, ExecutionStateAudit, ExecutionStateReadinessSummary, ExecutionStateSnapshotRecord, FreebetLifecycleSummary, ParserCoverage, ParserHealth } from '../types'
+import type { AccountStateResponse, BackendParserHealthStatus, BackendParserReadinessStage, Bookmaker, BookmakerExecutionMode, BookmakerStatusCatalog, ExecutionBookmakerReadinessRecord, ExecutionLedgerAudit, ExecutionOverview, ExecutionStateAudit, ExecutionStateReadinessSummary, ExecutionStateSnapshotRecord, FreebetLifecycleSummary, ParserCoverage, ParserHealth } from '../types'
 
 interface OperatorPageProps {
   executionOverview: ExecutionOverview | null
@@ -11,6 +11,7 @@ interface OperatorPageProps {
   parserCoverage: ParserCoverage[]
   parserHealth: ParserHealth[]
   bookmakers: Bookmaker[]
+  bookmakerStatusCatalog: BookmakerStatusCatalog | null
   accountStates: AccountStateResponse[]
   freebetSummary: FreebetLifecycleSummary | null
   onOpenAccount: (bookmaker: string) => void
@@ -149,7 +150,7 @@ function formatExecutionMode(mode: BookmakerExecutionMode | null | undefined) {
   return mode.replace(/([a-z])([A-Z])/g, '$1 $2')
 }
 
-export function OperatorPage({ executionOverview, executionLedger, executionState, parserCoverage, parserHealth, bookmakers, accountStates, freebetSummary, onOpenAccount }: OperatorPageProps) {
+export function OperatorPage({ executionOverview, executionLedger, executionState, parserCoverage, parserHealth, bookmakers, bookmakerStatusCatalog, accountStates, freebetSummary, onOpenAccount }: OperatorPageProps) {
   const [readinessFilter, setReadinessFilter] = useState<ReadinessFilter>('attention')
   const [ledgerFilter, setLedgerFilter] = useState<LedgerFilter>('errors')
   const [ledgerSort, setLedgerSort] = useState<LedgerSort>('priority')
@@ -286,6 +287,39 @@ export function OperatorPage({ executionOverview, executionLedger, executionStat
     degraded: parserHealth.filter((entry) => entry.status === 'Degraded').length,
     incidents: parserHealth.filter((entry) => entry.status === 'Unhealthy' || entry.status === 'CircuitOpen').length,
   }), [parserHealth])
+  const bookmakerCatalogCards = useMemo(() => {
+    if (!bookmakerStatusCatalog) return []
+
+    const summary = bookmakerStatusCatalog.summary
+    const hottest = bookmakerStatusCatalog.bookmakers.find((entry) => entry.triage_bucket === 'unfinished' && entry.top_issue)
+    const nightlyWarn = bookmakerStatusCatalog.bookmakers.filter((entry) => entry.nightly_kpi_gate.status === 'warn' || entry.nightly_kpi_gate.status === 'fail').length
+
+    return [
+      {
+        key: 'ready',
+        label: 'Ready now',
+        value: `${summary.ready}/${summary.total}`,
+        detail: 'Bookmakers already classified as ready/rollout-capable by the status catalog.',
+        badge: 'badge-success',
+      },
+      {
+        key: 'unfinished',
+        label: 'Unfinished',
+        value: `${summary.unfinished}`,
+        detail: hottest?.top_issue ?? 'Top unfinished bookmakers now have explicit readiness or blocker truth.',
+        badge: 'badge-warning',
+      },
+      {
+        key: 'nightly',
+        label: 'Nightly gate',
+        value: nightlyWarn > 0 ? `${nightlyWarn} warn/fail` : 'Passing',
+        detail: nightlyWarn > 0
+          ? 'Nightly KPI gate still has bookmakers below promotion confidence.'
+          : 'Nightly KPI signals are currently aligned with promotion surfaces.',
+        badge: nightlyWarn > 0 ? 'badge-warning' : 'badge-success',
+      },
+    ]
+  }, [bookmakerStatusCatalog])
 
   const timelineItems = useMemo<TimelineItem[]>(() => {
     if (executionLedger?.recent_records.length) {
@@ -810,6 +844,58 @@ export function OperatorPage({ executionOverview, executionLedger, executionStat
             : 'Lifecycle, execution readiness and parser health currently align for a read-only operator pass.',
     } as const
   }, [accountStates, accounts, freebetSummary, parserHealthSummary.degraded, parserHealthSummary.incidents])
+  const topOperatorAction = operatorActionQueue[0] ?? null
+  const topHotspot = bookmakerHotspots[0] ?? null
+  const operatorNowStrip = useMemo(() => {
+    const safeModeCount = executionReadinessSummary.submit_blocked_by_safe_mode
+    const approvalCount = executionReadinessSummary.approval_required
+    const hotspotCount = hotspotSummary.active
+
+    return [
+      {
+        key: 'next-action',
+        label: 'Next action',
+        value: topOperatorAction ? topOperatorAction.bookmaker : 'Queue clear',
+        detail: topOperatorAction
+          ? topOperatorAction.reasons[0] ?? `${topOperatorAction.mode} requires operator follow-up.`
+          : 'No operator account action is currently queued.',
+        badge: topOperatorAction
+          ? topOperatorAction.tone === 'danger' ? 'badge-danger' : topOperatorAction.tone === 'warning' ? 'badge-warning' : 'badge-info'
+          : 'badge-success',
+      },
+      {
+        key: 'execution-guard',
+        label: 'Execution guard',
+        value: safeModeCount > 0 ? `${safeModeCount} safe mode` : approvalCount > 0 ? `${approvalCount} approval` : 'Clear',
+        detail: safeModeCount > 0
+          ? 'Submit path is still blocked by safe mode for part of the fleet.'
+          : approvalCount > 0
+            ? 'Manual approval is still required before placement on some accounts.'
+            : 'No safe-mode or approval blockers are visible in the current snapshot.',
+        badge: safeModeCount > 0 ? 'badge-danger' : approvalCount > 0 ? 'badge-warning' : 'badge-success',
+      },
+      {
+        key: 'top-hotspot',
+        label: 'Top hotspot',
+        value: topHotspot ? topHotspot.name : 'None',
+        detail: topHotspot
+          ? topHotspot.reasons[0] ?? `${topHotspot.ledgerErrors} ledger errors / ${topHotspot.pendingPlacements} pending placements.`
+          : hotspotCount > 0
+            ? `${hotspotCount} hotspot signals are active.`
+            : 'No bookmaker hotspot is currently above the triage threshold.',
+        badge: topHotspot
+          ? topHotspot.tone === 'danger' ? 'badge-danger' : topHotspot.tone === 'warning' ? 'badge-warning' : 'badge-info'
+          : 'badge-success',
+      },
+      {
+        key: 'freebet-watch',
+        label: 'Freebet watch',
+        value: freebetOperatorSnapshot.pills[3]?.value?.toString() ?? '0',
+        detail: freebetOperatorSnapshot.detail,
+        badge: freebetOperatorSnapshot.tone === 'warning' ? 'badge-warning' : freebetOperatorSnapshot.tone === 'success' ? 'badge-success' : 'badge-info',
+      },
+    ]
+  }, [executionReadinessSummary.approval_required, executionReadinessSummary.submit_blocked_by_safe_mode, freebetOperatorSnapshot, hotspotSummary.active, topHotspot, topOperatorAction])
 
   return (
     <motion.div variants={container} initial="hidden" animate="show" className="space-y-6">
@@ -838,6 +924,32 @@ export function OperatorPage({ executionOverview, executionLedger, executionStat
           pills={operatorBrief.pills}
           actions={operatorBrief.actions}
         />
+      </motion.div>
+
+      {bookmakerCatalogCards.length > 0 && (
+        <motion.div variants={item} className="grid grid-cols-1 xl:grid-cols-3 gap-3">
+          {bookmakerCatalogCards.map((entry) => (
+            <div key={entry.key} className="rounded-xl p-4" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
+              <div className="flex items-center justify-between gap-3 mb-2">
+                <p className="text-xs uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>{entry.label}</p>
+                <span className={`badge ${entry.badge}`}>{entry.value}</span>
+              </div>
+              <p className="text-xs leading-5" style={{ color: 'var(--text-secondary)' }}>{entry.detail}</p>
+            </div>
+          ))}
+        </motion.div>
+      )}
+
+      <motion.div variants={item} className="grid grid-cols-1 xl:grid-cols-4 gap-3">
+        {operatorNowStrip.map((entry) => (
+          <div key={entry.key} className="rounded-xl p-4" style={{ background: 'var(--bg-card)', border: `1px solid ${entry.badge === 'badge-danger' ? 'rgba(248, 81, 73, 0.28)' : entry.badge === 'badge-warning' ? 'rgba(210, 153, 34, 0.28)' : entry.badge === 'badge-success' ? 'rgba(63, 185, 80, 0.24)' : 'var(--border-color)'}` }}>
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <p className="text-xs uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>{entry.label}</p>
+              <span className={`badge ${entry.badge}`}>{entry.value}</span>
+            </div>
+            <p className="text-xs leading-5" style={{ color: 'var(--text-secondary)' }}>{entry.detail}</p>
+          </div>
+        ))}
       </motion.div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
@@ -1436,7 +1548,7 @@ export function OperatorPage({ executionOverview, executionLedger, executionStat
               type="button"
               onClick={() => {
                 setLedgerBookmaker(entry.timelineBookmaker ?? 'all')
-                setLedgerQuery(entry.name)
+                setLedgerQuery('')
                 setLedgerFilter(entry.ledgerErrors > 0 ? 'errors' : entry.pendingPlacements > 0 ? 'pending' : 'all')
               }}
               className="w-full rounded-xl p-4 text-left transition-colors"

@@ -630,6 +630,8 @@ impl LigaStavokParser {
             .or_else(|| root.get("directProbeStatus"))
             .or_else(|| value.get("direct_probe_status"))
             .or_else(|| value.get("directProbeStatus"))
+            .or_else(|| value.get("status").and_then(|status| status.get("direct_probe_status")))
+            .or_else(|| value.get("status").and_then(|status| status.get("directProbeStatus")))
             .and_then(|value| value.as_u64())
             .and_then(|value| u16::try_from(value).ok())
             .filter(|status| *status > 0);
@@ -648,6 +650,8 @@ impl LigaStavokParser {
                 &["runtimeBootstrap", "browserVerifiedApiProbeStatus"],
                 &["runtimeBootstrap", "browser_verified_api_probe", "status"],
                 &["runtimeBootstrap", "browserVerifiedApiProbe", "status"],
+                &["status", "browser_verified_api_probe_status"],
+                &["status", "browserVerifiedApiProbeStatus"],
             ],
         );
 
@@ -3043,5 +3047,22 @@ mod tests {
         assert!(parser
             .session_bootstrap_summary()
             .contains("direct_probe_status=200"));
+    }
+
+    #[test]
+    fn extracts_probe_status_from_discovery_status_shape() {
+        let payload = serde_json::json!({
+            "status": {
+                "bootstrap_blocker": "protection_only_unverified_api",
+                "browser_verified_api_probe_status": 204,
+                "direct_probe_status": 200,
+                "can_attempt_runtime_with_bootstrap": true
+            }
+        });
+
+        let profile = LigaStavokParser::extract_header_profile(&payload).expect("profile");
+
+        assert_eq!(profile.browser_verified_api_probe_status, Some(204));
+        assert_eq!(profile.direct_probe_status, Some(200));
     }
 }

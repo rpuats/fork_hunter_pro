@@ -65,6 +65,78 @@ def build_cookie_header(cookies):
     return "; ".join(pairs) or None
 
 
+def is_protection_cookie_name(name: str):
+    lowered = str(name or "").strip().lower()
+    return (
+        lowered.startswith("qrator_")
+        or lowered.startswith("__qrator")
+        or lowered.startswith("qauth_")
+        or lowered.startswith("qab")
+    )
+
+
+def summarize_runtime_status(cookies, header_profile=None, browser_verified_api_probe=None, direct_probe_status=0):
+    cookie_names = []
+    seen = set()
+
+    for cookie in cookies or []:
+        if not isinstance(cookie, dict):
+            continue
+        name = str(cookie.get("name", "")).strip()
+        if not name:
+            continue
+        lowered = name.lower()
+        if lowered in seen:
+            continue
+        seen.add(lowered)
+        cookie_names.append(name)
+
+    non_protection_cookie_count = sum(
+        1 for name in cookie_names if not is_protection_cookie_name(name)
+    )
+    has_cookie_bootstrap = bool(cookie_names)
+    has_browser_verified_api_probe = bool(
+        browser_verified_api_probe
+        and 200 <= int(browser_verified_api_probe.get("status") or 0) < 400
+    )
+    has_direct_probe_success = 200 <= int(direct_probe_status or 0) < 400
+    has_validated_session_bootstrap = non_protection_cookie_count > 0
+    can_attempt_runtime_with_bootstrap = (
+        has_validated_session_bootstrap
+        or (has_cookie_bootstrap and has_browser_verified_api_probe)
+    )
+
+    if has_validated_session_bootstrap:
+        bootstrap_blocker = "ready"
+    elif has_cookie_bootstrap and not has_browser_verified_api_probe:
+        bootstrap_blocker = "protection_only_unverified_api"
+    elif has_cookie_bootstrap:
+        bootstrap_blocker = "protection_only"
+    elif header_profile:
+        bootstrap_blocker = "header_only"
+    else:
+        bootstrap_blocker = "bootstrap_unavailable"
+
+    return {
+        "bootstrap_blocker": bootstrap_blocker,
+        "cookie_names": cookie_names,
+        "cookie_count": len(cookie_names),
+        "non_protection_cookie_count": non_protection_cookie_count,
+        "protection_only": bool(has_cookie_bootstrap and non_protection_cookie_count == 0),
+        "has_cookie_bootstrap": has_cookie_bootstrap,
+        "has_validated_session_bootstrap": has_validated_session_bootstrap,
+        "can_attempt_runtime_with_bootstrap": can_attempt_runtime_with_bootstrap,
+        "has_browser_verified_api_probe": has_browser_verified_api_probe,
+        "browser_verified_api_probe_status": (
+            int(browser_verified_api_probe.get("status") or 0)
+            if browser_verified_api_probe
+            else 0
+        ),
+        "has_direct_probe_success": has_direct_probe_success,
+        "direct_probe_status": int(direct_probe_status or 0),
+    }
+
+
 def preview_json(value, limit=2000):
     text = json.dumps(value, ensure_ascii=False, default=str)
     return text[:limit]
@@ -345,6 +417,7 @@ async def run_discovery(headless: bool, wait_after_nav: float, output_dir: Path,
         final_url = page.url
         storage_snapshot = await capture_storage_snapshot(page)
         cookies = await context.cookies()
+        playwright_storage_state = await context.storage_state()
         await browser.close()
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -375,10 +448,11 @@ async def run_discovery(headless: bool, wait_after_nav: float, output_dir: Path,
     latest_file.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
 
     repo_root = Path(__file__).resolve().parents[1]
-    storage_state = {
-        "cookies": cookies,
-        "cookieHeader": build_cookie_header(cookies),
-        "origins": [
+    storage_state = dict(playwright_storage_state or {})
+    storage_state["cookies"] = cookies
+    storage_state["cookieHeader"] = build_cookie_header(cookies)
+    if not storage_state.get("origins"):
+        storage_state["origins"] = [
             {
                 "origin": BASE_URL,
                 "localStorage": [
@@ -388,8 +462,7 @@ async def run_discovery(headless: bool, wait_after_nav: float, output_dir: Path,
                     }
                 ],
             }
-        ],
-    }
+        ]
     storage_state_file = repo_root / "ligastavok_storage_state.json"
     storage_state_file.write_text(
         json.dumps(storage_state, ensure_ascii=False, indent=2),
@@ -402,6 +475,12 @@ async def run_discovery(headless: bool, wait_after_nav: float, output_dir: Path,
         direct_probe.get("status", 0),
         api_headers,
         browser_verified_api_probe,
+    )
+    status = summarize_runtime_status(
+        cookies,
+        header_profile=header_profile,
+        browser_verified_api_probe=browser_verified_api_probe,
+        direct_probe_status=direct_probe.get("status", 0),
     )
     header_profile_file = repo_root / "ligastavok_header_profile.json"
     header_profile_file.write_text(
@@ -423,6 +502,7 @@ async def run_discovery(headless: bool, wait_after_nav: float, output_dir: Path,
             ),
             "direct_probe_status": direct_probe.get("status", 0),
         },
+        "status": status,
         "final_url": final_url,
         "cookies": cookies,
         "cookieHeader": storage_state["cookieHeader"],
@@ -448,6 +528,8 @@ async def run_discovery(headless: bool, wait_after_nav: float, output_dir: Path,
             browser_verified_api_probe.get("status", 0) if browser_verified_api_probe else 0
         ),
         "direct_probe_status": direct_probe.get("status", 0),
+        "bootstrap_blocker": status["bootstrap_blocker"],
+        "can_attempt_runtime_with_bootstrap": status["can_attempt_runtime_with_bootstrap"],
     }
     print(json.dumps(summary, ensure_ascii=False, indent=2))
 
