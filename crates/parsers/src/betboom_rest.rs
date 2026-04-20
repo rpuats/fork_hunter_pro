@@ -117,8 +117,7 @@ impl BetboomRestParser {
         let mut events = Vec::new();
         
         // Поиск data-event-id атрибутов
-        let lines: Vec<&str> = html.lines().collect();
-        for (i, line) in lines.iter().enumerate() {
+        for line in html.lines() {
             if line.contains("data-event-id") || line.contains("event-") {
                 if let Some(event) = self.parse_event_from_line(line) {
                     events.push(event);
