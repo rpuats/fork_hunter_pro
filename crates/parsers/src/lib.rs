@@ -25,6 +25,7 @@ pub mod stealth;
 pub mod tennisi;
 pub mod winline;
 pub mod winline_rest;
+pub mod winline_rest_adapter;
 pub mod zenit;
 
 pub use base::BookmakerParser;
