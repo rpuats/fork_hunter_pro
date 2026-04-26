@@ -19,16 +19,11 @@ impl WinlineRestAdapter {
     /// Парсит события из Winline
     pub async fn parse(&self) -> Result<ParserResult, String> {
         let start = Instant::now();
-        
+
         let events = self.parser.fetch_events().await?;
         let fetch_time_ms = start.elapsed().as_millis() as u64;
 
-        Ok(ParserResult::new(
-            "winline",
-            events,
-            vec![],
-            fetch_time_ms,
-        ))
+        Ok(ParserResult::new("winline", events, vec![], fetch_time_ms))
     }
 
     pub fn name(&self) -> &str {

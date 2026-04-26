@@ -1,6 +1,5 @@
 /// Marathon REST API парсер
 /// Работает с несколькими методами доступа к событиям
-
 use reqwest::Client;
 use shared::{Event, Sport};
 use std::collections::HashMap;
@@ -20,11 +19,11 @@ impl MarathonRestParser {
         if let Ok(events) = self.fetch_via_api().await {
             return Ok(events);
         }
-        
+
         if let Ok(events) = self.fetch_via_main_page().await {
             return Ok(events);
         }
-        
+
         Err("No events from Marathon".to_string())
     }
 
@@ -35,11 +34,12 @@ impl MarathonRestParser {
             "https://marathonbet.com/api/v2/sports/1/events", // Football
             "https://marathonbet.com/api/v2/sports/2/events", // Hockey
         ];
-        
+
         let mut all_events = Vec::new();
-        
+
         for endpoint in endpoints {
-            match self.client
+            match self
+                .client
                 .get(endpoint)
                 .header("X-Requested-With", "XMLHttpRequest")
                 .send()
@@ -53,42 +53,45 @@ impl MarathonRestParser {
                 _ => continue,
             }
         }
-        
+
         if all_events.is_empty() {
             return Err("No events from API".to_string());
         }
-        
+
         Ok(all_events)
     }
 
     /// HTML парсинг
     async fn fetch_via_main_page(&self) -> Result<Vec<Event>, String> {
-        let resp = self.client
+        let resp = self
+            .client
             .get("https://marathonbet.com/")
             .send()
             .await
             .map_err(|e| format!("Failed to fetch: {}", e))?;
-        
-        let html = resp.text().await
+
+        let html = resp
+            .text()
+            .await
             .map_err(|e| format!("Failed to read: {}", e))?;
-        
+
         let events = self.extract_from_html(&html);
-        
+
         if events.is_empty() {
             return Err("No events in HTML".to_string());
         }
-        
+
         Ok(events)
     }
 
     /// Парсит JSON ответ API
     fn parse_api(&self, json_str: &str) -> Vec<Event> {
         let mut events = Vec::new();
-        
+
         if let Ok(json) = serde_json::from_str::<serde_json::Value>(json_str) {
             // Пытаемся разные пути в JSON
             let mut arr: Option<&Vec<serde_json::Value>> = None;
-            
+
             if let Some(events_field) = json.get("events") {
                 arr = events_field.as_array();
             } else if let Some(data) = json.get("data") {
@@ -98,7 +101,7 @@ impl MarathonRestParser {
             } else if let Some(a) = json.as_array() {
                 arr = Some(a);
             }
-            
+
             if let Some(items) = arr {
                 for item in items {
                     if let Some(event) = self.build_event(item) {
@@ -107,14 +110,14 @@ impl MarathonRestParser {
                 }
             }
         }
-        
+
         events
     }
 
     /// Извлекает из HTML
     fn extract_from_html(&self, html: &str) -> Vec<Event> {
         let mut events = Vec::new();
-        
+
         for line in html.lines() {
             if line.contains("event") && line.contains("data-") {
                 if let Some(event) = self.parse_html_line(line) {
@@ -122,38 +125,43 @@ impl MarathonRestParser {
                 }
             }
         }
-        
+
         events
     }
 
     /// Конструирует Event из JSON
     fn build_event(&self, obj: &serde_json::Value) -> Option<Event> {
-        let id = obj.get("id")
+        let id = obj
+            .get("id")
             .or(obj.get("eventId"))
             .and_then(|v| v.as_u64())
             .map(|n| n.to_string())?;
-        
-        let home_team = obj.get("homeTeam")
+
+        let home_team = obj
+            .get("homeTeam")
             .or(obj.get("home"))
             .and_then(|v| v.as_str())
             .map(|s| s.to_string())?;
-        
-        let away_team = obj.get("awayTeam")
+
+        let away_team = obj
+            .get("awayTeam")
             .or(obj.get("away"))
             .and_then(|v| v.as_str())
             .map(|s| s.to_string())?;
-        
+
         Some(Event {
             id: id.clone(),
             sport: Sport::Football,
-            league: obj.get("league")
+            league: obj
+                .get("league")
                 .and_then(|v| v.as_str())
                 .unwrap_or("Unknown")
                 .to_string(),
             home_team,
             away_team,
             start_time: None,
-            is_live: obj.get("is_live")
+            is_live: obj
+                .get("is_live")
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false),
             bookmaker_slug: "marathon".to_string(),
@@ -182,7 +190,7 @@ impl MarathonRestParser {
                 });
             }
         }
-        
+
         None
     }
 }

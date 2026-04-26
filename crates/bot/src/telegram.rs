@@ -6,13 +6,16 @@ use std::{
     fmt::Write,
 };
 
+use crate::notifier::{
+    format_help_message, format_settings_message, format_surebet_alert, AlertManager, AlertStatus,
+    TelegramAlertConfig,
+};
+use crate::rate_limiter::RateLimiter;
 use chrono::{DateTime, Utc};
 use shared::{EventBus, Surebet};
 use teloxide::prelude::*;
 use teloxide::types::ChatId;
 use tracing::{error, info};
-use crate::rate_limiter::RateLimiter;
-use crate::notifier::{AlertManager, TelegramAlertConfig, AlertStatus, format_surebet_alert, format_settings_message, format_help_message};
 
 const INFO_ALERT_COOLDOWN: Duration = Duration::from_secs(15 * 60);
 const RECENT_SUREBETS_LIMIT: usize = 12;
@@ -48,7 +51,15 @@ impl TelegramBot {
         silent: bool,
         event_bus: Option<Arc<EventBus>>,
     ) -> Self {
-        Self::with_config(token, admin_chats.clone(), min_profit, silent, event_bus, TelegramAlertConfig::default(), admin_chats)
+        Self::with_config(
+            token,
+            admin_chats.clone(),
+            min_profit,
+            silent,
+            event_bus,
+            TelegramAlertConfig::default(),
+            admin_chats,
+        )
     }
 
     pub fn with_config(
@@ -95,14 +106,16 @@ impl TelegramBot {
         match self.alert_manager.should_alert(surebet) {
             Ok(_) => {}
             Err(reason) => {
-                self.alert_manager.record_alert(surebet, AlertStatus::Skipped(reason));
+                self.alert_manager
+                    .record_alert(surebet, AlertStatus::Skipped(reason));
                 return false;
             }
         }
 
         // Check rate limiter
         if !self.rate_limiter.try_consume(1.0) {
-            self.alert_manager.record_alert(surebet, AlertStatus::Throttled);
+            self.alert_manager
+                .record_alert(surebet, AlertStatus::Throttled);
             return false;
         }
 
@@ -297,21 +310,27 @@ impl TelegramBot {
         let dashboard = self.dashboard.lock().expect("dashboard poisoned");
         let metrics = self.metrics.snapshot();
         let state = self.state.lock().expect("telegram state poisoned");
-        
+
         let win_rate = if dashboard.total_surebets > 0 {
             (dashboard.verified_surebets as f64 / dashboard.total_surebets as f64) * 100.0
         } else {
             0.0
         };
-        
+
         let avg_roi = if dashboard.total_surebets > 0 {
             dashboard.total_roi / dashboard.total_surebets as f64
         } else {
             0.0
         };
 
-        let best_surebet = state.recent_surebets.iter()
-            .max_by(|a, b| a.profit_percent.partial_cmp(&b.profit_percent).unwrap_or(std::cmp::Ordering::Equal))
+        let best_surebet = state
+            .recent_surebets
+            .iter()
+            .max_by(|a, b| {
+                a.profit_percent
+                    .partial_cmp(&b.profit_percent)
+                    .unwrap_or(std::cmp::Ordering::Equal)
+            })
             .map(|s| format!("{:.2}%", s.profit_percent))
             .unwrap_or_else(|| "N/A".to_string());
 
@@ -352,14 +371,18 @@ impl TelegramBot {
 
     pub fn channels_message(&self) -> String {
         let channels = self.roi_channels.lock().expect("roi_channels poisoned");
-        
+
         if channels.is_empty() {
             return "📡 <b>ROI Alert Channels</b>\n\nNo channels configured. Use /setchannel to create one.".to_string();
         }
 
         let mut msg = "📡 <b>ROI Alert Channels</b>\n\n".to_string();
         for (name, channel) in channels.iter() {
-            let status = if channel.active { "✅ ACTIVE" } else { "⛔ INACTIVE" };
+            let status = if channel.active {
+                "✅ ACTIVE"
+            } else {
+                "⛔ INACTIVE"
+            };
             let _ = write!(
                 msg,
                 "<b>{}</b> {}\n\
@@ -370,7 +393,10 @@ impl TelegramBot {
                 channel.min_roi,
                 channel.max_roi,
                 channel.alert_count,
-                channel.last_alert.map(|t| t.format("%H:%M:%S").to_string()).unwrap_or_else(|| "-".to_string())
+                channel
+                    .last_alert
+                    .map(|t| t.format("%H:%M:%S").to_string())
+                    .unwrap_or_else(|| "-".to_string())
             );
         }
         msg
@@ -379,7 +405,7 @@ impl TelegramBot {
     pub fn predict_message(&self, surebet: &Surebet) -> String {
         let predictor = self.ml_predictor.lock().expect("ml_predictor poisoned");
         let prediction = predictor.predict_odds(&surebet.legs);
-        
+
         format!(
             "🤖 <b>ML ODDS PREDICTION</b>\n\n\
              <b>Event:</b> {} vs {}\n\
@@ -408,7 +434,7 @@ impl TelegramBot {
 
     pub fn hedge_message(&self, surebet: &Surebet) -> String {
         let hedge = calculate_hedge_strategy(surebet);
-        
+
         let mut msg = format!(
             "🛡️ <b>HEDGING STRATEGY</b>\n\n\
              <b>Original Bet:</b>\n\
@@ -436,7 +462,7 @@ impl TelegramBot {
             hedge.risk_reduction,
             hedge.new_roi
         );
-        
+
         for (i, scenario) in hedge.scenarios.iter().enumerate() {
             let _ = write!(
                 msg,
@@ -446,7 +472,7 @@ impl TelegramBot {
                 scenario.profit
             );
         }
-        
+
         msg
     }
 
@@ -464,27 +490,34 @@ impl TelegramBot {
             alert_count: 0,
             last_alert: None,
         };
-        
+
         channels.insert(name.to_string(), channel);
-        
+
         let mut dashboard = self.dashboard.lock().expect("dashboard poisoned");
         dashboard.channels_count = channels.len();
         dashboard.active_channels = channels.values().filter(|c| c.active).count();
-        
-        format!("✅ Channel '{}' created (ROI: {:.2}% - {:.2}%)", name, min_roi, max_roi)
+
+        format!(
+            "✅ Channel '{}' created (ROI: {:.2}% - {:.2}%)",
+            name, min_roi, max_roi
+        )
     }
 
     pub fn toggle_channel(&self, name: &str) -> String {
         let mut channels = self.roi_channels.lock().expect("roi_channels poisoned");
-        
+
         match channels.get_mut(name) {
             Some(channel) => {
                 channel.active = !channel.active;
-                let status = if channel.active { "✅ ACTIVE" } else { "⛔ INACTIVE" };
-                
+                let status = if channel.active {
+                    "✅ ACTIVE"
+                } else {
+                    "⛔ INACTIVE"
+                };
+
                 let mut dashboard = self.dashboard.lock().expect("dashboard poisoned");
                 dashboard.active_channels = channels.values().filter(|c| c.active).count();
-                
+
                 format!("Channel '{}' is now {}", name, status)
             }
             None => format!("❌ Channel '{}' not found", name),
@@ -512,7 +545,8 @@ impl TelegramBot {
          <b>System:</b>\n\
          /status - Bot status\n\
          /settings - Alert settings\n\
-         /help - General help".to_string()
+         /help - General help"
+            .to_string()
     }
 
     pub fn set_min_roi(&self, roi: f64) -> String {
@@ -605,7 +639,9 @@ impl TelegramBot {
 
     pub fn reply_for_text(&self, text: &str, user_id: Option<i64>) -> Option<String> {
         let trimmed = text.trim();
-        let is_admin = user_id.map(|uid| self.admin_users.contains(&uid)).unwrap_or(false);
+        let is_admin = user_id
+            .map(|uid| self.admin_users.contains(&uid))
+            .unwrap_or(false);
 
         match trimmed {
             "/start" => Some(
@@ -659,10 +695,16 @@ impl TelegramBot {
                     if let (Ok(min), Ok(max)) = (parts[2].parse::<f64>(), parts[3].parse::<f64>()) {
                         Some(self.set_channel(parts[1], min, max))
                     } else {
-                        Some("❌ Invalid format. Use: /setchannel <name> <min_roi> <max_roi>".to_string())
+                        Some(
+                            "❌ Invalid format. Use: /setchannel <name> <min_roi> <max_roi>"
+                                .to_string(),
+                        )
                     }
                 } else {
-                    Some("❌ Invalid format. Use: /setchannel <name> <min_roi> <max_roi>".to_string())
+                    Some(
+                        "❌ Invalid format. Use: /setchannel <name> <min_roi> <max_roi>"
+                            .to_string(),
+                    )
                 }
             }
             cmd if is_admin && cmd.starts_with("/togglechannel ") => {
@@ -710,7 +752,7 @@ impl TelegramBot {
                 let this = this.clone();
                 async move {
                     if let Some(text) = msg.text() {
-                        let user_id = msg.from.as_ref().map(|u| u.id.0 as i64);
+                        let user_id = msg.from().as_ref().map(|u| u.id.0 as i64);
                         let reply = this.reply_for_text(text, user_id);
 
                         if let Some(reply) = reply {
@@ -1315,10 +1357,13 @@ impl SimpleMLPredictor {
         }
 
         let mean = self.odds_history.iter().sum::<f64>() / self.odds_history.len() as f64;
-        let variance = self.odds_history.iter()
+        let variance = self
+            .odds_history
+            .iter()
             .map(|&x| (x - mean).powi(2))
-            .sum::<f64>() / self.odds_history.len() as f64;
-        
+            .sum::<f64>()
+            / self.odds_history.len() as f64;
+
         variance.sqrt()
     }
 
@@ -1374,10 +1419,12 @@ pub struct HedgeScenario {
 }
 
 pub fn calculate_hedge_strategy(surebet: &Surebet) -> HedgeStrategy {
-    let original_profit = surebet.legs.first()
+    let original_profit = surebet
+        .legs
+        .first()
         .map(|l| l.payout - surebet.total_stake)
         .unwrap_or(0.0);
-    
+
     let original_roi = (original_profit / surebet.total_stake * 100.0).abs();
 
     // Simple hedge: lay back at 2.0 odds
@@ -1632,9 +1679,9 @@ mod tests {
         let mut dashboard = DashboardState::default();
         dashboard.record_surebet(2.5, true);
         dashboard.record_surebet(1.5, true);
-        
+
         assert_eq!(dashboard.total_surebets, 2);
-        
+
         dashboard.reset();
         assert_eq!(dashboard.total_surebets, 0);
         assert_eq!(dashboard.verified_surebets, 0);
@@ -1675,7 +1722,7 @@ mod tests {
         };
 
         assert!(!channel.should_alert(2.0));
-        
+
         channel.active = true;
         assert!(channel.should_alert(2.0));
     }
@@ -1683,10 +1730,10 @@ mod tests {
     #[test]
     fn set_channel_creates_new_roi_channel() {
         let bot = TelegramBot::new("token", vec![1], 0.1, false, None);
-        
+
         let reply = bot.set_channel("high_roi", 3.0, 5.0);
         assert!(reply.contains("✅ Channel 'high_roi' created"));
-        
+
         let channels = bot.roi_channels.lock().expect("channels poisoned");
         let channel = channels.get("high_roi").expect("channel not found");
         assert_eq!(channel.min_roi, 3.0);
@@ -1697,13 +1744,13 @@ mod tests {
     #[test]
     fn set_channel_validates_roi_range() {
         let bot = TelegramBot::new("token", vec![1], 0.1, false, None);
-        
+
         let reply1 = bot.set_channel("bad", -1.0, 5.0);
         assert!(reply1.contains("❌"));
-        
+
         let reply2 = bot.set_channel("bad", 5.0, 3.0);
         assert!(reply2.contains("❌"));
-        
+
         let reply3 = bot.set_channel("bad", 0.0, 150.0);
         assert!(reply3.contains("❌"));
     }
@@ -1712,10 +1759,10 @@ mod tests {
     fn toggle_channel_switches_active_state() {
         let bot = TelegramBot::new("token", vec![1], 0.1, false, None);
         bot.set_channel("test", 1.0, 3.0);
-        
+
         let reply1 = bot.toggle_channel("test");
         assert!(reply1.contains("⛔ INACTIVE"));
-        
+
         let reply2 = bot.toggle_channel("test");
         assert!(reply2.contains("✅ ACTIVE"));
     }
@@ -1726,7 +1773,7 @@ mod tests {
         bot.set_channel("low", 0.5, 1.5);
         bot.set_channel("medium", 1.5, 3.0);
         bot.set_channel("high", 3.0, 10.0);
-        
+
         let msg = bot.channels_message();
         assert!(msg.contains("low"));
         assert!(msg.contains("medium"));
@@ -1761,7 +1808,7 @@ mod tests {
     fn ml_predictor_predicts_empty_odds() {
         let predictor = SimpleMLPredictor::new();
         let prediction = predictor.predict_odds(&[]);
-        
+
         assert_eq!(prediction.avg_odds, 2.0);
         assert!(prediction.confidence >= 0.0 && prediction.confidence <= 1.0);
     }
@@ -1791,7 +1838,7 @@ mod tests {
                 url: None,
             },
         ];
-        
+
         let prediction = predictor.predict_odds(&legs);
         assert_eq!(prediction.avg_odds, 2.5);
     }
@@ -1802,7 +1849,7 @@ mod tests {
         predictor.record_odds(2.0);
         predictor.record_odds(2.1);
         predictor.record_odds(2.05);
-        
+
         assert_eq!(predictor.odds_history.len(), 3);
     }
 
@@ -1812,7 +1859,7 @@ mod tests {
         predictor.record_roi(1.5);
         predictor.record_roi(2.3);
         predictor.record_roi(0.8);
-        
+
         assert_eq!(predictor.roi_history.len(), 3);
     }
 
@@ -1822,7 +1869,7 @@ mod tests {
         predictor.record_odds(2.0);
         predictor.record_odds(2.0);
         predictor.record_odds(2.0);
-        
+
         let volatility = predictor.calculate_volatility();
         assert!(volatility < 0.01);
     }
@@ -1834,7 +1881,7 @@ mod tests {
         predictor.record_roi(-0.5);
         predictor.record_roi(2.0);
         predictor.record_roi(-1.0);
-        
+
         let efficiency = predictor.calculate_efficiency();
         assert_eq!(efficiency, 0.5);
     }
@@ -1973,8 +2020,16 @@ mod tests {
 
     #[test]
     fn admin_help_shows_admin_commands() {
-        let bot = TelegramBot::with_config("token", vec![1], 0.1, false, None, TelegramAlertConfig::default(), vec![1]);
-        
+        let bot = TelegramBot::with_config(
+            "token",
+            vec![1],
+            0.1,
+            false,
+            None,
+            TelegramAlertConfig::default(),
+            vec![1],
+        );
+
         let msg = bot.admin_help();
         assert!(msg.contains("🔑 <b>ADMIN COMMANDS</b>"));
         assert!(msg.contains("/setchannel"));
@@ -1985,13 +2040,13 @@ mod tests {
     #[test]
     fn set_min_roi_validates_input() {
         let bot = TelegramBot::new("token", vec![1], 0.1, false, None);
-        
+
         let reply1 = bot.set_min_roi(2.5);
         assert!(reply1.contains("✅"));
-        
+
         let reply2 = bot.set_min_roi(-1.0);
         assert!(reply2.contains("❌"));
-        
+
         let reply3 = bot.set_min_roi(100.0);
         assert!(reply3.contains("❌"));
     }
@@ -1999,7 +2054,7 @@ mod tests {
     #[test]
     fn clear_history_empties_surebets() {
         let bot = TelegramBot::new("token", vec![1], 0.1, false, None);
-        
+
         let surebet = Surebet {
             id: Uuid::nil(),
             sport: Sport::Football,
@@ -2015,12 +2070,12 @@ mod tests {
             verified: true,
             mirror: false,
         };
-        
+
         bot.record_seen_surebet(&surebet);
-        
+
         let reply = bot.clear_history();
         assert!(reply.contains("✅"));
-        
+
         let state = bot.state.lock().expect("state poisoned");
         assert!(state.recent_surebets.is_empty());
     }
@@ -2054,7 +2109,7 @@ mod tests {
     #[test]
     fn reply_for_text_dashboard_command() {
         let bot = TelegramBot::new("token", vec![1], 0.1, false, None);
-        
+
         let reply = bot.reply_for_text("/dashboard", Some(1));
         assert!(reply.is_some());
         assert!(reply.unwrap().contains("📊"));
@@ -2063,7 +2118,7 @@ mod tests {
     #[test]
     fn reply_for_text_channels_command() {
         let bot = TelegramBot::new("token", vec![1], 0.1, false, None);
-        
+
         let reply = bot.reply_for_text("/channels", Some(1));
         assert!(reply.is_some());
         assert!(reply.unwrap().contains("📡"));
@@ -2071,12 +2126,20 @@ mod tests {
 
     #[test]
     fn admin_command_requires_admin_user() {
-        let bot = TelegramBot::with_config("token", vec![1], 0.1, false, None, TelegramAlertConfig::default(), vec![1]);
-        
+        let bot = TelegramBot::with_config(
+            "token",
+            vec![1],
+            0.1,
+            false,
+            None,
+            TelegramAlertConfig::default(),
+            vec![1],
+        );
+
         let reply_admin = bot.reply_for_text("/admin", Some(1));
         assert!(reply_admin.is_some());
         assert!(reply_admin.unwrap().contains("🔑"));
-        
+
         let reply_non_admin = bot.reply_for_text("/admin", Some(999));
         assert!(reply_non_admin.is_some());
         assert!(reply_non_admin.unwrap().contains("❌"));
@@ -2084,8 +2147,16 @@ mod tests {
 
     #[test]
     fn setchannel_command_parses_arguments() {
-        let bot = TelegramBot::with_config("token", vec![1], 0.1, false, None, TelegramAlertConfig::default(), vec![1]);
-        
+        let bot = TelegramBot::with_config(
+            "token",
+            vec![1],
+            0.1,
+            false,
+            None,
+            TelegramAlertConfig::default(),
+            vec![1],
+        );
+
         let reply = bot.reply_for_text("/setchannel high_roi 3.0 5.0", Some(1));
         assert!(reply.is_some());
         assert!(reply.unwrap().contains("✅"));
@@ -2093,8 +2164,16 @@ mod tests {
 
     #[test]
     fn togglechannel_command_toggles_state() {
-        let bot = TelegramBot::with_config("token", vec![1], 0.1, false, None, TelegramAlertConfig::default(), vec![1]);
-        
+        let bot = TelegramBot::with_config(
+            "token",
+            vec![1],
+            0.1,
+            false,
+            None,
+            TelegramAlertConfig::default(),
+            vec![1],
+        );
+
         bot.reply_for_text("/setchannel test 1.0 3.0", Some(1));
         let reply = bot.reply_for_text("/togglechannel test", Some(1));
         assert!(reply.is_some());
@@ -2103,12 +2182,20 @@ mod tests {
 
     #[test]
     fn setminroi_command_validates_input() {
-        let bot = TelegramBot::with_config("token", vec![1], 0.1, false, None, TelegramAlertConfig::default(), vec![1]);
-        
+        let bot = TelegramBot::with_config(
+            "token",
+            vec![1],
+            0.1,
+            false,
+            None,
+            TelegramAlertConfig::default(),
+            vec![1],
+        );
+
         let reply_valid = bot.reply_for_text("/setminroi 2.5", Some(1));
         assert!(reply_valid.is_some());
         assert!(reply_valid.unwrap().contains("✅"));
-        
+
         let reply_invalid = bot.reply_for_text("/setminroi 100", Some(1));
         assert!(reply_invalid.is_some());
         assert!(reply_invalid.unwrap().contains("❌"));
@@ -2121,22 +2208,22 @@ mod tests {
         buckets.add_surebet(1.5);
         buckets.add_surebet(2.5);
         buckets.add_surebet(4.0);
-        
+
         assert_eq!(buckets.total(), 4);
     }
 
     #[test]
     fn telegram_bot_initializes_with_admin_users() {
         let bot = TelegramBot::with_config(
-            "token", 
-            vec![1], 
-            0.1, 
-            false, 
-            None, 
-            TelegramAlertConfig::default(), 
-            vec![1, 2, 3]
+            "token",
+            vec![1],
+            0.1,
+            false,
+            None,
+            TelegramAlertConfig::default(),
+            vec![1, 2, 3],
         );
-        
+
         assert_eq!(bot.admin_users.len(), 3);
         assert!(bot.admin_users.contains(&1));
         assert!(bot.admin_users.contains(&2));
@@ -2146,11 +2233,11 @@ mod tests {
     #[test]
     fn ml_predictor_limits_history_size() {
         let mut predictor = SimpleMLPredictor::new();
-        
+
         for i in 0..60 {
             predictor.record_odds(2.0 + i as f64 * 0.01);
         }
-        
+
         assert!(predictor.odds_history.len() <= 50);
     }
 }

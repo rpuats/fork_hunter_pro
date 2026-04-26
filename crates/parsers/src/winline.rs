@@ -4,7 +4,10 @@ use async_trait::async_trait;
 use chrono::Utc;
 use reqwest::Client;
 use shared::odds::OddsType;
-use shared::{Event, Odd, Sport, ParserDiagnosticCheck, ParserReadiness, ParserReadinessStage, DiagnosticSeverity};
+use shared::{
+    DiagnosticSeverity, Event, Odd, ParserDiagnosticCheck, ParserReadiness, ParserReadinessStage,
+    Sport,
+};
 use std::collections::{HashMap, HashSet};
 use std::process::{Command, Stdio};
 use std::sync::Arc;
@@ -2461,8 +2464,10 @@ with sync_playwright() as p:
                     error = %error_text,
                     "Winline: prematch bootstrap navigation failed"
                 );
-                if Self::is_skippable_discovery_bootstrap_navigation_error(DISCOVERY_URL, &error_text)
-                {
+                if Self::is_skippable_discovery_bootstrap_navigation_error(
+                    DISCOVERY_URL,
+                    &error_text,
+                ) {
                     let fallback_navigation_started = Instant::now();
                     match helper.navigate_and_wait_with_timeout_and_deadline(
                         DISCOVERY_FALLBACK_URL,
@@ -3282,13 +3287,12 @@ with sync_playwright() as p:
 
 #[cfg(test)]
 mod tests {
-     use super::{
-          HeadlessRouteMetric, WinlineParser, BOOTSTRAP_WEBSCRIPT_PATH, DISCOVERY_FALLBACK_URL,
-          DISCOVERY_URL, HEADLESS_DOM_DIAGNOSTICS_JS,
-           HEADLESS_BLOCKER_ROUTE_STREAK_LIMIT,
-           HEADLESS_EFFECTIVE_RUNTIME_BUDGET_MS, HEADLESS_EXPENSIVE_ROUTE_MS, HEADLESS_EXTRACT_JS,
-          HEADLESS_HYDRATION_RETRY_ATTEMPTS, HEADLESS_HYDRATION_RETRY_DELAY_MS,
-         HEADLESS_LIVE_FANOUT_BUDGET_MS, HEADLESS_NAVIGATION_TIMEOUT_MS,
+    use super::{
+        HeadlessRouteMetric, WinlineParser, BOOTSTRAP_WEBSCRIPT_PATH, DISCOVERY_FALLBACK_URL,
+        DISCOVERY_URL, HEADLESS_BLOCKER_ROUTE_STREAK_LIMIT, HEADLESS_DOM_DIAGNOSTICS_JS,
+        HEADLESS_EFFECTIVE_RUNTIME_BUDGET_MS, HEADLESS_EXPENSIVE_ROUTE_MS, HEADLESS_EXTRACT_JS,
+        HEADLESS_HYDRATION_RETRY_ATTEMPTS, HEADLESS_HYDRATION_RETRY_DELAY_MS,
+        HEADLESS_LIVE_FANOUT_BUDGET_MS, HEADLESS_NAVIGATION_TIMEOUT_MS,
         HEADLESS_OUTER_TIMEOUT_RESERVE_MS, HEADLESS_PREMATCH_FANOUT_BUDGET_MS,
         HEADLESS_ROUTE_GUARD_MS, HEADLESS_RUNTIME_BUDGET_MS, HEADLESS_SCROLL_ROUNDS,
         HEADLESS_STABLE_EMPTY_ROUTE_REPEAT_LIMIT, HEADLESS_WAIT_MS, LIVE_URL,
@@ -3952,10 +3956,7 @@ mod tests {
             }
         });
 
-        assert!(WinlineParser::should_abort_hydration_retry_after_diagnostics(
-            &diagnostics,
-            1,
-        ));
+        assert!(WinlineParser::should_abort_hydration_retry_after_diagnostics(&diagnostics, 1,));
     }
 
     #[test]
@@ -3976,14 +3977,13 @@ mod tests {
             }
         });
 
-        assert!(!WinlineParser::should_abort_hydration_retry_after_diagnostics(
-            &diagnostics,
-            1,
-        ));
-        assert!(WinlineParser::should_abort_hydration_retry_after_diagnostics(
-            &diagnostics,
-            super::HEADLESS_HYDRATION_EARLY_DIAGNOSTIC_ATTEMPT,
-        ));
+        assert!(!WinlineParser::should_abort_hydration_retry_after_diagnostics(&diagnostics, 1,));
+        assert!(
+            WinlineParser::should_abort_hydration_retry_after_diagnostics(
+                &diagnostics,
+                super::HEADLESS_HYDRATION_EARLY_DIAGNOSTIC_ATTEMPT,
+            )
+        );
     }
 
     #[test]
@@ -4318,10 +4318,12 @@ mod tests {
             DISCOVERY_FALLBACK_URL,
             "headless navigation readiness timeout after 6000ms for https://winline.ru/football"
         ));
-        assert!(!WinlineParser::is_skippable_discovery_bootstrap_navigation_error(
-            DISCOVERY_URL,
-            "cloudflare challenge detected"
-        ));
+        assert!(
+            !WinlineParser::is_skippable_discovery_bootstrap_navigation_error(
+                DISCOVERY_URL,
+                "cloudflare challenge detected"
+            )
+        );
     }
 
     #[test]
@@ -4351,7 +4353,9 @@ mod tests {
         assert!(WinlineParser::is_useful_empty_route_blocker_signal(
             "budget=runtime_deadline"
         ));
-        assert!(!WinlineParser::is_useful_empty_route_blocker_signal("route=/live/futbol"));
+        assert!(!WinlineParser::is_useful_empty_route_blocker_signal(
+            "route=/live/futbol"
+        ));
         assert!(!WinlineParser::is_useful_empty_route_blocker_signal("   "));
     }
 
@@ -4383,18 +4387,26 @@ mod tests {
 
     #[test]
     fn only_shell_only_empty_status_skips_sibling_live_variant() {
-        assert!(WinlineParser::should_skip_live_route_family_after_empty_shell(
-            Some("status=route_ready_shell_only,route=/live/futbol")
-        ));
-        assert!(WinlineParser::should_skip_live_route_family_after_empty_shell(
-            Some("status=shell_only_no_event_cards,route=/live/futbol")
-        ));
-        assert!(!WinlineParser::should_skip_live_route_family_after_empty_shell(
-            Some("blocker=captcha@body:test")
-        ));
-        assert!(!WinlineParser::should_skip_live_route_family_after_empty_shell(
-            Some("budget=runtime_deadline")
-        ));
+        assert!(
+            WinlineParser::should_skip_live_route_family_after_empty_shell(Some(
+                "status=route_ready_shell_only,route=/live/futbol"
+            ))
+        );
+        assert!(
+            WinlineParser::should_skip_live_route_family_after_empty_shell(Some(
+                "status=shell_only_no_event_cards,route=/live/futbol"
+            ))
+        );
+        assert!(
+            !WinlineParser::should_skip_live_route_family_after_empty_shell(Some(
+                "blocker=captcha@body:test"
+            ))
+        );
+        assert!(
+            !WinlineParser::should_skip_live_route_family_after_empty_shell(Some(
+                "budget=runtime_deadline"
+            ))
+        );
     }
 
     #[test]

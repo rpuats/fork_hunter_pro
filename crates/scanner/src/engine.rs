@@ -6,6 +6,7 @@ use corridor_scanner::CorridorScanner;
 use engine::calculator::SurebetCalculator;
 use engine::event_pool::EventPool;
 use engine::freebet::FreebetHunter;
+use engine::middle::MiddleDetector;
 use engine::generosity::GenerosityIndexCalc;
 use engine::mirror::MirrorDetector;
 use engine::momentum::MomentumScanner;
@@ -105,6 +106,7 @@ pub struct GhostScanner {
     pub momentum_scanner: Arc<MomentumScanner>,
     pub odds_error_detector: Arc<OddsErrorDetector>,
     pub value_detector: Arc<ValueDetector>,
+    pub middle_detector: Arc<MiddleDetector>,
     pub odds_verifier: Arc<OddsVerifier>,
     pub corridor_scanner: Arc<CorridorScanner>,
     pub express_fork_scanner: Arc<ExpressForkScanner>,
@@ -132,6 +134,8 @@ pub struct GhostScanner {
     surebets_cache: Arc<parking_lot::RwLock<std::collections::HashMap<String, shared::Surebet>>>,
     // Кэш value bets
     value_bets_cache: Arc<parking_lot::RwLock<Vec<shared::ValueBet>>>,
+    // Кэш middle opportunities
+    middles_cache: Arc<parking_lot::RwLock<Vec<engine::middle::MiddleOpportunity>>>,
     // Кэш ошибок в коэффициентах
     odds_errors_cache: Arc<parking_lot::RwLock<Vec<OddsError>>>,
 }
@@ -149,6 +153,7 @@ impl GhostScanner {
         momentum_scanner: Arc<MomentumScanner>,
         odds_error_detector: Arc<OddsErrorDetector>,
         value_detector: Arc<ValueDetector>,
+        middle_detector: Arc<MiddleDetector>,
         odds_verifier: Arc<OddsVerifier>,
         corridor_scanner: Arc<CorridorScanner>,
         express_fork_scanner: Arc<ExpressForkScanner>,
@@ -201,6 +206,7 @@ impl GhostScanner {
             momentum_scanner,
             odds_error_detector,
             value_detector,
+            middle_detector,
             odds_verifier,
             corridor_scanner,
             express_fork_scanner,
@@ -227,6 +233,7 @@ impl GhostScanner {
                 std::collections::HashMap::with_capacity(10000),
             )),
             value_bets_cache: Arc::new(parking_lot::RwLock::new(Vec::with_capacity(1000))),
+            middles_cache: Arc::new(parking_lot::RwLock::new(Vec::with_capacity(1000))),
             odds_errors_cache: Arc::new(parking_lot::RwLock::new(Vec::with_capacity(1000))),
         }
     }
@@ -273,6 +280,11 @@ impl GhostScanner {
 
     pub fn get_odds_errors(&self, limit: usize) -> Vec<OddsError> {
         let cache = self.odds_errors_cache.read();
+        cache.iter().take(limit).cloned().collect()
+    }
+
+    pub fn get_middles(&self, limit: usize) -> Vec<engine::middle::MiddleOpportunity> {
+        let cache = self.middles_cache.read();
         cache.iter().take(limit).cloned().collect()
     }
 
@@ -837,6 +849,15 @@ impl GhostScanner {
             let mut cache = self.value_bets_cache.write();
             *cache = value_bets.into_iter().take(1000).collect();
         }
+
+        // Middle opportunities detection (новая фича!)
+        let middle_result = self.middle_detector.find_middles(&normalized, &calc_odds);
+        {
+            let mut cache = self.middles_cache.write();
+            *cache = middle_result.opportunities.into_iter().take(1000).collect();
+        }
+        info!("🎯 Found {} middle opportunities in {} events ({}ms)",
+              middle_result.found_middles, middle_result.searched_events, middle_result.search_time_ms);
 
         let odds_errors = self
             .odds_error_detector
@@ -1523,6 +1544,7 @@ mod tests {
     use engine::event_pool::EventPool;
     use engine::freebet::FreebetHunter;
     use engine::generosity::GenerosityIndexCalc;
+    use engine::middle::MiddleDetector;
     use engine::mirror::MirrorDetector;
     use engine::momentum::MomentumScanner;
     use engine::normalizer::Normalizer;
@@ -1662,6 +1684,7 @@ mod tests {
             Arc::new(MomentumScanner::new(0.1, 1000.0)),
             Arc::new(OddsErrorDetector::new(25.0, 3)),
             Arc::new(ValueDetector::new(1.0)),
+            Arc::new(MiddleDetector::new(0.02, 0.5)),
             Arc::new(engine::verifier::OddsVerifier::new(1, 1, 60)),
             Arc::new(CorridorScanner::new(0.5)),
             Arc::new(ExpressForkScanner::new(3, 0.1, 1000.0)),

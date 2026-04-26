@@ -630,8 +630,16 @@ impl LigaStavokParser {
             .or_else(|| root.get("directProbeStatus"))
             .or_else(|| value.get("direct_probe_status"))
             .or_else(|| value.get("directProbeStatus"))
-            .or_else(|| value.get("status").and_then(|status| status.get("direct_probe_status")))
-            .or_else(|| value.get("status").and_then(|status| status.get("directProbeStatus")))
+            .or_else(|| {
+                value
+                    .get("status")
+                    .and_then(|status| status.get("direct_probe_status"))
+            })
+            .or_else(|| {
+                value
+                    .get("status")
+                    .and_then(|status| status.get("directProbeStatus"))
+            })
             .and_then(|value| value.as_u64())
             .and_then(|value| u16::try_from(value).ok())
             .filter(|status| *status > 0);

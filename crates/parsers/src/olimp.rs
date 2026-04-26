@@ -6,10 +6,10 @@ use chrono::{DateTime, Utc};
 use reqwest::Client;
 use shared::odds::OddsType;
 use shared::{
-    DiagnosticSeverity, Event, Odd, ParserDiagnosticCheck, ParserReadiness,
-    ParserReadinessStage, Sport,
+    DiagnosticSeverity, Event, Odd, ParserDiagnosticCheck, ParserReadiness, ParserReadinessStage,
+    Sport,
 };
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::sync::Arc;
 use std::time::Duration;
@@ -50,6 +50,14 @@ const MAX_RETRIES: u32 = 3;
 const INITIAL_BACKOFF_MS: u64 = 100;
 const MAX_BACKOFF_MS: u64 = 5000;
 const BACKOFF_MULTIPLIER: f64 = 2.0;
+const PREMATCH_SPORT_ID_SWEEP: &[u32] = &[
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
+    21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
+];
+const REQUEST_TIMEOUT_SECS: u64 = 12;
+const LIVE_SECTION_BUDGET_SECS: u64 = 24;
+const PREMATCH_SECTION_BUDGET_SECS: u64 = 60;
+const PREMATCH_TARGET_EVENTS: usize = 3500;
 
 impl OlimpParser {
     pub fn new(client: Arc<Client>) -> Self {
@@ -59,7 +67,10 @@ impl OlimpParser {
     /// Create parser with proxy list for bypassing IP bans
     pub fn with_proxies(client: Arc<Client>, proxy_configs: Vec<ProxyConfig>) -> Self {
         let proxy_manager = if !proxy_configs.is_empty() {
-            info!(proxy_count = proxy_configs.len(), "Olimp: initializing with proxies");
+            info!(
+                proxy_count = proxy_configs.len(),
+                "Olimp: initializing with proxies"
+            );
             Some(Arc::new(ProxyManager::new(proxy_configs)))
         } else {
             None
@@ -109,10 +120,10 @@ impl OlimpParser {
         }
     }
 
-    fn section_url(&self, section: &str) -> String {
+    fn section_url(&self, sport_id: u32, section: &str) -> String {
         format!(
-            "{}/0/{}/sports-with-competitions-with-events?vids%5B%5D=",
-            self.base_api_url, section
+            "{}/{}/{}/sports-with-competitions-with-events?vids%5B%5D=",
+            self.base_api_url, sport_id, section
         )
     }
 }
@@ -165,18 +176,35 @@ impl BookmakerParser for OlimpParser {
         let start = std::time::Instant::now();
         let mut all_events = Vec::new();
         let mut all_odds = Vec::new();
+        let mut seen_events = HashSet::new();
+        let mut seen_odds = HashSet::new();
 
         let live_fut = self.fetch_section("live", true);
-        let prematch_fut = self.fetch_section("line/top", false);
-        let (live_res, prematch_res) = tokio::join!(live_fut, prematch_fut);
+        let prematch_top_fut = self.fetch_section("line/top", false);
+        let prematch_all_fut = self.fetch_section("line", false);
+        let prematch_line_all_fut = self.fetch_section("line/all", false);
+        let (live_res, prematch_top_res, prematch_all_res, prematch_line_all_res) =
+            tokio::join!(live_fut, prematch_top_fut, prematch_all_fut, prematch_line_all_fut);
 
-        if let Ok((events, odds)) = live_res {
-            all_events.extend(events);
-            all_odds.extend(odds);
-        }
-        if let Ok((events, odds)) = prematch_res {
-            all_events.extend(events);
-            all_odds.extend(odds);
+        let results = vec![
+            live_res,
+            prematch_top_res,
+            prematch_all_res,
+            prematch_line_all_res,
+        ];
+        for result in results {
+            if let Ok((events, odds)) = result {
+                for event in events {
+                    if seen_events.insert(event.id.clone()) {
+                        all_events.push(event);
+                    }
+                }
+                for odd in odds {
+                    if seen_odds.insert(odd.id.clone()) {
+                        all_odds.push(odd);
+                    }
+                }
+            }
         }
 
         let elapsed = start.elapsed().as_millis() as u64;
@@ -209,61 +237,101 @@ impl OlimpParser {
             return Err("Circuit breaker is open - service temporarily unavailable".into());
         }
 
-        for attempt in 0..MAX_RETRIES {
-            match self.fetch_section_with_proxy(section, is_live).await {
-                Ok(result) => {
-                    self.circuit_breaker.record_success();
-                    if attempt > 0 {
-                        info!(
-                            section = section,
-                            attempts = attempt + 1,
-                            "Olimp: recovered after {} attempts",
-                            attempt + 1
-                        );
+        let mut all_events = Vec::new();
+        let mut all_odds = Vec::new();
+        let mut seen_events = HashSet::new();
+        let mut seen_odds = HashSet::new();
+        let section_started = std::time::Instant::now();
+        let section_budget = Duration::from_secs(if is_live {
+            LIVE_SECTION_BUDGET_SECS
+        } else {
+            PREMATCH_SECTION_BUDGET_SECS
+        });
+        let sport_ids: Vec<u32> = if is_live {
+            vec![0]
+        } else {
+            PREMATCH_SPORT_ID_SWEEP.to_vec()
+        };
+
+        for sport_id in sport_ids {
+            if section_started.elapsed() >= section_budget {
+                warn!(
+                    section = section,
+                    is_live,
+                    events = all_events.len(),
+                    odds = all_odds.len(),
+                    "Olimp: section budget exhausted, returning partial snapshot"
+                );
+                break;
+            }
+
+            for attempt in 0..MAX_RETRIES {
+                match self.fetch_section_with_proxy(sport_id, section, is_live).await {
+                    Ok((events, odds)) => {
+                        self.circuit_breaker.record_success();
+                        for event in events {
+                            if seen_events.insert(event.id.clone()) {
+                                all_events.push(event);
+                            }
+                        }
+                        for odd in odds {
+                            if seen_odds.insert(odd.id.clone()) {
+                                all_odds.push(odd);
+                            }
+                        }
+                        if !is_live && all_events.len() >= PREMATCH_TARGET_EVENTS {
+                            debug!(
+                                section = section,
+                                events = all_events.len(),
+                                "Olimp: reached prematch target budget, stopping sweep early"
+                            );
+                            return Ok((all_events, all_odds));
+                        }
+                        break;
                     }
-                    return Ok(result);
-                }
-                Err(e) => {
-                    self.circuit_breaker.record_failure();
+                    Err(e) => {
+                        self.circuit_breaker.record_failure();
 
-                    if attempt < MAX_RETRIES - 1 {
-                        let backoff_ms = ((INITIAL_BACKOFF_MS as f64)
-                            * BACKOFF_MULTIPLIER.powi(attempt as i32))
-                            .min(MAX_BACKOFF_MS as f64) as u64;
+                        if attempt < MAX_RETRIES - 1 {
+                            let backoff_ms = ((INITIAL_BACKOFF_MS as f64)
+                                * BACKOFF_MULTIPLIER.powi(attempt as i32))
+                            .min(MAX_BACKOFF_MS as f64)
+                                as u64;
 
-                        warn!(
-                            error = %e,
-                            section = section,
-                            attempt = attempt + 1,
-                            backoff_ms = backoff_ms,
-                            "Olimp: fetch failed, retrying in {}ms",
-                            backoff_ms
-                        );
-
-                        tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
-                    } else {
-                        error!(
-                            error = %e,
-                            section = section,
-                            "Olimp: fetch failed after {} attempts",
-                            MAX_RETRIES
-                        );
-                        return Err(e);
+                            warn!(
+                                error = %e,
+                                section = section,
+                                sport_id = sport_id,
+                                attempt = attempt + 1,
+                                backoff_ms = backoff_ms,
+                                "Olimp: fetch failed, retrying in {}ms",
+                                backoff_ms
+                            );
+                            tokio::time::sleep(Duration::from_millis(backoff_ms)).await;
+                        } else {
+                            warn!(
+                                error = %e,
+                                section = section,
+                                sport_id = sport_id,
+                                "Olimp: fetch failed after retries for sport_id"
+                            );
+                        }
                     }
                 }
             }
         }
 
-        Err("Max retries exceeded".into())
+        Ok((all_events, all_odds))
     }
 
     /// Fetch with proxy rotation
     async fn fetch_section_with_proxy(
         &self,
+        sport_id: u32,
         section: &str,
         is_live: bool,
     ) -> Result<(Vec<Event>, Vec<Odd>), Box<dyn std::error::Error + Send + Sync>> {
-        let url = self.section_url(section);
+        let url = self.section_url(sport_id, section);
         debug!(url = url, "Olimp: fetching section");
 
         match self.execute_request(&url, None).await {
@@ -288,16 +356,17 @@ impl OlimpParser {
                 match self.execute_request(&url, Some(proxy_config.clone())).await {
                     Ok(text) => {
                         proxy_manager.mark_success(&proxy_config.url, 0);
-                        info!(proxy = proxy_config.url, "Olimp: request successful via proxy");
+                        info!(
+                            proxy = proxy_config.url,
+                            "Olimp: request successful via proxy"
+                        );
                         return self.parse_response(&text, is_live);
                     }
                     Err(e) => {
                         if let Some(status_code) = extract_status_code(e.as_ref()) {
                             if status_code == 403 {
-                                proxy_manager.mark_banned(
-                                    &proxy_config.url,
-                                    Duration::from_secs(600),
-                                );
+                                proxy_manager
+                                    .mark_banned(&proxy_config.url, Duration::from_secs(600));
                                 warn!(
                                     proxy = proxy_config.url,
                                     "Olimp: proxy IP also banned (403)"
@@ -346,7 +415,7 @@ impl OlimpParser {
             .header("Accept", "application/json, text/plain, */*")
             .header("Accept-Language", "ru-RU,ru;q=0.9")
             .header("Referer", "https://www.olimp.bet/")
-            .timeout(Duration::from_secs(30))
+            .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS))
             .send()
             .await?;
 
@@ -579,13 +648,14 @@ impl OlimpParser {
 /// Extract HTTP status code from error message
 fn extract_status_code(error: &dyn std::error::Error) -> Option<u16> {
     let msg = error.to_string();
-    if msg.starts_with("HTTP ") {
-        msg.split_whitespace()
-            .nth(1)
-            .and_then(|code_str| code_str.parse::<u16>().ok())
-    } else {
-        None
+    if let Some(index) = msg.find("HTTP ") {
+        let slice = &msg[index + 5..];
+        return slice
+            .split(|ch: char| !ch.is_ascii_digit())
+            .find(|segment| !segment.is_empty())
+            .and_then(|code_str| code_str.parse::<u16>().ok());
     }
+    None
 }
 
 #[cfg(test)]
@@ -600,7 +670,7 @@ mod tests {
         let parser = OlimpParser::new(client);
 
         assert_eq!(
-            parser.section_url("live"),
+            parser.section_url(0, "live"),
             "https://www.olimp.bet/api/v4/0/live/sports-with-competitions-with-events?vids%5B%5D="
         );
     }
@@ -621,7 +691,10 @@ mod tests {
         let event = &events[0];
         assert_eq!(event.bookmaker_slug, "olimp");
         assert_eq!(event.sport, Sport::Football);
-        assert_eq!(event.league, "Лига Чемпионов UEFA. 1/2 финала. Первые матчи");
+        assert_eq!(
+            event.league,
+            "Лига Чемпионов UEFA. 1/2 финала. Первые матчи"
+        );
         assert_eq!(event.home_team, "ПСЖ");
         assert_eq!(event.away_team, "Арсенал");
         assert_eq!(

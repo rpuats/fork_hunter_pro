@@ -1,8 +1,8 @@
 use dashmap::DashMap;
 use parking_lot::RwLock;
 use shared::{Event, ExpressFork, Odd};
-use std::sync::Arc;
 use std::collections::HashSet;
+use std::sync::Arc;
 
 use super::calculator::ExpressForkCalculator;
 
@@ -71,7 +71,12 @@ impl ExpressForkScanner {
         }
     }
 
-    pub fn new_with_min_roi(max_legs: usize, min_profit: f64, default_stake: f64, min_roi_3plus: f64) -> Self {
+    pub fn new_with_min_roi(
+        max_legs: usize,
+        min_profit: f64,
+        default_stake: f64,
+        min_roi_3plus: f64,
+    ) -> Self {
         Self {
             calculator: Arc::new(ExpressForkCalculator::new_with_optimizer(
                 max_legs,

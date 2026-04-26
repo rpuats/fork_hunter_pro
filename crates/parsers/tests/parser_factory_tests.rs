@@ -85,11 +85,15 @@ fn factory_locks_olimp_runtime_readiness_snapshot() {
     assert!(coverage.enabled);
     assert_eq!(coverage.parser_type, "api");
 
-    let notes = coverage.notes.expect("Olimp coverage notes should be present");
+    let notes = coverage
+        .notes
+        .expect("Olimp coverage notes should be present");
     assert!(notes.contains("2026-04-18 runtime probe"));
     assert!(notes.contains("non-empty live and prematch event volume"));
 
-    let readiness = coverage.readiness.expect("Olimp readiness should be present");
+    let readiness = coverage
+        .readiness
+        .expect("Olimp readiness should be present");
     assert_eq!(readiness.stage, ParserReadinessStage::RolloutReady);
     assert!(!readiness.production_enabled);
     assert!(readiness
@@ -165,7 +169,9 @@ fn factory_surfaces_zenit_readiness() {
         .find(|item| item.slug == "zenit")
         .expect("Zenit coverage should be present");
 
-    let readiness = coverage.readiness.expect("Zenit readiness should be present");
+    let readiness = coverage
+        .readiness
+        .expect("Zenit readiness should be present");
     assert!(matches!(
         readiness.stage,
         shared::ParserReadinessStage::RolloutReady
@@ -188,7 +194,9 @@ fn factory_locks_tennisi_as_direct_response_html_coverage() {
         .find(|item| item.slug == "tennisi")
         .expect("Tennisi coverage should be present");
 
-    let notes = coverage.notes.expect("Tennisi coverage notes should be present");
+    let notes = coverage
+        .notes
+        .expect("Tennisi coverage notes should be present");
     assert_eq!(coverage.parser_type, "api");
     assert!(coverage.enabled);
     assert!(notes.contains("direct Tennisi line/live HTML responses"));
@@ -212,7 +220,9 @@ fn factory_locks_baltbet_production_readiness_snapshot() {
     assert!(coverage.enabled);
     assert_eq!(coverage.parser_type, "api");
 
-    let readiness = coverage.readiness.expect("Baltbet readiness should be present");
+    let readiness = coverage
+        .readiness
+        .expect("Baltbet readiness should be present");
     assert_eq!(readiness.stage, ParserReadinessStage::Production);
     assert!(readiness.production_enabled);
     assert!(readiness

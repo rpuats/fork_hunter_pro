@@ -11,6 +11,7 @@ pub const PARI_ROLLOUT_BOOKMAKER: &str = "pari";
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ApprovalGateDecision {
     AllowDryRun,
+    AllowSubmission,
     RequireOperatorApproval,
     Reject,
 }
@@ -38,7 +39,12 @@ impl SurebetExecutionPlan {
     pub fn blocking_reasons(&self) -> Vec<String> {
         self.ranked_legs
             .iter()
-            .filter(|leg| leg.decision != ApprovalGateDecision::AllowDryRun)
+            .filter(|leg| {
+                !matches!(
+                    leg.decision,
+                    ApprovalGateDecision::AllowDryRun | ApprovalGateDecision::AllowSubmission
+                )
+            })
             .flat_map(|leg| {
                 leg.reasons
                     .iter()
@@ -145,6 +151,12 @@ pub async fn build_surebet_execution_plan(
                     .into(),
             );
             ApprovalGateDecision::RequireOperatorApproval
+        } else if placement_requested
+            && capability.supports_real_money
+            && capability.supports_bet_placement
+            && account.mode.allows_submission_path()
+        {
+            ApprovalGateDecision::AllowSubmission
         } else {
             ApprovalGateDecision::AllowDryRun
         };
@@ -199,7 +211,12 @@ pub async fn build_surebet_execution_plan(
 
     let executable = ranked_legs
         .iter()
-        .all(|leg| leg.decision == ApprovalGateDecision::AllowDryRun);
+        .all(|leg| {
+            matches!(
+                leg.decision,
+                ApprovalGateDecision::AllowDryRun | ApprovalGateDecision::AllowSubmission
+            )
+        });
 
     Ok(SurebetExecutionPlan {
         executable,

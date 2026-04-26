@@ -1,5 +1,5 @@
 //! Comprehensive Monitoring System for Fork Hunter
-//! 
+//!
 //! This module provides:
 //! - Real-time metrics collection (events/sec, latency, errors)
 //! - Health dashboards per parser
@@ -19,16 +19,16 @@ use thiserror::Error;
 pub enum MonitoringError {
     #[error("Parser not found: {0}")]
     ParserNotFound(String),
-    
+
     #[error("Invalid threshold: {0}")]
     InvalidThreshold(String),
-    
+
     #[error("Insufficient data for analysis: {0}")]
     InsufficientData(String),
-    
+
     #[error("Metric collection failed: {0}")]
     CollectionFailed(String),
-    
+
     #[error("Anomaly detection error: {0}")]
     AnomalyDetectionError(String),
 }
@@ -120,9 +120,9 @@ pub enum AlertSeverity {
 /// Alert configuration
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AlertThreshold {
-    pub accuracy_min: f64,      // Minimum accuracy percentage (0-100)
-    pub latency_max_ms: f64,    // Maximum acceptable latency
-    pub error_rate_max: f64,    // Maximum error rate (0-100)
+    pub accuracy_min: f64,       // Minimum accuracy percentage (0-100)
+    pub latency_max_ms: f64,     // Maximum acceptable latency
+    pub error_rate_max: f64,     // Maximum error rate (0-100)
     pub uptime_min_percent: f64, // Minimum uptime percentage
 }
 
@@ -187,11 +187,11 @@ impl HistoricalTrend {
         if self.points.len() < 2 {
             return TrendDirection::Stable;
         }
-        
+
         let first = self.points.first().unwrap();
         let last = self.points.last().unwrap();
         let diff = last.error_rate - first.error_rate;
-        
+
         if diff > 0.5 {
             TrendDirection::Negative
         } else if diff < -0.5 {
@@ -210,12 +210,22 @@ pub enum TrendDirection {
     Stable,
 }
 
+impl std::fmt::Display for TrendDirection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TrendDirection::Positive => write!(f, "positive"),
+            TrendDirection::Negative => write!(f, "negative"),
+            TrendDirection::Stable => write!(f, "stable"),
+        }
+    }
+}
+
 /// Anomaly detection result
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct AnomalyResult {
     pub is_anomaly: bool,
-    pub anomaly_score: f64,  // 0.0 to 1.0
-    pub confidence: f64,      // 0.0 to 1.0
+    pub anomaly_score: f64, // 0.0 to 1.0
+    pub confidence: f64,    // 0.0 to 1.0
     pub reason: String,
 }
 
@@ -273,7 +283,10 @@ impl AnomalyDetector {
             is_anomaly,
             anomaly_score,
             confidence,
-            reason: format!("Z-score: {:.2} (threshold: {:.2})", z_score, self.z_score_threshold),
+            reason: format!(
+                "Z-score: {:.2} (threshold: {:.2})",
+                z_score, self.z_score_threshold
+            ),
         }
     }
 
@@ -314,7 +327,10 @@ impl AnomalyDetector {
             is_anomaly,
             anomaly_score,
             confidence: is_anomaly as i32 as f64 * 0.9 + 0.1,
-            reason: format!("IQR bounds: [{:.2}, {:.2}], value: {:.2}", lower_bound, upper_bound, value),
+            reason: format!(
+                "IQR bounds: [{:.2}, {:.2}], value: {:.2}",
+                lower_bound, upper_bound, value
+            ),
         }
     }
 }
@@ -555,11 +571,15 @@ impl Monitor {
             .get(parser_name)
             .ok_or_else(|| MonitoringError::ParserNotFound(parser_name.to_string()))?;
 
-        Ok(parser.read().calculate_current_metrics())
+        let metrics = parser.read().calculate_current_metrics();
+        Ok(metrics)
     }
 
     /// Get health dashboard for a parser
-    pub fn get_health_dashboard(&self, parser_name: &str) -> MonitoringResult<ParserHealthDashboard> {
+    pub fn get_health_dashboard(
+        &self,
+        parser_name: &str,
+    ) -> MonitoringResult<ParserHealthDashboard> {
         let parser_ref = self
             .parsers
             .get_mut(parser_name)
@@ -626,7 +646,8 @@ impl Monitor {
             .get(parser_name)
             .ok_or_else(|| MonitoringError::ParserNotFound(parser_name.to_string()))?;
 
-        Ok(parser.read().active_alerts.clone())
+        let alerts = parser.read().active_alerts.clone();
+        Ok(alerts)
     }
 
     /// Clear resolved alerts (older than duration)
@@ -637,9 +658,10 @@ impl Monitor {
             .ok_or_else(|| MonitoringError::ParserNotFound(parser_name.to_string()))?;
 
         let cutoff = Utc::now() - duration;
-        parser.write().active_alerts.retain(|alert| {
-            alert.triggered_at > cutoff
-        });
+        parser
+            .write()
+            .active_alerts
+            .retain(|alert| alert.triggered_at > cutoff);
 
         Ok(())
     }
@@ -756,7 +778,10 @@ impl Monitor {
         };
 
         let avg_latency = if !dashboards.is_empty() {
-            dashboards.iter().map(|d| d.current_metrics.avg_latency_ms).sum::<f64>()
+            dashboards
+                .iter()
+                .map(|d| d.current_metrics.avg_latency_ms)
+                .sum::<f64>()
                 / dashboards.len() as f64
         } else {
             0.0
@@ -835,7 +860,7 @@ mod tests {
     fn test_record_event() {
         let monitor = Monitor::new();
         monitor.register_parser("pari".to_string()).unwrap();
-        
+
         assert!(monitor.record_event("pari", 100.0, true).is_ok());
         assert!(monitor.record_event("pari", 150.0, true).is_ok());
         assert!(monitor.record_event("pari", 200.0, false).is_ok());
@@ -852,11 +877,11 @@ mod tests {
     fn test_get_current_metrics() {
         let monitor = Monitor::new();
         monitor.register_parser("pari".to_string()).unwrap();
-        
+
         monitor.record_event("pari", 100.0, true).unwrap();
         monitor.record_event("pari", 200.0, true).unwrap();
         monitor.record_event("pari", 150.0, false).unwrap();
-        
+
         let metrics = monitor.get_current_metrics("pari").unwrap();
         assert!(metrics.events_per_sec > 0.0);
         assert!(metrics.avg_latency_ms > 0.0);
@@ -867,11 +892,11 @@ mod tests {
     fn test_health_status_healthy() {
         let monitor = Monitor::new();
         monitor.register_parser("pari".to_string()).unwrap();
-        
+
         for _ in 0..100 {
             monitor.record_event("pari", 100.0, true).unwrap();
         }
-        
+
         let dashboard = monitor.get_health_dashboard("pari").unwrap();
         assert_eq!(dashboard.health_status, HealthStatus::Healthy);
     }
@@ -880,12 +905,12 @@ mod tests {
     fn test_health_status_degraded() {
         let monitor = Monitor::new();
         monitor.register_parser("pari".to_string()).unwrap();
-        
+
         for i in 0..100 {
             let success = i % 5 != 0; // 80% success rate
             monitor.record_event("pari", 6000.0, success).unwrap();
         }
-        
+
         let dashboard = monitor.get_health_dashboard("pari").unwrap();
         assert_eq!(dashboard.health_status, HealthStatus::Degraded);
     }
@@ -894,7 +919,7 @@ mod tests {
     fn test_health_status_offline() {
         let monitor = Monitor::new();
         monitor.register_parser("pari".to_string()).unwrap();
-        
+
         let dashboard = monitor.get_health_dashboard("pari").unwrap();
         assert_eq!(dashboard.health_status, HealthStatus::Offline);
     }
@@ -908,14 +933,16 @@ mod tests {
             error_rate_max: 5.0,
             uptime_min_percent: 95.0,
         };
-        
-        monitor.register_parser_with_threshold("pari".to_string(), threshold).unwrap();
-        
+
+        monitor
+            .register_parser_with_threshold("pari".to_string(), threshold)
+            .unwrap();
+
         // Add events that exceed latency threshold
         for _ in 0..50 {
             monitor.record_event("pari", 2000.0, true).unwrap();
         }
-        
+
         let dashboard = monitor.get_health_dashboard("pari").unwrap();
         assert!(!dashboard.active_alerts.is_empty());
     }
@@ -929,13 +956,15 @@ mod tests {
             error_rate_max: 5.0,
             uptime_min_percent: 95.0,
         };
-        
-        monitor.register_parser_with_threshold("pari".to_string(), threshold).unwrap();
-        
+
+        monitor
+            .register_parser_with_threshold("pari".to_string(), threshold)
+            .unwrap();
+
         for _ in 0..50 {
             monitor.record_event("pari", 2000.0, true).unwrap();
         }
-        
+
         let _ = monitor.get_health_dashboard("pari").unwrap();
         let alerts = monitor.get_all_alerts();
         assert!(!alerts.is_empty());
@@ -944,7 +973,9 @@ mod tests {
     #[test]
     fn test_anomaly_detector_basic() {
         let detector = AnomalyDetector::default();
-        let historical = vec![100.0, 101.0, 102.0, 101.0, 100.0, 99.0, 101.0, 100.0, 102.0, 101.0];
+        let historical = vec![
+            100.0, 101.0, 102.0, 101.0, 100.0, 99.0, 101.0, 100.0, 102.0, 101.0,
+        ];
         let result = detector.detect_anomaly(500.0, &historical);
         assert!(result.is_anomaly);
     }
@@ -952,7 +983,9 @@ mod tests {
     #[test]
     fn test_anomaly_detector_no_anomaly() {
         let detector = AnomalyDetector::default();
-        let historical = vec![100.0, 101.0, 102.0, 101.0, 100.0, 99.0, 101.0, 100.0, 102.0, 101.0];
+        let historical = vec![
+            100.0, 101.0, 102.0, 101.0, 100.0, 99.0, 101.0, 100.0, 102.0, 101.0,
+        ];
         let result = detector.detect_anomaly(101.0, &historical);
         assert!(!result.is_anomaly);
     }
@@ -960,7 +993,9 @@ mod tests {
     #[test]
     fn test_anomaly_detector_iqr() {
         let detector = AnomalyDetector::default();
-        let historical = vec![100.0, 101.0, 102.0, 101.0, 100.0, 99.0, 101.0, 100.0, 102.0, 101.0];
+        let historical = vec![
+            100.0, 101.0, 102.0, 101.0, 100.0, 99.0, 101.0, 100.0, 102.0, 101.0,
+        ];
         let result = detector.detect_anomaly_iqr(1000.0, &historical);
         assert!(result.is_anomaly);
     }
@@ -977,16 +1012,18 @@ mod tests {
     fn test_historical_trend() {
         let monitor = Monitor::new();
         monitor.register_parser("pari".to_string()).unwrap();
-        
+
         for i in 0..20 {
             let success = i % 3 != 0;
-            monitor.record_event("pari", 100.0 + (i as f64), success).unwrap();
+            monitor
+                .record_event("pari", 100.0 + (i as f64), success)
+                .unwrap();
         }
-        
+
         for _ in 0..10 {
             monitor.update_historical_data("pari").unwrap();
         }
-        
+
         let trend = monitor.get_historical_trend("pari").unwrap();
         assert!(!trend.points.is_empty());
         assert!(!trend.trend_direction().to_string().is_empty());
@@ -1010,18 +1047,15 @@ mod tests {
                 accuracy: 98.0,
             },
         ];
-        
+
         let trend = HistoricalTrend {
             parser_name: "test".to_string(),
             start_time: points[0].timestamp,
             end_time: points[1].timestamp,
             points,
         };
-        
-        assert_eq!(
-            format!("{:?}", trend.trend_direction()),
-            "Positive"
-        );
+
+        assert_eq!(format!("{:?}", trend.trend_direction()), "Positive");
     }
 
     #[test]
@@ -1037,12 +1071,12 @@ mod tests {
         let monitor = Monitor::new();
         monitor.register_parser("pari".to_string()).unwrap();
         monitor.register_parser("marathon".to_string()).unwrap();
-        
+
         for _ in 0..50 {
             monitor.record_event("pari", 100.0, true).unwrap();
             monitor.record_event("marathon", 150.0, true).unwrap();
         }
-        
+
         let dashboards = monitor.get_system_dashboard();
         assert_eq!(dashboards.len(), 2);
     }
@@ -1052,12 +1086,12 @@ mod tests {
         let monitor = Monitor::new();
         monitor.register_parser("pari".to_string()).unwrap();
         monitor.register_parser("marathon".to_string()).unwrap();
-        
+
         for _ in 0..50 {
             monitor.record_event("pari", 100.0, true).unwrap();
             monitor.record_event("marathon", 150.0, true).unwrap();
         }
-        
+
         let stats = monitor.get_system_stats();
         assert_eq!(stats.total_parsers, 2);
         assert!(stats.total_events_24h > 0);
@@ -1067,33 +1101,37 @@ mod tests {
     fn test_clear_old_alerts() {
         let monitor = Monitor::new();
         let threshold = AlertThreshold {
-            accuracy_min: 50.0,  // Very low to trigger alerts
+            accuracy_min: 50.0, // Very low to trigger alerts
             latency_max_ms: 1.0,
             error_rate_max: 1.0,
             uptime_min_percent: 50.0,
         };
-        
-        monitor.register_parser_with_threshold("pari".to_string(), threshold).unwrap();
-        
+
+        monitor
+            .register_parser_with_threshold("pari".to_string(), threshold)
+            .unwrap();
+
         for _ in 0..50 {
             monitor.record_event("pari", 2000.0, true).unwrap();
         }
-        
+
         let _ = monitor.get_health_dashboard("pari").unwrap();
-        assert!(monitor.clear_old_alerts("pari", Duration::seconds(0)).is_ok());
+        assert!(monitor
+            .clear_old_alerts("pari", Duration::seconds(0))
+            .is_ok());
     }
 
     #[test]
     fn test_error_rate_calculation() {
         let monitor = Monitor::new();
         monitor.register_parser("pari".to_string()).unwrap();
-        
+
         // Add 10 successful and 10 failed events
         for _ in 0..10 {
             monitor.record_event("pari", 100.0, true).unwrap();
             monitor.record_event("pari", 100.0, false).unwrap();
         }
-        
+
         let metrics = monitor.get_current_metrics("pari").unwrap();
         assert!(metrics.error_rate >= 45.0 && metrics.error_rate <= 55.0);
     }
@@ -1102,12 +1140,14 @@ mod tests {
     fn test_percentile_calculation() {
         let monitor = Monitor::new();
         monitor.register_parser("pari".to_string()).unwrap();
-        
+
         // Add events with varying latencies
         for i in 0..100 {
-            monitor.record_event("pari", (i as f64) * 10.0, true).unwrap();
+            monitor
+                .record_event("pari", (i as f64) * 10.0, true)
+                .unwrap();
         }
-        
+
         let metrics = monitor.get_current_metrics("pari").unwrap();
         assert!(metrics.p50_latency_ms > 0.0);
         assert!(metrics.p95_latency_ms > metrics.p50_latency_ms);
@@ -1118,12 +1158,12 @@ mod tests {
     fn test_parser_metrics_memory_limit() {
         let monitor = Monitor::new();
         monitor.register_parser("pari".to_string()).unwrap();
-        
+
         // Add more than 10000 events
         for _ in 0..15000 {
             monitor.record_event("pari", 100.0, true).unwrap();
         }
-        
+
         let parser = monitor.parsers.get("pari").unwrap();
         assert!(parser.read().recent_events.len() <= 10000);
     }
@@ -1141,10 +1181,7 @@ mod tests {
             metric_value: 50.0,
             threshold_value: 95.0,
         };
-        
-        assert_eq!(
-            format!("{:?}", alert.alert_type),
-            "AccuracyLow"
-        );
+
+        assert_eq!(format!("{:?}", alert.alert_type), "AccuracyLow");
     }
 }

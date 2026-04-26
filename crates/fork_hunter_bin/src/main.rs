@@ -11,6 +11,7 @@ use corridor_scanner::scanner::CorridorScanner;
 use engine::calculator::SurebetCalculator;
 use engine::event_pool::EventPool;
 use engine::freebet::FreebetHunter;
+use engine::middle::MiddleDetector;
 use engine::generosity::GenerosityIndexCalc;
 use engine::mirror::MirrorDetector;
 use engine::momentum::MomentumScanner;
@@ -94,6 +95,7 @@ async fn main() -> anyhow::Result<()> {
     ));
     let odds_error_detector = Arc::new(OddsErrorDetector::new(150.0, 3));
     let value_detector = Arc::new(ValueDetector::new(5.0));
+    let middle_detector = Arc::new(MiddleDetector::default());
     let odds_verifier = Arc::new(OddsVerifier::new(3, 10, 60));
 
     let corridor_scanner = Arc::new(CorridorScanner::new(0.5));
@@ -178,6 +180,7 @@ async fn main() -> anyhow::Result<()> {
             momentum_scanner,
             odds_error_detector,
             value_detector,
+            middle_detector,
             odds_verifier,
             corridor_scanner,
             express_fork_scanner,

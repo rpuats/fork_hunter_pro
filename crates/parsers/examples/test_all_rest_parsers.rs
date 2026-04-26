@@ -1,11 +1,10 @@
-/// Comprehensive test for all new REST parsers
-/// Tests Winline, BetBoom, 1xBet, Marathon, Melbet
-
-use parsers::winline_rest::WinlineRestParser;
 use parsers::betboom_rest::BetboomRestParser;
-use parsers::onexbet_rest::OnexbetRestParser;
 use parsers::marathon_rest::MarathonRestParser;
 use parsers::melbet_rest::MelbetRestParser;
+use parsers::onexbet_rest::OnexbetRestParser;
+/// Comprehensive test for all new REST parsers
+/// Tests Winline, BetBoom, 1xBet, Marathon, Melbet
+use parsers::winline_rest::WinlineRestParser;
 use reqwest::Client;
 use std::sync::Arc;
 use std::time::Instant;
@@ -18,8 +17,20 @@ async fn main() {
     println!("╚════════════════════════════════════════════════════════════╝\n");
 
     let client = Arc::new(Client::new());
-    
-    let parsers: Vec<(&str, Box<dyn Fn(Arc<Client>) -> Box<dyn std::future::Future<Output = Result<Vec<shared::Event>, String>> + Send + 'static> + Send + Sync>)> = vec![
+
+    let parsers: Vec<(
+        &str,
+        Box<
+            dyn Fn(
+                    Arc<Client>,
+                ) -> Box<
+                    dyn std::future::Future<Output = Result<Vec<shared::Event>, String>>
+                        + Send
+                        + 'static,
+                > + Send
+                + Sync,
+        >,
+    )> = vec![
         // Note: This is a simplified structure for demonstration
         // In real code, you'd use trait objects or a factory pattern
     ];
@@ -41,7 +52,7 @@ async fn test_winline(client: Arc<Client>) {
     println!("─────────────────────────────────────────");
     let start = Instant::now();
     let parser = WinlineRestParser::new(client);
-    
+
     match parser.fetch_events().await {
         Ok(events) => {
             let duration = start.elapsed();
@@ -65,7 +76,7 @@ async fn test_betboom(client: Arc<Client>) {
     println!("─────────────────────────────────────────");
     let start = Instant::now();
     let parser = BetboomRestParser::new(client);
-    
+
     match parser.fetch_events().await {
         Ok(events) => {
             let duration = start.elapsed();
@@ -89,7 +100,7 @@ async fn test_onexbet(client: Arc<Client>) {
     println!("─────────────────────────────────────────");
     let start = Instant::now();
     let parser = OnexbetRestParser::new(client);
-    
+
     match parser.fetch_events().await {
         Ok(events) => {
             let duration = start.elapsed();
@@ -113,7 +124,7 @@ async fn test_marathon(client: Arc<Client>) {
     println!("─────────────────────────────────────────");
     let start = Instant::now();
     let parser = MarathonRestParser::new(client);
-    
+
     match parser.fetch_events().await {
         Ok(events) => {
             let duration = start.elapsed();
@@ -137,7 +148,7 @@ async fn test_melbet(client: Arc<Client>) {
     println!("─────────────────────────────────────────");
     let start = Instant::now();
     let parser = MelbetRestParser::new(client);
-    
+
     match parser.fetch_events().await {
         Ok(events) => {
             let duration = start.elapsed();

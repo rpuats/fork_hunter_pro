@@ -1,7 +1,6 @@
 /// Break-even analysis for multi-leg parlays
-/// 
+///
 /// Calculates key metrics for parlay profitability and risk assessment.
-
 use serde::{Deserialize, Serialize};
 
 /// Break-even metrics for a parlay
@@ -43,7 +42,7 @@ impl BreakEvenCalculator {
         individual_win_probabilities: Option<&[f64]>,
     ) -> BreakEvenAnalysis {
         let total_odds: f64 = leg_odds.iter().product();
-        
+
         // Break-even odds: when total_stake * break_even_odds = total_stake
         // This is always 1.0 in raw terms, but what we really want is the odds
         // needed to avoid loss, considering the parlay structure
@@ -59,14 +58,12 @@ impl BreakEvenCalculator {
         let roi_percentage = (best_case_profit / stake) * 100.0;
 
         // Win percentage needed (simplified: needs all legs to win)
-        let implied_probability = leg_odds
-            .iter()
-            .map(|odds| 1.0 / odds)
-            .product::<f64>();
+        let implied_probability = leg_odds.iter().map(|odds| 1.0 / odds).product::<f64>();
         let win_percentage_needed = implied_probability * 100.0;
 
         // Kelly Criterion fraction for parlay
-        let kelly_fraction = Self::calculate_kelly_fraction(leg_odds, &individual_win_probabilities);
+        let kelly_fraction =
+            Self::calculate_kelly_fraction(leg_odds, &individual_win_probabilities);
 
         // Risk-reward ratio
         let risk_reward_ratio = (best_case_profit / stake).abs();
@@ -218,11 +215,7 @@ impl BreakEvenCalculator {
     }
 
     /// Compare two parlay structures
-    pub fn compare_parlays(
-        parlay1_odds: &[f64],
-        parlay2_odds: &[f64],
-        stake: f64,
-    ) -> String {
+    pub fn compare_parlays(parlay1_odds: &[f64], parlay2_odds: &[f64], stake: f64) -> String {
         let analysis1 = Self::analyze(parlay1_odds.len(), parlay1_odds, stake, None);
         let analysis2 = Self::analyze(parlay2_odds.len(), parlay2_odds, stake, None);
 
@@ -257,18 +250,13 @@ impl BreakEvenCalculator {
         } else if ev > 0.0 {
             format!(
                 "WEAK EDGE. EV: {:.2}, Kelly: {:.1}%, Consider hedging",
-                ev, kelly * 100.0
+                ev,
+                kelly * 100.0
             )
         } else if ev > -0.05 {
-            format!(
-                "MARGINAL. EV: {:.2}, Avoid or hedge aggressively",
-                ev
-            )
+            format!("MARGINAL. EV: {:.2}, Avoid or hedge aggressively", ev)
         } else {
-            format!(
-                "AVOID. Negative EV: {:.2}. Risk > Reward",
-                ev
-            )
+            format!("AVOID. Negative EV: {:.2}. Risk > Reward", ev)
         }
     }
 }
@@ -322,7 +310,7 @@ mod tests {
     fn test_variance_increases_with_legs() {
         let odds2 = vec![2.0, 2.0];
         let odds3 = vec![2.0, 2.0, 2.0];
-        
+
         let analysis2 = BreakEvenCalculator::analyze(2, &odds2, 1000.0, None);
         let analysis3 = BreakEvenCalculator::analyze(3, &odds3, 1000.0, None);
 
@@ -335,12 +323,9 @@ mod tests {
         let analysis = BreakEvenCalculator::analyze(2, &odds, 1000.0, None);
 
         assert!(!analysis.probability_matrix.is_empty());
-        
+
         // Find all-win scenario
-        let all_win = analysis
-            .probability_matrix
-            .iter()
-            .find(|s| s.legs_won == 2);
+        let all_win = analysis.probability_matrix.iter().find(|s| s.legs_won == 2);
         assert!(all_win.is_some());
         assert_eq!(all_win.unwrap().potential_payout, 4000.0);
     }

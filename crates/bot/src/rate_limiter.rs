@@ -1,6 +1,6 @@
+use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use parking_lot::Mutex;
 
 /// Token bucket rate limiter for alert throttling
 /// Ensures max N alerts per time period

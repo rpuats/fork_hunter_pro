@@ -126,10 +126,13 @@ impl AutoBetEngine {
             });
         }
 
-        let mut placements = Vec::new();
+        let mut placements: Vec<BetPlacement> = Vec::new();
 
         for leg_plan in execution_plan.ranked_legs {
-            if leg_plan.decision != ApprovalGateDecision::AllowDryRun {
+            if matches!(
+                leg_plan.decision,
+                ApprovalGateDecision::Reject | ApprovalGateDecision::RequireOperatorApproval
+            ) {
                 return Err(leg_plan.reasons.join("; "));
             }
 
@@ -166,7 +169,7 @@ impl AutoBetEngine {
                 selection: leg.selection.clone(),
                 odds: leg.odds,
                 stake,
-                allow_dry_run: true,
+                allow_dry_run: !matches!(leg_plan.decision, ApprovalGateDecision::AllowSubmission),
                 reference: Some(surebet.id.to_string()),
             };
 
@@ -195,6 +198,18 @@ impl AutoBetEngine {
             };
 
             self.limiter.lock().record_bet(stake);
+            if matches!(placement.status, BetStatus::Error) {
+                // Best-effort rollback for already accepted legs when fork execution breaks mid-flight.
+                for executed in &placements {
+                    if matches!(executed.status, BetStatus::Pending | BetStatus::Placed) {
+                        let _ = self.cancel_bet(executed.id);
+                    }
+                }
+                return Err(placement
+                    .error
+                    .clone()
+                    .unwrap_or_else(|| "execution leg failed".to_string()));
+            }
             placements.push(placement);
         }
 

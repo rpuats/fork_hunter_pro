@@ -387,7 +387,9 @@ impl BetMParser {
 
         let now = Utc::now();
         let mut odds = Vec::new();
-        for (selection, odds_type, value) in market_kind.selections(&odds_values).into_iter().flatten() {
+        for (selection, odds_type, value) in
+            market_kind.selections(&odds_values).into_iter().flatten()
+        {
             odds.push(Odd {
                 id: format!("{}-{}", event_id, selection),
                 event_id: event_id.clone(),
@@ -461,8 +463,8 @@ impl BetMParser {
                 HEADLESS_EVAL_ATTEMPTS,
                 HEADLESS_RETRY_DELAY_MS,
             )
-                .and_then(|value| value.as_array().cloned())
-                .unwrap_or_default();
+            .and_then(|value| value.as_array().cloned())
+            .unwrap_or_default();
 
             if payload.is_empty() {
                 let _ = HeadlessChromeHelper::scroll_page(&tab);
@@ -663,9 +665,18 @@ mod tests {
 
     #[test]
     fn classifies_route_kind_explicitly() {
-        assert_eq!(RouteKind::from_source_url("https://bet-m.net/live"), RouteKind::Live);
-        assert_eq!(RouteKind::from_source_url("https://betm.ru/line"), RouteKind::Prematch);
-        assert_eq!(RouteKind::from_source_url("https://betm.ru/sports"), RouteKind::Unknown);
+        assert_eq!(
+            RouteKind::from_source_url("https://bet-m.net/live"),
+            RouteKind::Live
+        );
+        assert_eq!(
+            RouteKind::from_source_url("https://betm.ru/line"),
+            RouteKind::Prematch
+        );
+        assert_eq!(
+            RouteKind::from_source_url("https://betm.ru/sports"),
+            RouteKind::Unknown
+        );
         assert_eq!(RouteKind::from_source_url(""), RouteKind::Unknown);
     }
 
@@ -693,7 +704,10 @@ mod tests {
     fn readiness_snapshot_keeps_betm_diagnostic_only() {
         let readiness = BetMParser::readiness_snapshot();
 
-        assert_eq!(readiness.stage, shared::ParserReadinessStage::DiagnosticOnly);
+        assert_eq!(
+            readiness.stage,
+            shared::ParserReadinessStage::DiagnosticOnly
+        );
         assert!(!readiness.production_enabled);
         assert!(readiness.self_check_available);
         assert!(readiness

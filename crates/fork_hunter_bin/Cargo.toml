@@ -23,6 +23,22 @@ path = "src/final_check.rs"
 name = "check_fp"
 path = "src/check_fp.rs"
 
+[[bin]]
+name = "scanner_test"
+path = "src/bin/scanner_test.rs"
+
+[[bin]]
+name = "parser_test"
+path = "src/bin/parser_test.rs"
+
+[[bin]]
+name = "check_pari"
+path = "src/bin/check_pari.rs"
+
+[[bin]]
+name = "verify_parsers"
+path = "src/bin/verify_parsers.rs"
+
 [dependencies]
 shared = { path = "../shared" }
 engine = { path = "../engine" }
@@ -43,3 +59,4 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 anyhow = "1.0"
 serde_json = "1.0"
 reqwest = { version = "0.12", features = ["json", "cookies"] }
+chrono = { version = "0.4", features = ["serde"] }

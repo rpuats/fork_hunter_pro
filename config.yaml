@@ -1,0 +1,56 @@
+profile: dev
+
+features:
+  offline_synced_events_fallback: enabled
+
+server:
+  host: 127.0.0.1
+  port: 8080
+  cors_origins:
+    - "*"
+  ws_max_connections: 100
+
+scanner:
+  scan_interval_secs: 5
+  min_profit_percent: 0.5
+  max_profit_percent: 30.0
+  parallel_parsers: 4
+  production_parallel_parsers: 2
+  parser_result_max_events: 20000
+  production_parser_result_max_events: 10000
+  parser_result_max_odds: 200000
+  production_parser_result_max_odds: 100000
+  request_timeout_secs: 30
+  max_concurrent_requests: 20
+  cache_ttl_secs: 60
+  bloom_filter_capacity: 10000
+  bloom_filter_error_rate: 0.01
+
+database:
+  url: sqlite://data/fork_hunter.db
+  max_connections: 5
+  auto_migrate: true
+
+telegram:
+  bot_token: ""
+  admin_chat_ids: []
+  notify_min_profit: 1.0
+  silent_mode: true
+
+proxies:
+  enabled: false
+  proxies: []
+  rotation_strategy: random
+
+bookmakers:
+  enabled:
+    - winline
+    - pari
+    - betcity
+    - marathon
+    - zenit
+    - baltbet
+    - bettery
+  disabled: []
+  per_bookmaker_delay_ms: {}
+  per_bookmaker_timeout_secs: {}

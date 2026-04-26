@@ -1,7 +1,7 @@
 use crate::base::BookmakerParser;
 use crate::{
-    baltbet, bet24, betboom, betcity, betm, bettery, fonbet, leon,
-    marathon, melbet, olimp, olimpbet, pari, sportbet, tennisi, winline, zenit,
+    baltbet, bet24, betcity, betm, bettery, fonbet, leon, marathon, olimp, pari, sportbet, tennisi,
+    zenit,
 };
 use shared::{BookmakerMetadata, HealthStatus, ParserCoverage, ParserHealth};
 use std::collections::HashMap;
@@ -76,7 +76,7 @@ const BOOKMAKER_REGISTRY: &[BookmakerRegistryEntry] = &[
     BookmakerRegistryEntry {
         slug: "bet24",
         name: "24bet",
-        aliases: &["bet24", "_24bet"],
+        aliases: &["bet24"],
         parser_type: "api",
         source: "crates/parsers/src/bet24.rs",
         execution_supported: false,
@@ -119,24 +119,6 @@ const BOOKMAKER_REGISTRY: &[BookmakerRegistryEntry] = &[
         notes: Some("Production tennis parser for ATP/WTA tournaments with Grand Slams, Masters, 500/250 tournaments. Supports match winner, set betting, game betting, and correct score markets. Targets 3000+ events daily."),
     },
     BookmakerRegistryEntry {
-        slug: "melbet",
-        name: "Melbet",
-        aliases: &["melbet"],
-        parser_type: "headless",
-        source: "crates/parsers/src/melbet.rs",
-        execution_supported: false,
-        notes: Some("Rust headless parser registered from legacy Playwright flow."),
-    },
-    BookmakerRegistryEntry {
-        slug: "winline",
-        name: "Winline",
-        aliases: &["winline"],
-        parser_type: "api",
-        source: "crates/parsers/src/winline.rs",
-        execution_supported: false,
-        notes: Some("Rust HTTP parser registered for market scanning."),
-    },
-    BookmakerRegistryEntry {
         slug: "zenit",
         name: "Zenit",
         aliases: &["zenit"],
@@ -164,24 +146,6 @@ const BOOKMAKER_REGISTRY: &[BookmakerRegistryEntry] = &[
         source: "crates/parsers/src/baltbet.rs",
         execution_supported: false,
         notes: Some("Pure HTTP parser with live JSON, banner metadata fallback, and legacy prematch groups; strict nightly KPI progress is tracked in readiness diagnostics."),
-    },
-    BookmakerRegistryEntry {
-        slug: "olimpbet",
-        name: "Olimpbet",
-        aliases: &["olimpbet"],
-        parser_type: "api",
-        source: "crates/parsers/src/olimpbet.rs",
-        execution_supported: false,
-        notes: Some("Rust parser is registered and enabled for market scanning."),
-    },
-    BookmakerRegistryEntry {
-        slug: "betboom",
-        name: "BetBoom",
-        aliases: &["betboom"],
-        parser_type: "api",
-        source: "crates/parsers/src/betboom.rs",
-        execution_supported: false,
-        notes: Some("Rendered sport-page parser is registered for diagnostics, but production scanning stays disabled until league expansion covers target live/prematch volumes."),
     },
     BookmakerRegistryEntry {
         slug: "ligastavok",
@@ -270,19 +234,7 @@ impl ParserFactory {
             "tennisi".to_string(),
             Arc::new(tennisi::TennisiParser::new(client.clone())),
         );
-        parsers.insert(
-            "betboom".to_string(),
-            Arc::new(betboom::BetboomParser::new(client.clone())),
-        );
-        // HTTP парсеры — Winline, Zenit, Betcity, Baltbet
-        parsers.insert(
-            "melbet".to_string(),
-            Arc::new(melbet::MelbetParser::new(client.clone())),
-        );
-        parsers.insert(
-            "winline".to_string(),
-            Arc::new(winline::WinlineParser::new(client.clone())),
-        );
+        // Active HTTP parsers — Zenit, Betcity, Baltbet and core bookmaker set.
         parsers.insert(
             "zenit".to_string(),
             Arc::new(zenit::ZenitParser::new(client.clone())),
@@ -296,16 +248,9 @@ impl ParserFactory {
             Arc::new(baltbet::BaltbetParser::new(client.clone())),
         );
 
-        // Olimpbet — без Cloudflare!
-        parsers.insert(
-            "olimpbet".to_string(),
-            Arc::new(olimpbet::OlimpbetParser::new(client.clone())),
-        );
-
         // 24bet parser
         let bet24_parser: Arc<dyn BookmakerParser + Send + Sync> =
             Arc::new(bet24::_24betParser::new(client.clone()));
-        parsers.insert("_24bet".to_string(), bet24_parser.clone());
         parsers.insert("bet24".to_string(), bet24_parser);
 
         parsers.insert(
@@ -313,12 +258,8 @@ impl ParserFactory {
             Arc::new(olimp::OlimpParser::new(client.clone())),
         );
 
-        // TODO: New parsers (Liga Stavok, Tennis, мБет) - need schema fixes
+        // TODO: New parsers (Tennis, мБет) - need schema fixes
         // These are partially implemented but require updates to match Odd/Event struct definitions
-        // parsers.insert(
-        //     "liga_stavok".to_string(),
-        //     Arc::new(liga_stavok::LigaStavokParser::new(client.clone())),
-        // );
         // parsers.insert(
         //     "tennis".to_string(),
         //     Arc::new(tennis::TennisParser::new(client.clone())),
@@ -581,48 +522,6 @@ mod tests {
     }
 
     #[test]
-    fn winline_coverage_matches_rust_parser_metadata() {
-        let client = Arc::new(reqwest::Client::builder().build().expect("client"));
-        let factory = ParserFactory::new(client);
-
-        let coverage = factory
-            .parser_coverage()
-            .into_iter()
-            .find(|item| item.slug == "winline")
-            .expect("coverage");
-
-        assert_eq!(coverage.parser_type, "api");
-        assert_eq!(coverage.source, "crates/parsers/src/winline.rs");
-        assert!(coverage.enabled);
-        assert!(coverage.scan_supported);
-        assert_eq!(
-            coverage.notes.as_deref(),
-            Some("Rust HTTP parser registered for market scanning.")
-        );
-    }
-
-    #[test]
-    fn melbet_coverage_matches_rust_parser_metadata() {
-        let client = Arc::new(reqwest::Client::builder().build().expect("client"));
-        let factory = ParserFactory::new(client);
-
-        let coverage = factory
-            .parser_coverage()
-            .into_iter()
-            .find(|item| item.slug == "melbet")
-            .expect("coverage");
-
-        assert_eq!(coverage.parser_type, "headless");
-        assert_eq!(coverage.source, "crates/parsers/src/melbet.rs");
-        assert!(coverage.enabled);
-        assert!(coverage.scan_supported);
-        assert_eq!(
-            coverage.notes.as_deref(),
-            Some("Rust headless parser registered from legacy Playwright flow.")
-        );
-    }
-
-    #[test]
     fn tennisi_coverage_matches_rust_parser_metadata() {
         let client = Arc::new(reqwest::Client::builder().build().expect("client"));
         let factory = ParserFactory::new(client);
@@ -753,21 +652,21 @@ mod tests {
     }
 
     #[test]
-    fn olimpbet_metadata_is_not_marked_scan_only() {
+    fn olimp_metadata_is_not_marked_scan_only() {
         let client = Arc::new(reqwest::Client::builder().build().expect("client"));
         let factory = ParserFactory::new(client);
 
         let metadata = factory
             .bookmaker_metadata()
             .into_iter()
-            .find(|item| item.slug == "olimpbet")
+            .find(|item| item.slug == "olimp")
             .expect("metadata");
 
         assert!(metadata.enabled);
         assert!(metadata.scan_supported);
         assert_eq!(
             metadata.notes.as_deref(),
-            Some("Rust parser is registered and enabled for market scanning.")
+            Some("HTTP parser is re-enabled through the direct Olimp competitions-with-events API path; readiness now locks one bounded 2026-04-18 runtime probe showing non-empty live and prematch event volume while production promotion remains gated.")
         );
     }
 
@@ -779,7 +678,7 @@ mod tests {
         let health = factory
             .parser_health_snapshots()
             .into_iter()
-            .find(|item| item.bookmaker == "winline")
+            .find(|item| item.bookmaker == "betm")
             .expect("health");
 
         assert!(matches!(health.status, HealthStatus::Degraded));

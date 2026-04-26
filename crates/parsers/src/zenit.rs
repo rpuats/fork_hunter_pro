@@ -4,8 +4,8 @@ use chrono::{Datelike, NaiveDateTime, TimeZone, Utc};
 use reqwest::Client;
 use shared::odds::OddsType;
 use shared::{
-    DiagnosticSeverity, Event, Odd, ParserDiagnosticCheck, ParserReadiness,
-    ParserReadinessStage, Sport,
+    DiagnosticSeverity, Event, Odd, ParserDiagnosticCheck, ParserReadiness, ParserReadinessStage,
+    Sport,
 };
 use std::collections::{HashMap, HashSet};
 use std::env;
@@ -266,7 +266,10 @@ impl ZenitParser {
             match operation().await {
                 Ok(result) => {
                     if attempt > 0 {
-                        info!(attempt, description, "Zenit operation succeeded after retries");
+                        info!(
+                            attempt,
+                            description, "Zenit operation succeeded after retries"
+                        );
                     }
                     return Ok(result);
                 }
@@ -275,7 +278,12 @@ impl ZenitParser {
                     last_error = Some(err_str.clone());
 
                     if !Self::is_transient_error(&err_str) {
-                        error!(attempt, error = &err_str, description, "Zenit permanent error (not retrying)");
+                        error!(
+                            attempt,
+                            error = &err_str,
+                            description,
+                            "Zenit permanent error (not retrying)"
+                        );
                         return Err(err);
                     }
 
@@ -518,18 +526,18 @@ impl ZenitParser {
                 return Err(error_msg.into());
             }
 
-            resp.json::<serde_json::Value>()
-                .await
-                .map_err(|e| {
-                    error!(error = %e, sport = sport_id, "Zenit fetch_page JSON parse error");
-                    Box::new(e) as Box<dyn std::error::Error + Send + Sync>
-                })
+            resp.json::<serde_json::Value>().await.map_err(|e| {
+                error!(error = %e, sport = sport_id, "Zenit fetch_page JSON parse error");
+                Box::new(e) as Box<dyn std::error::Error + Send + Sync>
+            })
         };
 
-        self.retry_with_backoff(&format!("fetch_page(sport={}, offset={})", sport_id, offset), operation)
-            .await
+        self.retry_with_backoff(
+            &format!("fetch_page(sport={}, offset={})", sport_id, offset),
+            operation,
+        )
+        .await
     }
-
 
     async fn fetch_live_page(
         &self,
@@ -578,12 +586,10 @@ impl ZenitParser {
                 return Err(error_msg.into());
             }
 
-            resp.json::<serde_json::Value>()
-                .await
-                .map_err(|e| {
-                    error!(error = %e, "Zenit fetch_live_page JSON parse error");
-                    Box::new(e) as Box<dyn std::error::Error + Send + Sync>
-                })
+            resp.json::<serde_json::Value>().await.map_err(|e| {
+                error!(error = %e, "Zenit fetch_live_page JSON parse error");
+                Box::new(e) as Box<dyn std::error::Error + Send + Sync>
+            })
         };
 
         self.retry_with_backoff("fetch_live_page", operation).await
@@ -630,19 +636,22 @@ impl ZenitParser {
                     .await
                     .unwrap_or_else(|_| "<failed to read body>".to_string());
                 let error_msg = format!("Zenit left menu returned HTTP {}. Body: {}", status, body);
-                error!(error = &error_msg, "Zenit fetch_available_sports HTTP error");
+                error!(
+                    error = &error_msg,
+                    "Zenit fetch_available_sports HTTP error"
+                );
                 return Err(error_msg.into());
             }
 
-            resp.json::<serde_json::Value>()
-                .await
-                .map_err(|e| {
-                    error!(error = %e, "Zenit fetch_available_sports JSON parse error");
-                    Box::new(e) as Box<dyn std::error::Error + Send + Sync>
-                })
+            resp.json::<serde_json::Value>().await.map_err(|e| {
+                error!(error = %e, "Zenit fetch_available_sports JSON parse error");
+                Box::new(e) as Box<dyn std::error::Error + Send + Sync>
+            })
         };
 
-        let json = self.retry_with_backoff("fetch_available_sports", operation).await?;
+        let json = self
+            .retry_with_backoff("fetch_available_sports", operation)
+            .await?;
 
         let sports = json
             .get("result")
@@ -668,7 +677,6 @@ impl ZenitParser {
         debug!(sports_count = sports.len(), "Zenit available sports parsed");
         Ok(sports)
     }
-
 
     fn parse_numeric_value(value: &serde_json::Value) -> Option<f64> {
         match value {
@@ -1186,7 +1194,9 @@ mod tests {
     fn is_transient_error_detects_connection_errors() {
         assert!(ZenitParser::is_transient_error("connection reset"));
         assert!(ZenitParser::is_transient_error("ConnectError"));
-        assert!(ZenitParser::is_transient_error("Temporary failure in name resolution"));
+        assert!(ZenitParser::is_transient_error(
+            "Temporary failure in name resolution"
+        ));
     }
 
     #[test]
@@ -1394,7 +1404,8 @@ mod tests {
             .and_then(|value| value.as_object())
             .map(|games| games.len())
             .unwrap_or_default();
-        let line_parsed = ZenitParser::parse_response(&line, Some(ZenitParser::SPORT_FOOTBALL), false);
+        let line_parsed =
+            ZenitParser::parse_response(&line, Some(ZenitParser::SPORT_FOOTBALL), false);
         let live_parsed = ZenitParser::parse_response(&live, None, true);
 
         println!(
@@ -1420,7 +1431,6 @@ mod tests {
         );
     }
 }
-
 
 #[async_trait]
 impl BookmakerParser for ZenitParser {

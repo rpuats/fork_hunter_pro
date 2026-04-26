@@ -6,7 +6,9 @@ use tower_http::services::{ServeDir, ServeFile};
 use tower_http::trace::TraceLayer;
 
 use crate::handlers::*;
-use crate::handlers::{ApiResponse, AppState, telegram_status, telegram_update_config, telegram_history};
+use crate::handlers::{
+    telegram_history, telegram_status, telegram_update_config, ApiResponse, AppState,
+};
 use crate::ws::{ws_handler, ws_surebets_v1_handler};
 
 async fn api_not_found() -> (StatusCode, Json<ApiResponse<serde_json::Value>>) {
@@ -31,6 +33,10 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/v1/execution/overview", get(get_execution_overview))
         .route("/api/v1/execution/ledger", get(get_execution_ledger))
         .route("/api/v1/execution/state", get(get_execution_state))
+        .route(
+            "/api/v1/execution/operator-queue",
+            get(get_execution_operator_queue),
+        )
         .route("/api/v1/autobet/start", post(start_autobet))
         .route("/api/v1/autobet/stop", post(stop_autobet))
         .route(
@@ -39,6 +45,7 @@ pub fn create_router(state: AppState) -> Router {
         )
         .route("/api/v1/autobet/history", get(get_autobet_history))
         .route("/api/v1/autobet/dry-run", post(autobet_dry_run))
+        .route("/api/v1/autobet/execute-leg", post(autobet_execute_leg))
         .route("/api/v1/bankroll", get(get_bankroll))
         .route(
             "/api/v1/bankroll/recommendations",
@@ -51,6 +58,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/v1/freebets/plans", get(get_freebet_plans))
         .route("/api/v1/freebets/lifecycle", get(get_freebet_lifecycle))
         .route("/api/v1/value-bets", get(get_value_bets))
+        .route("/api/v1/middles", get(get_middles))
         .route("/api/v1/odds-errors", get(get_odds_errors))
         .route("/api/v1/analytics/generosity", get(get_generosity))
         .route("/api/v1/history", get(get_history))
@@ -64,7 +72,10 @@ pub fn create_router(state: AppState) -> Router {
         )
         .route("/api/v1/parsers/coverage", get(get_parsers_coverage))
         .route("/api/v1/parsers/health", get(get_parsers_health))
-        .route("/api/v1/parsers/promotion-kpi", get(get_parsers_promotion_kpi))
+        .route(
+            "/api/v1/parsers/promotion-kpi",
+            get(get_parsers_promotion_kpi),
+        )
         .route("/api/v1/swarm/status", get(get_swarm_status))
         .route("/api/v1/accounts", get(get_accounts))
         .route("/api/v1/accounts/summary", get(get_accounts_summary))
@@ -86,6 +97,28 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/v1/telegram/status", get(telegram_status))
         .route("/api/v1/telegram/config", post(telegram_update_config))
         .route("/api/v1/telegram/history", get(telegram_history))
+        .route("/api/v2/surebets", get(get_surebets))
+        .route("/api/v2/opportunities", get(get_opportunities_v2))
+        .route("/api/v2/surebets/:id/execute", post(execute_surebet_v2))
+        .route("/api/v2/middles", get(get_middles))
+        .route("/api/v2/valuebets", get(get_value_bets))
+        .route("/api/v2/bonuses", get(get_bonuses))
+        .route("/api/v2/bonuses/calendar", get(get_bonus_calendar_v2))
+        .route("/api/v2/bankroll/allocate", post(post_bankroll_allocate_v2))
+        .route("/api/v2/bankroll/advice", get(get_bankroll_advice_v2))
+        .route("/api/v2/freebets/lifecycle", get(get_freebet_lifecycle))
+        .route("/api/v2/freebets/funding-advice", get(get_freebet_funding_advice_v2))
+        .route("/api/v2/freebets/qualify", post(post_freebet_qualify_v2))
+        .route("/api/v2/accounts", get(get_accounts))
+        .route("/api/v2/accounts/readiness", get(get_accounts_readiness_v2))
+        .route("/api/v2/accounts/:bookmaker", get(get_account_by_bookmaker))
+        .route("/api/v2/accounts/:bookmaker/refresh", post(refresh_account_balance))
+        .route("/api/v2/analytics/pll", get(get_history_stats))
+        .route("/api/v2/analytics/clv", get(get_clv_analytics_v2))
+        .route("/api/v2/execution/queue", get(get_execution_operator_queue))
+        .route("/api/v2/execution/execute-leg", post(autobet_execute_leg))
+        .route("/api/v2/execution/panic", post(post_execution_panic_v2))
+        .route("/api/v2/health/ghost", get(get_ghost_health_v2))
         .route("/ws", get(ws_handler))
         .route("/ws/v1/surebets", get(ws_surebets_v1_handler))
         .route("/api", any(api_not_found))

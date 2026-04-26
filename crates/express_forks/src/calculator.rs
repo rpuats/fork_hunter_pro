@@ -32,7 +32,10 @@ impl MultiLegOptimizer {
     }
 
     /// Find best odds for each event (leg) across all BKs
-    pub fn optimize_legs(&self, events_odds: &HashMap<String, Vec<&Odd>>) -> HashMap<String, OptimizedLeg> {
+    pub fn optimize_legs(
+        &self,
+        events_odds: &HashMap<String, Vec<&Odd>>,
+    ) -> HashMap<String, OptimizedLeg> {
         let mut optimized = HashMap::new();
 
         for (event_id, odds_list) in events_odds {
@@ -42,7 +45,9 @@ impl MultiLegOptimizer {
 
             // Find best odds for this leg
             if let Some(best_odd) = odds_list.iter().max_by(|a, b| {
-                a.odds.partial_cmp(&b.odds).unwrap_or(std::cmp::Ordering::Equal)
+                a.odds
+                    .partial_cmp(&b.odds)
+                    .unwrap_or(std::cmp::Ordering::Equal)
             }) {
                 // Collect all BKs that have this market/selection
                 let available_bks: Vec<String> = odds_list
@@ -61,7 +66,7 @@ impl MultiLegOptimizer {
                         best_bookmaker: best_odd.bookmaker_slug.clone(),
                         market: best_odd.market.clone(),
                         selection: best_odd.selection.clone(),
-                        available_in_bks,
+                        available_in_bks: available_bks,
                     },
                 );
             }
@@ -148,7 +153,13 @@ impl ExpressForkCalculator {
 
         for leg_count in 2..=self.max_legs.min(event_ids.len()) {
             for combo in event_ids.iter().combinations(leg_count) {
-                if let Some(fork) = self.try_express_combo(combo, &odds_by_event, &optimized_legs, events, leg_count) {
+                if let Some(fork) = self.try_express_combo(
+                    combo,
+                    &odds_by_event,
+                    &optimized_legs,
+                    events,
+                    leg_count,
+                ) {
                     if fork.profit_percent >= self.min_profit {
                         forks.push(fork);
                     }
@@ -200,9 +211,13 @@ impl ExpressForkCalculator {
                     // Find minimum odds for this leg
                     if let Some(worst_odd) = odds_list
                         .iter()
-                        .filter(|o| o.market == leg_info.market && o.selection == leg_info.selection)
+                        .filter(|o| {
+                            o.market == leg_info.market && o.selection == leg_info.selection
+                        })
                         .min_by(|a, b| {
-                            a.odds.partial_cmp(&b.odds).unwrap_or(std::cmp::Ordering::Equal)
+                            a.odds
+                                .partial_cmp(&b.odds)
+                                .unwrap_or(std::cmp::Ordering::Equal)
                         })
                     {
                         lay_odds_per_leg.push(worst_odd.odds);
@@ -219,7 +234,9 @@ impl ExpressForkCalculator {
         let lay_total: f64 = lay_odds_per_leg.iter().product();
 
         // Calculate ROI
-        let roi = self.optimizer.calculate_roi(leg_count, express_total, lay_total);
+        let roi = self
+            .optimizer
+            .calculate_roi(leg_count, express_total, lay_total);
 
         // Check ROI threshold
         if !self.optimizer.roi_meets_threshold(leg_count, roi) {
@@ -259,10 +276,10 @@ impl ExpressForkCalculator {
         for (idx, (eid, leg_info)) in event_ids.iter().zip(combo_legs.iter()).enumerate() {
             let event = events
                 .iter()
-                .find(|e| e.id == **eid)
+                .find(|e| e.id == ***eid)
                 .cloned()
                 .unwrap_or_else(|| Event {
-                    id: (*eid).clone(),
+                    id: (**eid).to_string(),
                     sport: shared::Sport::Football,
                     league: String::new(),
                     home_team: String::new(),

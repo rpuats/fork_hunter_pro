@@ -1,13 +1,15 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
+import { toast } from 'sonner'
 import { motion } from 'framer-motion'
 import { Activity, AlertTriangle, CheckCircle2, Clock3, PauseCircle, PlayCircle, Search, ShieldAlert, ShieldCheck, ShieldX, Siren, TimerReset, Wallet } from 'lucide-react'
 import { CompactSignalOverlay } from '../components/CompactSignalOverlay'
-import type { AccountStateResponse, BackendParserHealthStatus, BackendParserReadinessStage, Bookmaker, BookmakerExecutionMode, BookmakerStatusCatalog, ExecutionBookmakerReadinessRecord, ExecutionLedgerAudit, ExecutionOverview, ExecutionStateAudit, ExecutionStateReadinessSummary, ExecutionStateSnapshotRecord, FreebetLifecycleSummary, ParserCoverage, ParserHealth } from '../types'
+import type { AccountStateResponse, BackendParserHealthStatus, BackendParserReadinessStage, Bookmaker, BookmakerExecutionMode, BookmakerStatusCatalog, ExecutionBookmakerReadinessRecord, ExecutionLedgerAudit, ExecutionOperatorQueueAudit, ExecutionOverview, ExecutionStateAudit, ExecutionStateReadinessSummary, ExecutionStateSnapshotRecord, FreebetLifecycleSummary, ParserCoverage, ParserHealth } from '../types'
 
 interface OperatorPageProps {
   executionOverview: ExecutionOverview | null
   executionLedger: ExecutionLedgerAudit | null
   executionState: ExecutionStateAudit | null
+  executionOperatorQueue: ExecutionOperatorQueueAudit | null
   parserCoverage: ParserCoverage[]
   parserHealth: ParserHealth[]
   bookmakers: Bookmaker[]
@@ -150,7 +152,16 @@ function formatExecutionMode(mode: BookmakerExecutionMode | null | undefined) {
   return mode.replace(/([a-z])([A-Z])/g, '$1 $2')
 }
 
-export function OperatorPage({ executionOverview, executionLedger, executionState, parserCoverage, parserHealth, bookmakers, bookmakerStatusCatalog, accountStates, freebetSummary, onOpenAccount }: OperatorPageProps) {
+export function OperatorPage({ executionOverview, executionLedger, executionState, executionOperatorQueue, parserCoverage, parserHealth, bookmakers, bookmakerStatusCatalog, accountStates, freebetSummary, onOpenAccount }: OperatorPageProps) {
+  // Local UI mode for automation: auto or semi-auto (MVP; backend not wired yet)
+  const [autoMode, setAutoMode] = useState<string>(() => {
+    const saved = typeof window !== 'undefined' ? localStorage.getItem('auto_mode') : null
+    return saved ?? 'auto'
+  })
+
+  useEffect(() => {
+    localStorage.setItem('auto_mode', autoMode)
+  }, [autoMode])
   const [readinessFilter, setReadinessFilter] = useState<ReadinessFilter>('attention')
   const [ledgerFilter, setLedgerFilter] = useState<LedgerFilter>('errors')
   const [ledgerSort, setLedgerSort] = useState<LedgerSort>('priority')
@@ -543,6 +554,7 @@ export function OperatorPage({ executionOverview, executionLedger, executionStat
       .sort((a, b) => b.priority - a.priority || a.bookmaker.localeCompare(b.bookmaker))
       .slice(0, 8)
   }, [executionReadinessRows])
+  const operatorQueueRows = executionOperatorQueue?.items.slice(0, 8) ?? []
   const bookmakerStateRows = useMemo(() => {
     return [...(stateDiagnostics?.bookmaker_summaries ?? [])]
       .sort((a, b) => Number(Boolean(b.latest_error)) - Number(Boolean(a.latest_error)) || b.total_snapshots - a.total_snapshots || a.bookmaker.localeCompare(b.bookmaker))
@@ -913,6 +925,23 @@ export function OperatorPage({ executionOverview, executionLedger, executionStat
           <div className="rounded-lg px-3 py-2 text-xs" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
             Snapshot {formatDateTime(executionState?.generated_at ?? executionOverview?.generated_at ?? executionLedger?.generated_at ?? null)}
           </div>
+          {/* Automation mode switcher (UI prototype) */}
+          <div className="ml-auto flex items-center gap-2">
+            <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Mode:</span>
+            <button
+              onClick={() => { setAutoMode('auto'); toast.success('Mode: Автомат'); }}
+              className={`px-3 py-2 rounded ${autoMode === 'auto' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-800'}`}
+            >
+              Автомат
+            </button>
+            <button
+              onClick={() => { setAutoMode('semi'); toast.success('Mode: Полуавтомат'); }}
+              className={`px-3 py-2 rounded ${autoMode === 'semi' ? 'bg-blue-600 text-white' : 'bg-gray-200 text-gray-800'}`}
+            >
+              Полуавтомат
+            </button>
+            <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{autoMode === 'auto' ? 'Автомат' : 'Полуавтомат'}</span>
+          </div>
         </div>
       </motion.div>
 
@@ -1088,6 +1117,62 @@ export function OperatorPage({ executionOverview, executionLedger, executionStat
             <ShieldCheck size={24} className="mx-auto mb-3 opacity-40" />
             <p className="text-sm">Execution auth/readiness surface пока пустой: UI ждёт readiness rollup из `/api/v1/execution/state`.</p>
           </div>
+        )}
+      </motion.div>
+
+      <motion.div variants={item} className="panel">
+        <div className="panel-header">
+          <div>
+            <h3>Operator queue</h3>
+            <p className="text-sm text-muted">Prioritized actions from `/api/v1/execution/operator-queue`</p>
+          </div>
+          <span className={executionOperatorQueue?.critical_items ? 'badge badge-danger' : executionOperatorQueue?.warning_items ? 'badge badge-warning' : 'badge badge-success'}>
+            {executionOperatorQueue ? `${executionOperatorQueue.critical_items} critical / ${executionOperatorQueue.warning_items} warning` : 'No queue'}
+          </span>
+        </div>
+
+        {operatorQueueRows.length > 0 ? (
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+            {operatorQueueRows.map((entry) => (
+              <button
+                key={`queue-${entry.bookmaker}`}
+                type="button"
+                onClick={() => onOpenAccount(entry.bookmaker)}
+                className="w-full rounded-xl p-4 text-left transition-colors"
+                style={{
+                  background: 'var(--bg-secondary)',
+                  border: `1px solid ${entry.severity === 'critical' ? 'rgba(248, 81, 73, 0.22)' : entry.severity === 'warning' ? 'rgba(210, 153, 34, 0.22)' : 'var(--border-color)'}`,
+                }}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-sm font-semibold">{entry.bookmaker}</p>
+                      <span className={`badge ${entry.severity === 'critical' ? 'badge-danger' : entry.severity === 'warning' ? 'badge-warning' : 'badge-info'}`}>{entry.severity}</span>
+                      <span className="badge badge-info">score {entry.priority_score}</span>
+                      <span className={`badge ${entry.placement_ready ? 'badge-success' : 'badge-warning'}`}>{entry.placement_ready ? 'placement ready' : 'placement blocked'}</span>
+                    </div>
+                    <p className="mt-2 text-xs" style={{ color: 'var(--text-secondary)' }}>
+                      {entry.operator_action ?? entry.blocking_reasons[0] ?? entry.latest_error ?? 'Review execution state drift'}
+                    </p>
+                    <div className="mt-2 flex flex-wrap gap-2 text-xs" style={{ color: 'var(--text-muted)' }}>
+                      <span>mode {formatExecutionMode(entry.execution_mode as BookmakerExecutionMode | null)}</span>
+                      {entry.approval_required ? <span>approval required</span> : null}
+                      {entry.submit_blocked_by_safe_mode ? <span>safe mode blocks submit</span> : null}
+                      {entry.session_stale ? <span>session stale</span> : null}
+                      {entry.balance_stale ? <span>balance stale</span> : null}
+                      {entry.auth_snapshot_stale ? <span>auth snapshot stale</span> : null}
+                    </div>
+                  </div>
+                  <div className="text-right text-xs" style={{ color: 'var(--accent-blue)' }}>
+                    open accounts drill-down
+                  </div>
+                </div>
+              </button>
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-muted">Operator queue is empty: no prioritized auth/execution actions detected.</p>
         )}
       </motion.div>
 

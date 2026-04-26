@@ -198,6 +198,33 @@ export interface ExecutionStateAudit {
   generated_at: string
 }
 
+export interface ExecutionOperatorQueueItem {
+  bookmaker: string
+  severity: string
+  priority_score: number
+  execution_mode: BookmakerExecutionMode | null
+  placement_ready: boolean
+  approval_required: boolean
+  submit_blocked_by_safe_mode: boolean
+  session_stale: boolean
+  balance_stale: boolean
+  auth_snapshot_stale: boolean
+  operator_action: string | null
+  blocking_reasons: string[]
+  persistence_warnings: string[]
+  latest_error: string | null
+  latest_transition_at: string | null
+  latest_snapshot_at: string | null
+}
+
+export interface ExecutionOperatorQueueAudit {
+  total_items: number
+  critical_items: number
+  warning_items: number
+  items: ExecutionOperatorQueueItem[]
+  generated_at: string
+}
+
 export interface ExecutionLedgerPlacement {
   id: string
   bookmaker: string

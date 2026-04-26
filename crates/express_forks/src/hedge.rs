@@ -1,8 +1,7 @@
 /// Hedging calculator for express fork exposure management
-/// 
+///
 /// Provides strategies to protect express fork positions by hedging
 /// portions of the parlay with opposing selections from other bookmakers.
-
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -166,20 +165,18 @@ impl HedgeCalculator {
     }
 
     /// Get hedge percentage for leg count
-    fn get_hedge_percentage(&self, leg_count: usize) -> f64 {
+    pub fn get_hedge_percentage(&self, leg_count: usize) -> f64 {
         match self.strategy {
             HedgeStrategy::Percentage(pct) => pct,
-            HedgeStrategy::DynamicByLegs => {
-                match leg_count {
-                    2 => 10.0,
-                    3 => 15.0,
-                    4 => 20.0,
-                    5 => 25.0,
-                    6 => 30.0,
-                    7 => 35.0,
-                    _ => 40.0,
-                }
-            }
+            HedgeStrategy::DynamicByLegs => match leg_count {
+                2 => 10.0,
+                3 => 15.0,
+                4 => 20.0,
+                5 => 25.0,
+                6 => 30.0,
+                7 => 35.0,
+                _ => 40.0,
+            },
             _ => 20.0,
         }
     }
@@ -192,11 +189,7 @@ impl HedgeCalculator {
         hedge_analysis: &HedgeAnalysis,
     ) -> f64 {
         let express_return = express_stake * express_odds;
-        let hedge_losses: f64 = hedge_analysis
-            .positions
-            .iter()
-            .map(|h| h.hedge_stake)
-            .sum();
+        let hedge_losses: f64 = hedge_analysis.positions.iter().map(|h| h.hedge_stake).sum();
 
         express_return - hedge_losses
     }
@@ -209,7 +202,8 @@ impl HedgeCalculator {
         hedge_analysis: &HedgeAnalysis,
     ) -> f64 {
         let total_invested = express_stake + hedge_analysis.total_hedge_stake;
-        let hedged_return = self.calculate_hedged_return(express_stake, express_odds, hedge_analysis);
+        let hedged_return =
+            self.calculate_hedged_return(express_stake, express_odds, hedge_analysis);
         let profit = hedged_return - total_invested;
         (profit / total_invested) * 100.0
     }
@@ -253,8 +247,7 @@ mod tests {
 
     #[test]
     fn test_analyze_hedge_multi_leg() {
-        let calc = HedgeCalculator::new(HedgeStrategy::Percentage(20.0))
-            .with_min_odds(1.5);
+        let calc = HedgeCalculator::new(HedgeStrategy::Percentage(20.0)).with_min_odds(1.5);
         let oppositions = vec![
             (0, 2.1, "bk1".to_string()),
             (1, 1.95, "bk2".to_string()),
@@ -302,12 +295,8 @@ mod tests {
 
     #[test]
     fn test_min_odds_filter() {
-        let calc = HedgeCalculator::new(HedgeStrategy::Percentage(25.0))
-            .with_min_odds(2.0);
-        let oppositions = vec![
-            (0, 1.5, "bk1".to_string()),
-            (1, 2.1, "bk2".to_string()),
-        ];
+        let calc = HedgeCalculator::new(HedgeStrategy::Percentage(25.0)).with_min_odds(2.0);
+        let oppositions = vec![(0, 1.5, "bk1".to_string()), (1, 2.1, "bk2".to_string())];
 
         let analysis = calc.analyze_hedge(3.0, 1000.0, 2, oppositions);
         // Only position with odds >= 2.0 should be included

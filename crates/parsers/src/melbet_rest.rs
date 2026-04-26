@@ -1,6 +1,5 @@
 /// Melbet REST API парсер
 /// Поддерживает основные методы доступа
-
 use reqwest::Client;
 use shared::{Event, Sport};
 use std::collections::HashMap;
@@ -20,15 +19,15 @@ impl MelbetRestParser {
         if let Ok(events) = self.fetch_via_api().await {
             return Ok(events);
         }
-        
+
         if let Ok(events) = self.fetch_via_graphql().await {
             return Ok(events);
         }
-        
+
         if let Ok(events) = self.fetch_via_main_page().await {
             return Ok(events);
         }
-        
+
         Err("No events from Melbet".to_string())
     }
 
@@ -39,9 +38,9 @@ impl MelbetRestParser {
             "https://melbet.com/api/v1/sports/football",
             "https://melbet.com/api/betting/events",
         ];
-        
+
         let mut all_events = Vec::new();
-        
+
         for endpoint in endpoints {
             match self.client.get(endpoint).send().await {
                 Ok(resp) if resp.status() == 200 => {
@@ -52,11 +51,11 @@ impl MelbetRestParser {
                 _ => continue,
             }
         }
-        
+
         if all_events.is_empty() {
             return Err("No events from API".to_string());
         }
-        
+
         Ok(all_events)
     }
 
@@ -74,8 +73,9 @@ impl MelbetRestParser {
             }
         }
         "#;
-        
-        match self.client
+
+        match self
+            .client
             .post("https://melbet.com/api/graphql")
             .body(query)
             .send()
@@ -91,38 +91,38 @@ impl MelbetRestParser {
             }
             _ => {}
         }
-        
+
         Err("GraphQL failed".to_string())
     }
 
     /// HTML парсинг
     async fn fetch_via_main_page(&self) -> Result<Vec<Event>, String> {
-        let resp = self.client
+        let resp = self
+            .client
             .get("https://melbet.com/")
             .send()
             .await
             .map_err(|e| format!("Failed: {}", e))?;
-        
-        let html = resp.text().await
-            .map_err(|e| format!("Failed: {}", e))?;
-        
+
+        let html = resp.text().await.map_err(|e| format!("Failed: {}", e))?;
+
         let events = self.extract_from_html(&html);
-        
+
         if events.is_empty() {
             return Err("No events".to_string());
         }
-        
+
         Ok(events)
     }
 
     /// Парсит JSON
     fn parse_api(&self, json_str: &str) -> Vec<Event> {
         let mut events = Vec::new();
-        
+
         if let Ok(json) = serde_json::from_str::<serde_json::Value>(json_str) {
             // Пытаемся разные структуры JSON
             let mut arr: Option<&Vec<serde_json::Value>> = None;
-            
+
             if let Some(events_field) = json.get("events") {
                 arr = events_field.as_array();
             } else if let Some(data) = json.get("data") {
@@ -132,7 +132,7 @@ impl MelbetRestParser {
             } else if let Some(a) = json.as_array() {
                 arr = Some(a);
             }
-            
+
             if let Some(items) = arr {
                 for item in items {
                     if let Some(event) = self.build_event(item) {
@@ -141,50 +141,55 @@ impl MelbetRestParser {
                 }
             }
         }
-        
+
         events
     }
 
     /// Извлекает из HTML
     fn extract_from_html(&self, html: &str) -> Vec<Event> {
         let mut events = Vec::new();
-        
+
         for line in html.lines() {
             if let Some(event) = self.parse_html_line(line) {
                 events.push(event);
             }
         }
-        
+
         events
     }
 
     /// Конструирует Event
     fn build_event(&self, obj: &serde_json::Value) -> Option<Event> {
-        let id = obj.get("id")
+        let id = obj
+            .get("id")
             .and_then(|v| v.as_u64())
             .map(|n| n.to_string())?;
-        
-        let home_team = obj.get("homeTeam")
+
+        let home_team = obj
+            .get("homeTeam")
             .or(obj.get("home"))
             .and_then(|v| v.as_str())
             .map(|s| s.to_string())?;
-        
-        let away_team = obj.get("awayTeam")
+
+        let away_team = obj
+            .get("awayTeam")
             .or(obj.get("away"))
             .and_then(|v| v.as_str())
             .map(|s| s.to_string())?;
-        
+
         Some(Event {
             id: id.clone(),
             sport: Sport::Football,
-            league: obj.get("league")
+            league: obj
+                .get("league")
                 .and_then(|v| v.as_str())
                 .unwrap_or("Unknown")
                 .to_string(),
             home_team,
             away_team,
             start_time: None,
-            is_live: obj.get("is_live")
+            is_live: obj
+                .get("is_live")
                 .or(obj.get("isLive"))
                 .and_then(|v| v.as_bool())
                 .unwrap_or(false),
@@ -214,7 +219,7 @@ impl MelbetRestParser {
                 });
             }
         }
-        
+
         None
     }
 }

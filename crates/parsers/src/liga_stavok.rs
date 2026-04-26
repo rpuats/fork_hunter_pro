@@ -1,7 +1,6 @@
 use crate::base::{BookmakerParser, ParserResult};
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
-use rand::seq::SliceRandom;
+use chrono::{DateTime, TimeZone, Utc};
 use reqwest::Client;
 use shared::odds::OddsType;
 use shared::{
@@ -186,11 +185,15 @@ impl LigaStavokParser {
             } else {
                 self.proxy_config.get_proxy()
             };
+            let proxy_rotated = proxy.is_some();
 
-            match operation(proxy).await {
+            match operation(proxy.clone()).await {
                 Ok(result) => {
                     if attempt > 0 {
-                        info!(attempt, description, "Liga Stavok operation succeeded after retries");
+                        info!(
+                            attempt,
+                            description, "Liga Stavok operation succeeded after retries"
+                        );
                     }
                     return Ok(result);
                 }
@@ -199,7 +202,12 @@ impl LigaStavokParser {
                     last_error = Some(err_str.clone());
 
                     if !Self::is_transient_error(&err_str) {
-                        error!(attempt, error = &err_str, description, "Liga Stavok permanent error (not retrying)");
+                        error!(
+                            attempt,
+                            error = &err_str,
+                            description,
+                            "Liga Stavok permanent error (not retrying)"
+                        );
                         return Err(err);
                     }
 
@@ -210,7 +218,7 @@ impl LigaStavokParser {
                             error = &err_str,
                             backoff_ms = backoff.as_millis(),
                             description,
-                            proxy_rotated = proxy.is_some(),
+                            proxy_rotated,
                             "Liga Stavok transient error, retrying after backoff"
                         );
                         sleep(backoff).await;
@@ -241,15 +249,16 @@ impl LigaStavokParser {
         proxy: Option<String>,
         is_live: bool,
     ) -> Result<Vec<Event>, Box<dyn std::error::Error + Send + Sync>> {
-        let mut request = self.client.get(EVENTS_LIST_URL)
+        let request = self
+            .client
+            .get(EVENTS_LIST_URL)
             .header("User-Agent", USER_AGENT)
             .header("Accept", "application/json")
             .header("Accept-Language", "ru-RU,ru;q=0.9")
             .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS));
 
-        if let Some(proxy_url) = proxy {
-            let parsed_proxy = reqwest::Proxy::all(&proxy_url)?;
-            request = request.proxy(parsed_proxy);
+        if proxy.is_some() {
+            debug!(is_live, "Liga Stavok proxy requested but RequestBuilder-level proxy override is unsupported; using base client");
         }
 
         let response = request.send().await?;
@@ -284,11 +293,7 @@ impl LigaStavokParser {
         Ok(events)
     }
 
-    fn parse_single_event(
-        &self,
-        event_data: &serde_json::Value,
-        is_live: bool,
-    ) -> Option<Event> {
+    fn parse_single_event(&self, event_data: &serde_json::Value, is_live: bool) -> Option<Event> {
         let id = event_data.get("id")?.as_str()?.to_string();
         let home_team = event_data.get("team1")?.as_str()?.to_string();
         let away_team = event_data.get("team2")?.as_str()?.to_string();
@@ -302,7 +307,7 @@ impl LigaStavokParser {
         let start_time = event_data
             .get("startTime")
             .and_then(|t| t.as_i64())
-            .and_then(|ts| Utc.timestamp_millis_opt(ts * 1000).single());
+            .and_then(|ts| Utc.timestamp_millis_opt(ts).single());
 
         Some(Event {
             id: format!("{}-{}", BOOKMAKER_SLUG, id),
@@ -329,7 +334,8 @@ impl LigaStavokParser {
             Sport::Football
         } else if league_lower.contains("хоккей") || league_lower.contains("hockey") {
             Sport::Hockey
-        } else if league_lower.contains("баскетбол") || league_lower.contains("basketball") {
+        } else if league_lower.contains("баскетбол") || league_lower.contains("basketball")
+        {
             Sport::Basketball
         } else if league_lower.contains("волейбол") || league_lower.contains("volleyball") {
             Sport::Volleyball
@@ -342,7 +348,7 @@ impl LigaStavokParser {
         } else if league_lower.contains("бокс") || league_lower.contains("boxing") {
             Sport::Boxing
         } else if league_lower.contains("мма") || league_lower.contains("ufc") {
-            Sport::MMA
+            Sport::Mma
         } else {
             Sport::Other
         }
@@ -353,15 +359,16 @@ impl LigaStavokParser {
         proxy: Option<String>,
         is_live: bool,
     ) -> Result<Vec<Odd>, Box<dyn std::error::Error + Send + Sync>> {
-        let mut request = self.client.get(EVENTS_LIST_URL)
+        let request = self
+            .client
+            .get(EVENTS_LIST_URL)
             .header("User-Agent", USER_AGENT)
             .header("Accept", "application/json")
             .header("Accept-Language", "ru-RU,ru;q=0.9")
             .timeout(Duration::from_secs(REQUEST_TIMEOUT_SECS));
 
-        if let Some(proxy_url) = proxy {
-            let parsed_proxy = reqwest::Proxy::all(&proxy_url)?;
-            request = request.proxy(parsed_proxy);
+        if proxy.is_some() {
+            debug!(is_live, "Liga Stavok proxy requested but RequestBuilder-level proxy override is unsupported; using base client");
         }
 
         let response = request.send().await?;
@@ -427,7 +434,7 @@ impl LigaStavokParser {
         event_id: &str,
         market_type: &str,
         option: &serde_json::Value,
-        is_live: bool,
+        _is_live: bool,
         now: DateTime<Utc>,
     ) -> Option<Odd> {
         let name = option.get("name")?.as_str()?;
@@ -438,18 +445,18 @@ impl LigaStavokParser {
         }
 
         let (market, selection, odds_type) = self.classify_market(market_type, name)?;
+        let event_id = format!("{}-{}", BOOKMAKER_SLUG, event_id);
 
         Some(Odd {
-            event_id: format!("{}-{}", BOOKMAKER_SLUG, event_id),
-            market_type: market,
-            selection: selection.to_string(),
-            odds_value: value,
-            line: self.extract_line(option),
-            odds_type,
-            is_live,
+            id: format!("{}:{}:{}:{}", BOOKMAKER_SLUG, event_id, market, selection),
+            event_id,
             bookmaker_slug: BOOKMAKER_SLUG.to_string(),
-            updated_at: now,
-            raw_data: None,
+            market: market.to_string(),
+            selection: selection.to_string(),
+            odds: value,
+            odds_type,
+            line: self.extract_line(option),
+            timestamp: now,
         })
     }
 
@@ -674,9 +681,13 @@ mod tests {
     fn test_transient_error_detection() {
         assert!(LigaStavokParser::is_transient_error("timeout"));
         assert!(LigaStavokParser::is_transient_error("connection reset"));
-        assert!(LigaStavokParser::is_transient_error("429 Too Many Requests"));
+        assert!(LigaStavokParser::is_transient_error(
+            "429 Too Many Requests"
+        ));
         assert!(LigaStavokParser::is_transient_error("502 Bad Gateway"));
-        assert!(LigaStavokParser::is_transient_error("503 Service Unavailable"));
+        assert!(LigaStavokParser::is_transient_error(
+            "503 Service Unavailable"
+        ));
         assert!(LigaStavokParser::is_transient_error("h2 protocol error"));
         assert!(!LigaStavokParser::is_transient_error("404 Not Found"));
         assert!(!LigaStavokParser::is_transient_error("401 Unauthorized"));
@@ -684,12 +695,15 @@ mod tests {
 
     #[test]
     fn test_proxy_rotation() {
-        std::env::set_var("LIGASTAVOK_PROXY_LIST", "http://proxy1.com,http://proxy2.com");
+        std::env::set_var(
+            "LIGASTAVOK_PROXY_LIST",
+            "http://proxy1.com,http://proxy2.com",
+        );
         let mut proxy = ProxyConfig::new();
-        
+
         let p1 = proxy.get_proxy();
         assert!(p1.is_some());
-        
+
         let p2 = proxy.rotate();
         assert!(p2.is_some());
         assert_ne!(p1, p2);
@@ -699,9 +713,12 @@ mod tests {
     fn test_sport_detection_football() {
         let client = Arc::new(reqwest::Client::new());
         let parser = LigaStavokParser::new(client);
-        
+
         assert_eq!(parser.detect_sport("АПЛ"), Sport::Football);
-        assert_eq!(parser.detect_sport("Английская Премьер-Лига"), Sport::Football);
+        assert_eq!(
+            parser.detect_sport("Английская Премьер-Лига"),
+            Sport::Football
+        );
         assert_eq!(parser.detect_sport("Футбол"), Sport::Football);
         assert_eq!(parser.detect_sport("Football"), Sport::Football);
     }
@@ -710,7 +727,7 @@ mod tests {
     fn test_sport_detection_hockey() {
         let client = Arc::new(reqwest::Client::new());
         let parser = LigaStavokParser::new(client);
-        
+
         assert_eq!(parser.detect_sport("Хоккей КХЛ"), Sport::Hockey);
         assert_eq!(parser.detect_sport("Hockey"), Sport::Hockey);
     }
@@ -719,7 +736,7 @@ mod tests {
     fn test_sport_detection_basketball() {
         let client = Arc::new(reqwest::Client::new());
         let parser = LigaStavokParser::new(client);
-        
+
         assert_eq!(parser.detect_sport("Баскетбол НБА"), Sport::Basketball);
         assert_eq!(parser.detect_sport("Basketball"), Sport::Basketball);
     }
@@ -728,7 +745,7 @@ mod tests {
     fn test_sport_detection_tennis() {
         let client = Arc::new(reqwest::Client::new());
         let parser = LigaStavokParser::new(client);
-        
+
         assert_eq!(parser.detect_sport("Теннис ATP"), Sport::Tennis);
         assert_eq!(parser.detect_sport("Tennis WTA"), Sport::Tennis);
         assert_eq!(parser.detect_sport("ATP Finals"), Sport::Tennis);
@@ -738,7 +755,7 @@ mod tests {
     fn test_market_classification_1x2() {
         let client = Arc::new(reqwest::Client::new());
         let parser = LigaStavokParser::new(client);
-        
+
         let (market, sel, odds_type) = parser
             .classify_market("1x2", "П1")
             .expect("should classify 1x2");
@@ -765,7 +782,7 @@ mod tests {
     fn test_market_classification_total() {
         let client = Arc::new(reqwest::Client::new());
         let parser = LigaStavokParser::new(client);
-        
+
         let (market, sel, odds_type) = parser
             .classify_market("total", "Больше")
             .expect("should classify total over");
@@ -785,7 +802,7 @@ mod tests {
     fn test_market_classification_btts() {
         let client = Arc::new(reqwest::Client::new());
         let parser = LigaStavokParser::new(client);
-        
+
         let (market, sel, odds_type) = parser
             .classify_market("оба забивают", "Да")
             .expect("should classify btts yes");
@@ -805,7 +822,7 @@ mod tests {
     fn test_market_classification_handicap() {
         let client = Arc::new(reqwest::Client::new());
         let parser = LigaStavokParser::new(client);
-        
+
         let (market, sel, odds_type) = parser
             .classify_market("фора", "1")
             .expect("should classify handicap 1");
@@ -818,7 +835,7 @@ mod tests {
     fn test_market_classification_even_odd() {
         let client = Arc::new(reqwest::Client::new());
         let parser = LigaStavokParser::new(client);
-        
+
         let (market, sel, odds_type) = parser
             .classify_market("четность", "Четн")
             .expect("should classify even");
@@ -898,7 +915,7 @@ mod tests {
             "team1": "A",
             "team2": "B",
         });
-        
+
         let event = parser.parse_single_event(&event_json, false).unwrap();
         let odd = parser.parse_option("123", "1x2", &option, false, Utc::now());
         assert!(odd.is_none(), "Should reject odds with value <= 1.0");

@@ -1,5 +1,5 @@
 /// Proxy Manager for rotating proxies to bypass IP bans
-/// 
+///
 /// Features:
 /// - Geolocation-aware proxy selection (rotate by country)
 /// - Adaptive health check intervals (healthy=10s, degraded=3s)
@@ -8,14 +8,13 @@
 /// - Dynamic proxy rotation with weighted selection
 /// - Exponential backoff retry strategy
 /// - Banned proxy tracking with time-based recovery
-
 use parking_lot::RwLock;
 use rand::seq::SliceRandom;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tracing::{debug, warn, info, error};
+use tracing::{debug, error, info, warn};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Country {
@@ -59,10 +58,10 @@ impl Country {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ProxyHealth {
-    Healthy,      // Success rate >= 90%, last health check < 10s ago
-    Degraded,     // Success rate 60-90%, last health check < 3s ago
-    Unhealthy,    // Success rate < 60%
-    Banned,       // Explicitly banned or too many failures
+    Healthy,   // Success rate >= 90%, last health check < 10s ago
+    Degraded,  // Success rate 60-90%, last health check < 3s ago
+    Unhealthy, // Success rate < 60%
+    Banned,    // Explicitly banned or too many failures
 }
 
 impl ProxyHealth {
@@ -146,7 +145,7 @@ impl ProxyConfig {
 pub struct ProxyMetrics {
     pub success_count: u32,
     pub fail_count: u32,
-    pub response_times: Vec<u64>,  // milliseconds
+    pub response_times: Vec<u64>, // milliseconds
     pub last_health_check: Option<SystemTime>,
     pub last_used: Option<SystemTime>,
 }
@@ -209,7 +208,7 @@ impl ProxyMetrics {
                 return elapsed >= current_health.health_check_interval();
             }
         }
-        true  // Never checked before
+        true // Never checked before
     }
 }
 
@@ -229,7 +228,7 @@ impl ProxyState {
             metrics: ProxyMetrics::new(),
             is_banned: false,
             banned_until: None,
-            warming_up: true,  // Start in warming up state
+            warming_up: true, // Start in warming up state
         }
     }
 
@@ -280,7 +279,6 @@ impl ProxyState {
     }
 }
 
-
 /// Statistics about proxy pool
 #[derive(Debug, Clone)]
 pub struct PoolStatistics {
@@ -306,10 +304,7 @@ pub struct ProxyManager {
 
 impl ProxyManager {
     pub fn new(configs: Vec<ProxyConfig>) -> Self {
-        let proxies = configs
-            .into_iter()
-            .map(ProxyState::new)
-            .collect::<Vec<_>>();
+        let proxies = configs.into_iter().map(ProxyState::new).collect::<Vec<_>>();
 
         info!(count = proxies.len(), "ProxyManager initialized");
 
@@ -363,7 +358,9 @@ impl ProxyManager {
         if healthy.is_empty() {
             debug!(
                 "No healthy proxies available{}",
-                country.map(|c| format!(" for {}", c.code())).unwrap_or_default()
+                country
+                    .map(|c| format!(" for {}", c.code()))
+                    .unwrap_or_default()
             );
             return None;
         }
@@ -379,11 +376,11 @@ impl ProxyManager {
             // Penalize slow proxies slightly
             let response_time = state.metrics.avg_response_time();
             if response_time > 5000 {
-                base_weight * 0.5  // Slow proxy
+                base_weight * 0.5 // Slow proxy
             } else if response_time > 2000 {
-                base_weight * 0.75  // Medium response time
+                base_weight * 0.75 // Medium response time
             } else {
-                base_weight  // Fast proxy
+                base_weight // Fast proxy
             }
         });
 
@@ -619,10 +616,22 @@ mod tests {
 
     #[test]
     fn proxy_health_check_intervals() {
-        assert_eq!(ProxyHealth::Healthy.health_check_interval(), Duration::from_secs(10));
-        assert_eq!(ProxyHealth::Degraded.health_check_interval(), Duration::from_secs(3));
-        assert_eq!(ProxyHealth::Unhealthy.health_check_interval(), Duration::from_millis(500));
-        assert_eq!(ProxyHealth::Banned.health_check_interval(), Duration::from_secs(300));
+        assert_eq!(
+            ProxyHealth::Healthy.health_check_interval(),
+            Duration::from_secs(10)
+        );
+        assert_eq!(
+            ProxyHealth::Degraded.health_check_interval(),
+            Duration::from_secs(3)
+        );
+        assert_eq!(
+            ProxyHealth::Unhealthy.health_check_interval(),
+            Duration::from_millis(500)
+        );
+        assert_eq!(
+            ProxyHealth::Banned.health_check_interval(),
+            Duration::from_secs(300)
+        );
     }
 
     // ============================================================================
@@ -658,7 +667,7 @@ mod tests {
         }
         // Should only keep last 100
         assert_eq!(metrics.response_times.len(), 100);
-        assert_eq!(metrics.response_times[0], 150);  // First should be 150 (100+50)
+        assert_eq!(metrics.response_times[0], 150); // First should be 150 (100+50)
     }
 
     #[test]
@@ -693,7 +702,7 @@ mod tests {
     fn proxy_state_mark_success() {
         let config = ProxyConfig::http("proxy1:8080");
         let mut state = ProxyState::new(config);
-        
+
         state.mark_success(150);
         assert_eq!(state.metrics.success_count, 1);
         assert!(!state.warming_up);
@@ -704,7 +713,7 @@ mod tests {
     fn proxy_state_mark_failure() {
         let config = ProxyConfig::http("proxy1:8080");
         let mut state = ProxyState::new(config);
-        
+
         state.mark_failure();
         assert_eq!(state.metrics.fail_count, 1);
     }
@@ -713,7 +722,7 @@ mod tests {
     fn proxy_state_mark_banned() {
         let config = ProxyConfig::http("proxy1:8080");
         let mut state = ProxyState::new(config);
-        
+
         state.mark_banned(Duration::from_secs(300));
         assert!(state.is_banned);
         assert!(state.banned_until.is_some());
@@ -746,15 +755,13 @@ mod tests {
 
     #[test]
     fn proxy_manager_mark_success_with_response_time() {
-        let manager = ProxyManager::new(vec![
-            ProxyConfig::http("proxy1:8080"),
-        ]);
+        let manager = ProxyManager::new(vec![ProxyConfig::http("proxy1:8080")]);
 
         manager.mark_success("proxy1:8080", 250);
-        
+
         let metrics = manager.get_proxy_metrics();
         assert_eq!(metrics.len(), 1);
-        assert!(metrics[0].1 > 0.0);  // Success rate should be > 0
+        assert!(metrics[0].1 > 0.0); // Success rate should be > 0
     }
 
     #[test]
@@ -786,22 +793,18 @@ mod tests {
 
     #[test]
     fn proxy_manager_adaptive_health_check() {
-        let manager = ProxyManager::new(vec![
-            ProxyConfig::http("proxy1:8080"),
-        ]);
+        let manager = ProxyManager::new(vec![ProxyConfig::http("proxy1:8080")]);
 
         let proxies_needing_check = manager.get_proxies_needing_health_check();
-        assert_eq!(proxies_needing_check.len(), 1);  // Unchecked proxy needs check
+        assert_eq!(proxies_needing_check.len(), 1); // Unchecked proxy needs check
     }
 
     #[test]
     fn proxy_manager_mark_health_checked() {
-        let manager = ProxyManager::new(vec![
-            ProxyConfig::http("proxy1:8080"),
-        ]);
+        let manager = ProxyManager::new(vec![ProxyConfig::http("proxy1:8080")]);
 
         manager.mark_health_checked("proxy1:8080");
-        
+
         // Immediately, it shouldn't need another check (for healthy proxy)
         let proxies_needing_check = manager.get_proxies_needing_health_check();
         // Should be empty for healthy proxy with recent check
@@ -871,13 +874,11 @@ mod tests {
 
     #[test]
     fn proxy_manager_warming_pool() {
-        let manager = ProxyManager::new(vec![
-            ProxyConfig::http("proxy1:8080"),
-        ]);
+        let manager = ProxyManager::new(vec![ProxyConfig::http("proxy1:8080")]);
 
         manager.start_warming_pool();
         assert!(!manager.is_warming_complete());
-        
+
         // Warming should still be incomplete immediately
         std::thread::sleep(Duration::from_millis(100));
         assert!(!manager.is_warming_complete());
@@ -885,9 +886,7 @@ mod tests {
 
     #[test]
     fn proxy_manager_reset_stats() {
-        let manager = ProxyManager::new(vec![
-            ProxyConfig::http("proxy1:8080"),
-        ]);
+        let manager = ProxyManager::new(vec![ProxyConfig::http("proxy1:8080")]);
 
         manager.mark_success("proxy1:8080", 150);
         manager.mark_failure("proxy1:8080");
@@ -925,9 +924,7 @@ mod tests {
 
     #[test]
     fn proxy_manager_get_proxy_metrics_details() {
-        let manager = ProxyManager::new(vec![
-            ProxyConfig::http("proxy1:8080"),
-        ]);
+        let manager = ProxyManager::new(vec![ProxyConfig::http("proxy1:8080")]);
 
         manager.mark_success("proxy1:8080", 200);
         manager.mark_success("proxy1:8080", 300);
@@ -935,15 +932,13 @@ mod tests {
         let metrics = manager.get_proxy_metrics();
         assert_eq!(metrics.len(), 1);
         assert_eq!(metrics[0].0, "proxy1:8080");
-        assert_eq!(metrics[0].1, 1.0);  // Success rate
-        assert_eq!(metrics[0].2, 250);  // Avg response time
+        assert_eq!(metrics[0].1, 1.0); // Success rate
+        assert_eq!(metrics[0].2, 250); // Avg response time
     }
 
     #[test]
     fn proxy_manager_ban_and_recovery() {
-        let manager = ProxyManager::new(vec![
-            ProxyConfig::http("proxy1:8080"),
-        ]);
+        let manager = ProxyManager::new(vec![ProxyConfig::http("proxy1:8080")]);
 
         manager.mark_banned("proxy1:8080", Duration::from_secs(1));
         assert_eq!(manager.healthy_count(), 0);
@@ -954,9 +949,7 @@ mod tests {
 
     #[test]
     fn proxy_manager_clone_shares_state() {
-        let manager1 = ProxyManager::new(vec![
-            ProxyConfig::http("proxy1:8080"),
-        ]);
+        let manager1 = ProxyManager::new(vec![ProxyConfig::http("proxy1:8080")]);
 
         let manager2 = manager1.clone();
         manager1.mark_success("proxy1:8080", 100);
@@ -964,7 +957,6 @@ mod tests {
         let metrics1 = manager1.get_proxy_metrics();
         let metrics2 = manager2.get_proxy_metrics();
 
-        assert_eq!(metrics1[0].1, metrics2[0].1);  // Same success rate
+        assert_eq!(metrics1[0].1, metrics2[0].1); // Same success rate
     }
 }
-

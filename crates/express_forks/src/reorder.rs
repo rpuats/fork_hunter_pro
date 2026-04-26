@@ -1,8 +1,7 @@
 /// Smart leg reordering for optimal parlay execution
-/// 
+///
 /// Orders parlay legs strategically to maximize early wins and minimize
 /// exposure to low-odds legs at the end of the cascade.
-
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 
@@ -15,7 +14,7 @@ pub struct ScheduledLeg {
     pub market: String,
     pub selection: String,
     pub event_time_minutes: Option<u32>, // Minutes from now
-    pub form_score: f64, // 0.0-1.0 confidence
+    pub form_score: f64,                 // 0.0-1.0 confidence
     pub bookmaker: String,
 }
 
@@ -76,19 +75,13 @@ impl LegReorderer {
 
         match self.strategy {
             ReorderStrategy::HighestOddsFirst => {
-                sorted_legs.sort_by(|a, b| {
-                    b.odds.partial_cmp(&a.odds).unwrap_or(Ordering::Equal)
-                });
+                sorted_legs.sort_by(|a, b| b.odds.partial_cmp(&a.odds).unwrap_or(Ordering::Equal));
             }
             ReorderStrategy::LowestOddsFirst => {
-                sorted_legs.sort_by(|a, b| {
-                    a.odds.partial_cmp(&b.odds).unwrap_or(Ordering::Equal)
-                });
+                sorted_legs.sort_by(|a, b| a.odds.partial_cmp(&b.odds).unwrap_or(Ordering::Equal));
             }
             ReorderStrategy::AlternatingHighLow => {
-                sorted_legs.sort_by(|a, b| {
-                    b.odds.partial_cmp(&a.odds).unwrap_or(Ordering::Equal)
-                });
+                sorted_legs.sort_by(|a, b| b.odds.partial_cmp(&a.odds).unwrap_or(Ordering::Equal));
                 let mut alternating = Vec::new();
                 let mid = sorted_legs.len() / 2;
                 let (high, low): (Vec<_>, Vec<_>) =
@@ -106,18 +99,18 @@ impl LegReorderer {
                 sorted_legs = alternating;
             }
             ReorderStrategy::EarliestFirst => {
-                sorted_legs.sort_by(|a, b| {
-                    match (a.event_time_minutes, b.event_time_minutes) {
-                        (Some(a_time), Some(b_time)) => a_time.cmp(&b_time),
-                        (Some(_), None) => Ordering::Less,
-                        (None, Some(_)) => Ordering::Greater,
-                        (None, None) => Ordering::Equal,
-                    }
+                sorted_legs.sort_by(|a, b| match (a.event_time_minutes, b.event_time_minutes) {
+                    (Some(a_time), Some(b_time)) => a_time.cmp(&b_time),
+                    (Some(_), None) => Ordering::Less,
+                    (None, Some(_)) => Ordering::Greater,
+                    (None, None) => Ordering::Equal,
                 });
             }
             ReorderStrategy::HighestFormFirst => {
                 sorted_legs.sort_by(|a, b| {
-                    b.form_score.partial_cmp(&a.form_score).unwrap_or(Ordering::Equal)
+                    b.form_score
+                        .partial_cmp(&a.form_score)
+                        .unwrap_or(Ordering::Equal)
                 });
             }
             ReorderStrategy::Smart => {
@@ -151,7 +144,8 @@ impl LegReorderer {
         let reordered_cumulative: f64 = sorted_legs.iter().map(|l| l.odds).product();
 
         let efficiency_score = if best_possible_cumulative > 0.0 {
-            (reordered_cumulative - original_cumulative) / (best_possible_cumulative - original_cumulative)
+            (reordered_cumulative - original_cumulative)
+                / (best_possible_cumulative - original_cumulative)
         } else {
             0.0
         };
@@ -208,9 +202,10 @@ impl LegReorderer {
         }
 
         // Check if most legs have early start times
-        let early_count = legs.iter().filter(|l| {
-            l.event_time_minutes.map_or(false, |t| t < 120)
-        }).count();
+        let early_count = legs
+            .iter()
+            .filter(|l| l.event_time_minutes.map_or(false, |t| t < 120))
+            .count();
 
         if early_count > legs.len() / 2 {
             ReorderStrategy::EarliestFirst

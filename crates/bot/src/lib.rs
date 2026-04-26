@@ -1,9 +1,9 @@
 pub mod bridge;
-pub mod telegram;
-pub mod rate_limiter;
 pub mod notifier;
+pub mod rate_limiter;
+pub mod telegram;
 
 pub use bridge::spawn_event_bus_bridge;
-pub use telegram::TelegramBot;
+pub use notifier::{AlertHistoryEntry, AlertManager, AlertStatus, TelegramAlertConfig};
 pub use rate_limiter::RateLimiter;
-pub use notifier::{AlertManager, TelegramAlertConfig, AlertStatus, AlertHistoryEntry};
+pub use telegram::TelegramBot;

@@ -10,6 +10,7 @@ import type {
   BankrollRecommendationsResponse,
   BankrollState,
   ExecutionLedgerAudit,
+  ExecutionOperatorQueueAudit,
   ExecutionStateAudit,
   BackendGenerosityIndex,
   ExecutionOverview,
@@ -215,6 +216,7 @@ export function useScanner() {
   const [executionOverview, setExecutionOverview] = useState<ExecutionOverview | null>(null)
   const [executionLedger, setExecutionLedger] = useState<ExecutionLedgerAudit | null>(null)
   const [executionState, setExecutionState] = useState<ExecutionStateAudit | null>(null)
+  const [executionOperatorQueue, setExecutionOperatorQueue] = useState<ExecutionOperatorQueueAudit | null>(null)
   const [parserCoverage, setParserCoverage] = useState<ParserCoverage[]>([])
   const [parserHealth, setParserHealth] = useState<ParserHealth[]>([])
   const [accounts, setAccounts] = useState<AccountStateResponse[]>([])
@@ -231,7 +233,7 @@ export function useScanner() {
   // Fetch real data from API
   const fetchRealData = useCallback(async () => {
     try {
-      const [statusData, metricsData, bookmakersData, surebetsData, corridorsData, expressForksData, valueBetsData, generosityData, executionOverviewData, executionLedgerData, executionStateData, parserCoverageData, parserHealthData, accountsData, accountsSummaryData, bankrollStateData, bankrollRecommendationsData, freebetSummaryData, bookmakerStatusCatalogData] = await Promise.all([
+      const [statusData, metricsData, bookmakersData, surebetsData, corridorsData, expressForksData, valueBetsData, generosityData, executionOverviewData, executionLedgerData, executionStateData, executionOperatorQueueData, parserCoverageData, parserHealthData, accountsData, accountsSummaryData, bankrollStateData, bankrollRecommendationsData, freebetSummaryData, bookmakerStatusCatalogData] = await Promise.all([
         fetchApiData<ScannerStatus>('/api/v1/scanner/status'),
         fetchApiData<ScannerMetrics>('/api/v1/metrics'),
         fetchApiData<BackendBookmaker[] | LegacyBookmakersResponse>('/api/v1/bookmakers'),
@@ -243,6 +245,7 @@ export function useScanner() {
         fetchApiData<ExecutionOverview>('/api/v1/execution/overview'),
         fetchApiData<ExecutionLedgerAudit>('/api/v1/execution/ledger?limit=25'),
         fetchApiData<ExecutionStateAudit>('/api/v1/execution/state?limit=25'),
+        fetchApiData<ExecutionOperatorQueueAudit>('/api/v1/execution/operator-queue?limit=25'),
         fetchApiData<ParserCoverage[]>('/api/v1/parsers/coverage'),
         fetchApiData<ParserHealth[]>('/api/v1/parsers/health'),
         fetchApiData<AccountStateResponse[]>('/api/v1/accounts'),
@@ -288,6 +291,9 @@ export function useScanner() {
 
       if (executionStateData) {
         setExecutionState(executionStateData)
+      }
+      if (executionOperatorQueueData) {
+        setExecutionOperatorQueue(executionOperatorQueueData)
       }
 
       if (parserCoverageData) {
@@ -445,8 +451,9 @@ export function useScanner() {
     valueBets,
     generosityIndices,
     executionOverview,
-    executionLedger,
-    executionState,
+      executionLedger,
+      executionState,
+      executionOperatorQueue,
     parserCoverage,
     parserHealth,
     accounts,

@@ -97,6 +97,23 @@ impl PariExecutionAdapter {
         }
     }
 }
+// Implement the auth trait from auto_betting::auth
+use crate::auth::BookmakerAuth;
+use crate::auth; // for trait path
+use crate::execution; // ensure module path availability
+impl auth::BookmakerAuth for PariExecutionAdapter {
+    async fn authorize(&self, account: &BookmakerAccount) -> Result<BookmakerSession, Box<dyn std::error::Error + Send + Sync>> {
+        let session = BookmakerSession {
+            account_id: account.id,
+            bookmaker: Self::BOOKMAKER.to_string(),
+            state: BookmakerSessionState::Active,
+            token_hint: Some(format!("mock_token_{}", Self::BOOKMAKER)),
+            last_synced_at: Utc::now(),
+            expires_at: None,
+        };
+        Ok(session)
+    }
+}
 
 #[async_trait]
 impl BookmakerExecutionAdapter for PariExecutionAdapter {

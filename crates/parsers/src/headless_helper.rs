@@ -375,6 +375,30 @@ impl HeadlessChromeHelper {
             }
 
             if Instant::now() >= deadline {
+                if matches!(
+                    readiness_policy,
+                    NavigationReadinessPolicy::AllowCommittedShell
+                ) {
+                    if let Some(runtime_state) = Self::capture_runtime_state(tab) {
+                        if Self::runtime_state_supports_shell_recovery(&runtime_state, url) {
+                            debug!(
+                                url = url,
+                                blocker = runtime_state
+                                    .get("blocker")
+                                    .and_then(|value| value.get("kind"))
+                                    .and_then(|value| value.as_str())
+                                    .unwrap_or("-"),
+                                bootstrap_markers = runtime_state
+                                    .get("bootstrapMarkers")
+                                    .and_then(|value| value.as_array())
+                                    .map(|markers| markers.len())
+                                    .unwrap_or_default(),
+                                "HeadlessChrome: shell route timed out on readiness but runtime state looks usable"
+                            );
+                            return Ok(());
+                        }
+                    }
+                }
                 return Err(format!(
                     "headless navigation readiness timeout after {}ms for {}",
                     timeout_ms, url
@@ -390,6 +414,9 @@ impl HeadlessChromeHelper {
         let normalized = url.trim_end_matches('/');
         match normalized {
             "https://winline.ru/stavki/sport/futbol" => {
+                NavigationReadinessPolicy::AllowCommittedShell
+            }
+            _ if Self::is_betboom_shell_route(normalized) => {
                 NavigationReadinessPolicy::AllowCommittedShell
             }
             _ if Self::is_melbet_canonical_shell_route(normalized) => {
@@ -412,6 +439,11 @@ impl HeadlessChromeHelper {
                 | "https://m.melbet.com/live"
                 | "https://m.melbet.com/line"
         )
+    }
+
+    fn is_betboom_shell_route(url: &str) -> bool {
+        let normalized = url.to_ascii_lowercase();
+        normalized.starts_with("https://betboom.ru/sport/")
     }
 
     fn is_melbet_sportsbook_shell_route(url: &str) -> bool {
@@ -438,6 +470,56 @@ impl HeadlessChromeHelper {
             }
             NavigationReadinessPolicy::AllowCommittedShell => committed,
         }
+    }
+
+    fn runtime_state_supports_shell_recovery(state: &Value, url: &str) -> bool {
+        let href = state
+            .get("href")
+            .and_then(|value| value.as_str())
+            .unwrap_or_default();
+        let pathname = state
+            .get("pathname")
+            .and_then(|value| value.as_str())
+            .unwrap_or_default();
+        let ready_state = state
+            .get("readyState")
+            .and_then(|value| value.as_str())
+            .unwrap_or_default();
+        let body_child_count = state
+            .get("bodyChildCount")
+            .and_then(|value| value.as_u64())
+            .unwrap_or_default();
+        let body_text_length = state
+            .get("bodyTextLength")
+            .and_then(|value| value.as_u64())
+            .unwrap_or_default();
+        let bootstrap_marker_count = state
+            .get("bootstrapMarkers")
+            .and_then(|value| value.as_array())
+            .map(|markers| markers.len())
+            .unwrap_or_default();
+
+        let committed = matches!(ready_state, "interactive" | "complete")
+            && href != "about:blank"
+            && (!href.is_empty() || body_child_count > 0 || body_text_length > 0);
+        if !committed {
+            return false;
+        }
+
+        let normalized_url = url.to_ascii_lowercase();
+        let href_lower = href.to_ascii_lowercase();
+        let path_lower = pathname.to_ascii_lowercase();
+        let same_family = if normalized_url.contains("betboom.ru/sport/") {
+            href_lower.contains("betboom.ru/sport/") || path_lower.starts_with("/sport/")
+        } else if normalized_url.contains("winline.ru/") {
+            href_lower.contains("winline.ru/")
+        } else if normalized_url.contains("melbet") {
+            href_lower.contains("melbet")
+        } else {
+            true
+        };
+
+        same_family && (body_child_count > 0 || body_text_length > 0 || bootstrap_marker_count > 0)
     }
 
     /// Capture lightweight session bootstrap details without intercepting transport.

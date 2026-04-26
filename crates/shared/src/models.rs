@@ -348,6 +348,35 @@ pub struct ValueBet {
     pub detected_at: DateTime<Utc>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum OpportunityKind {
+    Surebet2way,
+    Surebet3way,
+    CrossMarket,
+    Corridor,
+    ExpressFork,
+    ValueBet,
+    Middle,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UnifiedOpportunity {
+    pub id: Uuid,
+    pub kind: OpportunityKind,
+    pub sport: Option<Sport>,
+    pub league: Option<String>,
+    pub home_team: Option<String>,
+    pub away_team: Option<String>,
+    pub bookmaker_pairs: Vec<String>,
+    pub market: Option<String>,
+    pub expected_value: f64,
+    pub profit_percent: Option<f64>,
+    pub detected_at: DateTime<Utc>,
+    pub correlation_blocked: bool,
+    pub rationale: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ParserHealth {
     pub bookmaker: String,
@@ -643,6 +672,80 @@ pub enum BonusType {
     OddsBoost,
     Loyalty,
     Special,
+    RefundOnDrawZeroZero,
+    EarlyPayoutUpByTwo,
+    BoostedOdds,
+    AccaInsurance,
+    DepositBonus,
+    FreebetQualification,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ScoreRange {
+    pub from: i32,
+    pub to: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BonusRequirements {
+    pub min_odds: Option<f64>,
+    pub wagering_multiplier: Option<f64>,
+    pub turnover_target: Option<f64>,
+    pub notes: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MiddleOpportunityV2 {
+    pub id: Uuid,
+    pub event_id: String,
+    pub bookmaker_a: String,
+    pub bookmaker_b: String,
+    pub market_a: String,
+    pub market_b: String,
+    pub odds_a: f64,
+    pub odds_b: f64,
+    pub win_win_scenario: Option<ScoreRange>,
+    pub loss_win_scenario: Option<ScoreRange>,
+    pub expected_value: f64,
+    pub max_profit: f64,
+    pub max_loss: f64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BonusOpportunity {
+    pub id: Uuid,
+    pub bonus_type: BonusType,
+    pub bookmaker: String,
+    pub event_id: Option<String>,
+    pub description: String,
+    pub nominal_value: f64,
+    pub probability_trigger: f64,
+    pub expected_value: f64,
+    pub expires_at: Option<DateTime<Utc>>,
+    pub requirements: BonusRequirements,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum FreebetStatus {
+    Discovered,
+    Qualifying,
+    Qualified,
+    Wagering,
+    Completed,
+    Expired,
+    Lost,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FreebetLifecycleV2 {
+    pub id: Uuid,
+    pub bookmaker: String,
+    pub amount: f64,
+    pub status: FreebetStatus,
+    pub qualification_progress: Option<f64>,
+    pub wagering_progress: Option<f64>,
+    pub expiry_date: DateTime<Utc>,
+    pub expected_conversion_rate: f64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -874,6 +977,35 @@ pub struct ExecutionStateAudit {
     pub bookmaker_readiness: Vec<ExecutionBookmakerReadinessRecord>,
     pub bookmaker_summaries: Vec<ExecutionBookmakerStateSummary>,
     pub recent_transitions: Vec<ExecutionStateTransitionRecord>,
+    pub generated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExecutionOperatorQueueItem {
+    pub bookmaker: String,
+    pub severity: String,
+    pub priority_score: i32,
+    pub execution_mode: Option<BookmakerExecutionMode>,
+    pub placement_ready: bool,
+    pub approval_required: bool,
+    pub submit_blocked_by_safe_mode: bool,
+    pub session_stale: bool,
+    pub balance_stale: bool,
+    pub auth_snapshot_stale: bool,
+    pub operator_action: Option<String>,
+    pub blocking_reasons: Vec<String>,
+    pub persistence_warnings: Vec<String>,
+    pub latest_error: Option<String>,
+    pub latest_transition_at: Option<DateTime<Utc>>,
+    pub latest_snapshot_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExecutionOperatorQueueAudit {
+    pub total_items: usize,
+    pub critical_items: usize,
+    pub warning_items: usize,
+    pub items: Vec<ExecutionOperatorQueueItem>,
     pub generated_at: DateTime<Utc>,
 }
 

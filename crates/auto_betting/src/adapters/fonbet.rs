@@ -327,3 +327,22 @@ mod tests {
         );
     }
 }
+use crate::auth::BookmakerAuth;
+use shared::{BookmakerAccount, BookmakerSession, BookmakerSessionState};
+use chrono::Utc;
+use std::error::Error;
+
+#[async_trait]
+impl BookmakerAuth for FonbetExecutionAdapter {
+    async fn authorize(&self, account: &BookmakerAccount) -> Result<BookmakerSession, Box<dyn Error + Send + Sync>> {
+        let session = BookmakerSession {
+            account_id: account.id,
+            bookmaker: Self::BOOKMAKER.to_string(),
+            state: BookmakerSessionState::Active,
+            token_hint: Some(format!("mock_token_{}", Self::BOOKMAKER)),
+            last_synced_at: Utc::now(),
+            expires_at: None,
+        };
+        Ok(session)
+    }
+}

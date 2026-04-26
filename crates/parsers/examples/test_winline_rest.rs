@@ -5,10 +5,10 @@ use std::sync::Arc;
 #[tokio::main]
 async fn main() {
     println!("Testing Winline REST Parser...\n");
-    
+
     let client = Arc::new(Client::new());
     let parser = WinlineRestParser::new(client);
-    
+
     match parser.fetch_events().await {
         Ok(events) => {
             println!("✅ SUCCESS: Fetched {} events", events.len());

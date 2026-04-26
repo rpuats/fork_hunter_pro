@@ -90,10 +90,22 @@ mod integration_tests {
 
         // Verify all components work together
         println!("6-Leg Parlay Pipeline:");
-        println!("  Cascade: {} legs, {:.2} total odds", cascade.leg_count, cascade.total_odds);
-        println!("  Reorder: efficiency {:.1}%", reorder_result.efficiency_score * 100.0);
-        println!("  Break-even: ROI {:.1}%, Risk/Reward {:.2}x", breakeven.roi_percentage, breakeven.risk_reward_ratio);
-        println!("  Hedge: stake {:.0}, guaranteed profit {:.0}", hedge_result.total_hedge_stake, hedge_result.guaranteed_profit);
+        println!(
+            "  Cascade: {} legs, {:.2} total odds",
+            cascade.leg_count, cascade.total_odds
+        );
+        println!(
+            "  Reorder: efficiency {:.1}%",
+            reorder_result.efficiency_score * 100.0
+        );
+        println!(
+            "  Break-even: ROI {:.1}%, Risk/Reward {:.2}x",
+            breakeven.roi_percentage, breakeven.risk_reward_ratio
+        );
+        println!(
+            "  Hedge: stake {:.0}, guaranteed profit {:.0}",
+            hedge_result.total_hedge_stake, hedge_result.guaranteed_profit
+        );
     }
 
     #[test]
@@ -108,12 +120,8 @@ mod integration_tests {
         // With hedge (20%)
         let hedge_calc = HedgeCalculator::new(HedgeStrategy::Percentage(20.0));
         let hedge_odds = vec![(0, 1.95, "bk2".to_string()), (1, 1.90, "bk3".to_string())];
-        let hedge_result = hedge_calc.analyze_hedge(
-            odds.iter().product::<f64>(),
-            stake,
-            3,
-            hedge_odds,
-        );
+        let hedge_result =
+            hedge_calc.analyze_hedge(odds.iter().product::<f64>(), stake, 3, hedge_odds);
 
         assert!(hedge_result.total_hedge_stake > 0.0);
         assert!(hedge_result.guaranteed_profit < be_no_hedge.best_case_profit);
@@ -133,7 +141,8 @@ mod integration_tests {
         assert!((original_cumulative - best_cumulative).abs() < 0.01);
 
         let reorderer = LegReorderer::new(ReorderStrategy::HighestOddsFirst);
-        let impact = reorderer.calculate_reorder_impact(original_cumulative, best_cumulative, 1000.0);
+        let impact =
+            reorderer.calculate_reorder_impact(original_cumulative, best_cumulative, 1000.0);
         assert!(impact >= 0.0);
     }
 
@@ -150,10 +159,7 @@ mod integration_tests {
 
         // Check scenarios
         assert!(!analysis.probability_matrix.is_empty());
-        let all_win = analysis
-            .probability_matrix
-            .iter()
-            .find(|s| s.legs_won == 7);
+        let all_win = analysis.probability_matrix.iter().find(|s| s.legs_won == 7);
         assert!(all_win.is_some());
     }
 
@@ -306,17 +312,19 @@ mod integration_tests {
 
         let cascade_legs: Vec<_> = legs
             .iter()
-            .map(|(id, odds, league, avail)| express_forks::cascade::CascadeLeg {
-                position: 0,
-                event_id: id.to_string(),
-                odds: *odds,
-                selection: "1".to_string(),
-                primary_bk: "bk1".to_string(),
-                backup_bks: vec!["bk2".to_string(), "bk3".to_string()],
-                availability_score: *avail,
-                league: league.to_string(),
-                event_time: None,
-            })
+            .map(
+                |(id, odds, league, avail)| express_forks::cascade::CascadeLeg {
+                    position: 0,
+                    event_id: id.to_string(),
+                    odds: *odds,
+                    selection: "1".to_string(),
+                    primary_bk: "bk1".to_string(),
+                    backup_bks: vec!["bk2".to_string(), "bk3".to_string()],
+                    availability_score: *avail,
+                    league: league.to_string(),
+                    event_time: None,
+                },
+            )
             .collect();
 
         let result = selector.select_cascade(cascade_legs, 4).unwrap();
@@ -344,9 +352,7 @@ mod integration_tests {
 
         // Test hedge
         let hedge = HedgeCalculator::new(HedgeStrategy::Percentage(20.0));
-        let oppositions: Vec<_> = (0..7)
-            .map(|i| (i, 1.95, format!("bk{}", i)))
-            .collect();
+        let oppositions: Vec<_> = (0..7).map(|i| (i, 1.95, format!("bk{}", i))).collect();
         let hedge_result = hedge.analyze_hedge(2.0_f64.powi(7), 1000.0, 7, oppositions);
         assert!(hedge_result.total_hedge_stake > 0.0);
 

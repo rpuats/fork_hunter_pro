@@ -23,6 +23,8 @@ const LEGACY_PREMATCH_URL: &str = "https://old.baltbet.ru/Line1.aspx";
 const LEGACY_LIVE_URL: &str = "https://old.baltbet.ru/Live1.aspx";
 const LEGACY_PREMATCH_FEATURED_GROUP_LIMIT: usize = 40;
 const LIVE_BANNER_FETCH_CONCURRENCY: usize = 8;
+const LIVE_BANNER_PROBE_LIMIT: usize = 72;
+const LEGACY_PREMATCH_FETCH_CONCURRENCY: usize = 10;
 const STRICT_LIVE_KPI_TARGET: usize = 150;
 const STRICT_PREMATCH_KPI_TARGET: usize = 3000;
 const RECENT_STRICT_LIVE_EVENTS: usize = 183;
@@ -207,14 +209,14 @@ impl BaltbetParser {
         debug!(count = live_meta.len(), "Baltbet live metadata parsed");
 
         let live_json = self.fetch_live_json().await?;
-        let missing_ids = Self::collect_missing_live_meta_ids(&live_json, &live_meta);
-        let banner_meta = self.fetch_live_banner_meta_batch(missing_ids).await;
+        let banner_probe_ids = Self::collect_live_banner_probe_ids(&live_json, &live_meta);
+        let banner_meta = self.fetch_live_banner_meta_batch(banner_probe_ids).await;
         debug!(
             count = banner_meta.len(),
             "Baltbet live banner fallback parsed"
         );
         for (event_id, meta_entry) in banner_meta {
-            live_meta.insert(event_id, meta_entry);
+            Self::merge_live_banner_meta(&mut live_meta, event_id, meta_entry);
         }
 
         let (events, odds) = Self::parse_live_json(&live_json, &live_meta);
@@ -287,39 +289,52 @@ impl BaltbetParser {
             return Ok((Vec::new(), Vec::new()));
         }
 
+        let client = self.client.clone();
+        let results = stream::iter(sport_links.into_iter().map(move |sport_link| {
+            let client = client.clone();
+            async move {
+                let url = format!("https://old.baltbet.ru/Line2.aspx?group={}", sport_link.group_id);
+                let resp = client
+                    .get(&url)
+                    .header(
+                        "Accept",
+                        "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                    )
+                    .header("Accept-Language", "ru-RU,ru;q=0.9,en;q=0.8")
+                    .send()
+                    .await;
+
+                match resp {
+                    Ok(resp) if resp.status().is_success() => match resp.text().await {
+                        Ok(html) => Some((sport_link.group_id, sport_link.sport_label, html)),
+                        Err(error) => {
+                            debug!(url, error = %error, "Baltbet prematch group body read failed");
+                            None
+                        }
+                    },
+                    Ok(resp) => {
+                        debug!(status = %resp.status(), url, "Baltbet prematch group fetch failed");
+                        None
+                    }
+                    Err(error) => {
+                        debug!(url, error = %error, "Baltbet prematch group request failed");
+                        None
+                    }
+                }
+            }
+        }))
+        .buffer_unordered(LEGACY_PREMATCH_FETCH_CONCURRENCY)
+        .filter_map(async move |result| result)
+        .collect::<Vec<_>>()
+        .await;
+
         let mut events = Vec::new();
         let mut odds = Vec::new();
         let mut seen_event_ids = HashSet::new();
 
-        for sport_link in sport_links {
-            let url = format!(
-                "https://old.baltbet.ru/Line2.aspx?group={}",
-                sport_link.group_id
-            );
-            let resp = self
-                .client
-                .get(&url)
-                .header(
-                    "Accept",
-                    "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-                )
-                .header("Accept-Language", "ru-RU,ru;q=0.9,en;q=0.8")
-                .send()
-                .await?;
-
-            if !resp.status().is_success() {
-                debug!(status = %resp.status(), url, "Baltbet prematch group fetch failed");
-                continue;
-            }
-
-            let html = resp.text().await?;
-            let (group_events, group_odds) = Self::parse_legacy_group_page(
-                &html,
-                &sport_link.group_id,
-                &sport_link.sport_label,
-                &mut seen_event_ids,
-            );
-
+        for (group_id, sport_label, html) in results {
+            let (group_events, group_odds) =
+                Self::parse_legacy_group_page(&html, &group_id, &sport_label, &mut seen_event_ids);
             events.extend(group_events);
             odds.extend(group_odds);
         }
@@ -571,16 +586,51 @@ impl BaltbetParser {
         (events, odds)
     }
 
-    fn collect_missing_live_meta_ids(json: &Value, meta: &HashMap<u64, LiveMeta>) -> Vec<u64> {
+    fn collect_live_banner_probe_ids(json: &Value, meta: &HashMap<u64, LiveMeta>) -> Vec<u64> {
         let Some(items) = json.get("events").and_then(Value::as_array) else {
             return Vec::new();
         };
 
-        items
-            .iter()
-            .filter_map(|item| item.get("i").and_then(Value::as_u64))
-            .filter(|event_id| !meta.contains_key(event_id))
-            .collect()
+        let mut missing_meta = Vec::new();
+        let mut unresolved_meta = Vec::new();
+        let mut seen = HashSet::new();
+
+        for item in items {
+            let Some(event_id) = item.get("i").and_then(Value::as_u64) else {
+                continue;
+            };
+            if !seen.insert(event_id) {
+                continue;
+            }
+
+            match meta.get(&event_id) {
+                None => missing_meta.push(event_id),
+                Some(meta_entry) if Self::live_meta_requires_banner_recovery(meta_entry) => {
+                    unresolved_meta.push(event_id)
+                }
+                Some(_) => {}
+            }
+        }
+
+        missing_meta.extend(unresolved_meta);
+        missing_meta.truncate(LIVE_BANNER_PROBE_LIMIT);
+        missing_meta
+    }
+
+    fn merge_live_banner_meta(
+        meta: &mut HashMap<u64, LiveMeta>,
+        event_id: u64,
+        banner_meta: LiveMeta,
+    ) {
+        match meta.get_mut(&event_id) {
+            Some(existing) if Self::live_meta_requires_banner_recovery(existing) => {
+                *existing = banner_meta;
+            }
+            Some(_) => {}
+            None => {
+                meta.insert(event_id, banner_meta);
+            }
+        }
     }
 
     fn parse_live_banner_meta(payload: &Value) -> Option<LiveMeta> {
@@ -745,6 +795,10 @@ impl BaltbetParser {
         } else {
             None
         }
+    }
+
+    fn live_meta_requires_banner_recovery(meta: &LiveMeta) -> bool {
+        Self::extract_live_teams(meta).is_none()
     }
 
     fn split_teams_from_href(href: Option<&str>, title: &str) -> Option<(String, String)> {
@@ -1502,7 +1556,7 @@ mod tests {
     use shared::OddsType;
     use shared::ParserReadinessStage;
     use shared::Sport;
-    use std::collections::HashSet;
+    use std::collections::{HashMap, HashSet};
 
     #[test]
     fn exposes_post_kpi_readiness_snapshot() {
@@ -1611,6 +1665,69 @@ mod tests {
                 && odd.odds_type == OddsType::Home
                 && (odd.odds - 1.87).abs() < f64::EPSILON
         }));
+    }
+
+    #[test]
+    fn collects_banner_probe_ids_for_missing_and_unresolved_live_meta() {
+        let payload = serde_json::json!({
+            "events": [
+                {"i": 11},
+                {"i": 22},
+                {"i": 33}
+            ]
+        });
+        let meta = HashMap::from([
+            (
+                11,
+                super::LiveMeta {
+                    title: "Желтые карточки".to_string(),
+                    league: "Футбол".to_string(),
+                    href: None,
+                },
+            ),
+            (
+                22,
+                super::LiveMeta {
+                    title: "Реал Мадрид - Барселона".to_string(),
+                    league: "Испания".to_string(),
+                    href: None,
+                },
+            ),
+        ]);
+
+        let ids = BaltbetParser::collect_live_banner_probe_ids(&payload, &meta);
+
+        assert_eq!(ids, vec![11, 33]);
+    }
+
+    #[test]
+    fn banner_meta_replaces_unresolved_primary_live_meta() {
+        let mut meta = HashMap::from([(
+            11,
+            super::LiveMeta {
+                title: "Желтые карточки".to_string(),
+                league: "Футбол".to_string(),
+                href: None,
+            },
+        )]);
+
+        BaltbetParser::merge_live_banner_meta(
+            &mut meta,
+            11,
+            super::LiveMeta {
+                title: "Реал Мадрид - Барселона".to_string(),
+                league: "Испания".to_string(),
+                href: Some("/soccer/spain/real-madrid-barcelona-id-11".to_string()),
+            },
+        );
+
+        let merged = meta.get(&11).expect("merged meta exists");
+        assert_eq!(merged.title, "Реал Мадрид - Барселона");
+        assert_eq!(merged.league, "Испания");
+        assert_eq!(
+            merged.href.as_deref(),
+            Some("/soccer/spain/real-madrid-barcelona-id-11")
+        );
     }
 
     #[test]

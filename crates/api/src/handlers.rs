@@ -12,6 +12,7 @@ use bonus_hunter::hunter::BonusHunter;
 use chrono::Utc;
 use engine::freebet::FreebetHunter;
 use engine::generosity::GenerosityIndexCalc;
+use engine::middle::MiddleOpportunity;
 use parsers::parser_factory::ParserFactory;
 use persistence::execution_ledger::ExecutionLedgerStore;
 use persistence::execution_state::ExecutionStateStore;
@@ -22,31 +23,30 @@ use scanner::ScannerRunner;
 use serde::{Deserialize, Serialize};
 use shared::models::{
     AccountSessionSummary, AutoBetDryRunLegRequest, AutoBetDryRunLegResponse, AutoBetDryRunRequest,
-    AutoBetDryRunResponse, AutoBetStatus, BankrollState, BetExecutionRequest, BetPlacement,
-    BetStatus, BonusInfo, BookmakerAccount, BookmakerAuthSnapshot, BookmakerBalance,
+    AutoBetDryRunResponse, AutoBetStatus, BankrollState, BetExecutionReceipt, BetExecutionRequest,
+    BetPlacement, BetStatus, BonusInfo, BookmakerAccount, BookmakerAuthSnapshot, BookmakerBalance,
     BookmakerBalanceRefresh, BookmakerBalanceSnapshot, BookmakerExecutionCapability,
     BookmakerExecutionMode, BookmakerMetadata, BookmakerSession, BookmakerStatusCatalog,
     BookmakerStatusCatalogEntry, BookmakerStatusCatalogSummary, BookmakerTriageBucket,
     DepositAllocationGuidance, DiagnosticSeverity, ExecutionBookmakerReadinessRecord,
     ExecutionBookmakerStateSummary, ExecutionLedgerAudit, ExecutionLedgerRecord,
-    ExecutionOverview, ExecutionPlacementSummary, ExecutionStateAudit,
-    ExecutionStateMachineMetadata, ExecutionStatePhaseSummary,
-    ExecutionStateReadinessSummary, ExecutionStateSnapshotRecord,
+    ExecutionOperatorQueueAudit, ExecutionOperatorQueueItem, ExecutionOverview,
+    ExecutionPlacementSummary, ExecutionStateAudit, ExecutionStateMachineMetadata,
+    ExecutionStatePhaseSummary, ExecutionStateReadinessSummary, ExecutionStateSnapshotRecord,
     ExecutionStateTransitionRecord, FreebetConversionPlan, FreebetExecutionReadiness,
-    FreebetExecutionReadinessStage, FreebetLifecycleFundingGapLeader,
-    FreebetLifecycleLabelCount, FreebetLifecycleStage, FreebetLifecycleState,
-    FreebetLifecycleSummary, FreebetOpportunity, FreebetPlanRequest, FreebetProgressStatus,
-    FreebetRolloverProgress, GenerosityIndex, OddsError, ParserCapabilityCatalogEntry,
-    ParserCoverage, ParserDiagnosticCheck, ParserHealth, ParserNightlyKpiGate,
-    ParserPromotionKpi,
-    ParserResultStatus, ParserRuntimeSnapshot, RuntimeCircuitState, ScannerMetrics,
-    StakeValidationDecision, StakeValidationPreflightRequest, StakeValidationPreflightResponse,
-    StakeValidationRequest, Surebet, ValueBet,
+    FreebetExecutionReadinessStage, FreebetLifecycleFundingGapLeader, FreebetLifecycleLabelCount,
+    FreebetLifecycleStage, FreebetLifecycleState, FreebetLifecycleSummary, FreebetOpportunity,
+    FreebetPlanRequest, FreebetProgressStatus, FreebetRolloverProgress, GenerosityIndex, OddsError,
+    ParserCapabilityCatalogEntry, ParserCoverage, ParserDiagnosticCheck, ParserHealth,
+    ParserNightlyKpiGate, ParserPromotionKpi, ParserResultStatus, ParserRuntimeSnapshot,
+    OpportunityKind, RuntimeCircuitState, ScannerMetrics, StakeValidationDecision,
+    StakeValidationPreflightRequest, StakeValidationPreflightResponse, StakeValidationRequest,
+    Surebet, UnifiedOpportunity, ValueBet,
 };
 use shared::{CorridorOpportunity, ExpressFork};
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::path::Path;
+use uuid::Uuid;
 
 const STATIC_PARSER_HEALTH_NOTE: &str =
     "Static factory snapshot only; runtime fetch has not been executed yet.";
@@ -57,6 +57,30 @@ const AUTH_SNAPSHOT_STALE_AFTER_SECS: i64 = 5 * 60;
 #[derive(Deserialize, Debug, Clone, Default)]
 pub struct SurebetsQuery {
     pub limit: Option<i32>,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct AutoBetExecuteLegRequest {
+    pub bookmaker: String,
+    pub event_id: String,
+    pub market: String,
+    pub selection: String,
+    pub odds: f64,
+    pub desired_stake: f64,
+    pub min_stake: Option<f64>,
+    pub max_stake: Option<f64>,
+    pub bankroll_available_balance: Option<f64>,
+    pub allow_auto_adjust: bool,
+    pub reference: Option<String>,
+    #[serde(default)]
+    pub execute_submission: bool,
+}
+
+#[derive(Serialize)]
+pub struct AutoBetExecuteLegResponse {
+    pub preflight: StakeValidationPreflightResponse,
+    pub execution_request: BetExecutionRequest,
+    pub receipt: BetExecutionReceipt,
 }
 
 #[derive(Serialize)]
@@ -583,7 +607,10 @@ fn build_parser_capability_catalog(
                     item.checks
                         .iter()
                         .find(|check| {
-                            matches!(check.severity, DiagnosticSeverity::Fail | DiagnosticSeverity::Warn)
+                            matches!(
+                                check.severity,
+                                DiagnosticSeverity::Fail | DiagnosticSeverity::Warn
+                            )
                         })
                         .map(|check| check.message.clone())
                 })
@@ -606,7 +633,10 @@ fn build_parser_capability_catalog(
                 readiness_stage: readiness.map(|item| item.stage.clone()),
                 production_enabled: readiness.is_some_and(|item| item.production_enabled),
                 self_check_available: readiness.is_some_and(|item| item.self_check_available),
-                health_status: coverage.runtime_health.as_ref().map(|health| health.status.clone()),
+                health_status: coverage
+                    .runtime_health
+                    .as_ref()
+                    .map(|health| health.status.clone()),
                 top_issue,
             }
         })
@@ -623,7 +653,9 @@ fn build_bookmaker_status_catalog(coverage: &[ParserCoverage]) -> BookmakerStatu
             let readiness = coverage.readiness.as_ref();
             let production_enabled = readiness.is_some_and(|item| item.production_enabled);
             let nightly_kpi_gate = ParserNightlyKpiGate::from_readiness(readiness);
-            let triage_bucket = if !coverage.enabled || matches!(coverage.status, shared::BookmakerStatus::Disabled) {
+            let triage_bucket = if !coverage.enabled
+                || matches!(coverage.status, shared::BookmakerStatus::Disabled)
+            {
                 BookmakerTriageBucket::Disabled
             } else if production_enabled {
                 BookmakerTriageBucket::Ready
@@ -635,7 +667,10 @@ fn build_bookmaker_status_catalog(coverage: &[ParserCoverage]) -> BookmakerStatu
                     item.checks
                         .iter()
                         .find(|check| {
-                            matches!(check.severity, DiagnosticSeverity::Fail | DiagnosticSeverity::Warn)
+                            matches!(
+                                check.severity,
+                                DiagnosticSeverity::Fail | DiagnosticSeverity::Warn
+                            )
                         })
                         .map(|check| check.message.clone())
                 })
@@ -668,7 +703,10 @@ fn build_bookmaker_status_catalog(coverage: &[ParserCoverage]) -> BookmakerStatu
                 readiness_stage: readiness.map(|item| item.stage.clone()),
                 production_enabled,
                 nightly_kpi_gate,
-                health_status: coverage.runtime_health.as_ref().map(|health| health.status.clone()),
+                health_status: coverage
+                    .runtime_health
+                    .as_ref()
+                    .map(|health| health.status.clone()),
                 top_issue,
             }
         })
@@ -687,7 +725,10 @@ fn build_bookmaker_status_catalog(coverage: &[ParserCoverage]) -> BookmakerStatu
             .then_with(|| left.slug.cmp(&right.slug))
     });
 
-    BookmakerStatusCatalog { summary, bookmakers }
+    BookmakerStatusCatalog {
+        summary,
+        bookmakers,
+    }
 }
 
 fn build_recommended_freebet_plan(
@@ -1754,6 +1795,87 @@ fn build_execution_state_audit(
     }
 }
 
+fn build_execution_operator_queue(audit: &ExecutionStateAudit) -> ExecutionOperatorQueueAudit {
+    let summary_by_bookmaker = audit
+        .bookmaker_summaries
+        .iter()
+        .map(|item| (item.bookmaker.clone(), item))
+        .collect::<HashMap<_, _>>();
+
+    let mut items = audit
+        .bookmaker_readiness
+        .iter()
+        .map(|entry| {
+            let summary = summary_by_bookmaker.get(&entry.bookmaker);
+            let severity = if entry.submit_blocked_by_safe_mode || entry.approval_required {
+                "critical"
+            } else if !entry.placement_ready
+                || entry.session_stale
+                || entry.balance_stale
+                || entry.auth_snapshot_stale
+                || !entry.persistence_warnings.is_empty()
+                || !entry.blocking_reasons.is_empty()
+            {
+                "warning"
+            } else {
+                "info"
+            };
+
+            let priority_score = (if entry.submit_blocked_by_safe_mode {
+                100
+            } else {
+                0
+            }) + (if entry.approval_required { 80 } else { 0 })
+                + (if !entry.placement_ready { 55 } else { 0 })
+                + (if entry.session_stale { 32 } else { 0 })
+                + (if entry.balance_stale { 24 } else { 0 })
+                + (if entry.auth_snapshot_stale { 18 } else { 0 })
+                + (entry.persistence_warnings.len() as i32 * 4)
+                + (entry.blocking_reasons.len() as i32 * 5);
+
+            ExecutionOperatorQueueItem {
+                bookmaker: entry.bookmaker.clone(),
+                severity: severity.to_string(),
+                priority_score,
+                execution_mode: entry.execution_mode.clone(),
+                placement_ready: entry.placement_ready,
+                approval_required: entry.approval_required,
+                submit_blocked_by_safe_mode: entry.submit_blocked_by_safe_mode,
+                session_stale: entry.session_stale,
+                balance_stale: entry.balance_stale,
+                auth_snapshot_stale: entry.auth_snapshot_stale,
+                operator_action: entry.operator_action.clone(),
+                blocking_reasons: entry.blocking_reasons.clone(),
+                persistence_warnings: entry.persistence_warnings.clone(),
+                latest_error: summary.and_then(|item| item.latest_error.clone()),
+                latest_transition_at: summary.and_then(|item| item.latest_transition_at),
+                latest_snapshot_at: summary.and_then(|item| item.latest_snapshot_at),
+            }
+        })
+        .collect::<Vec<_>>();
+
+    items.sort_by(|left, right| {
+        right
+            .priority_score
+            .cmp(&left.priority_score)
+            .then_with(|| left.bookmaker.cmp(&right.bookmaker))
+    });
+
+    ExecutionOperatorQueueAudit {
+        total_items: items.len(),
+        critical_items: items
+            .iter()
+            .filter(|item| item.severity == "critical")
+            .count(),
+        warning_items: items
+            .iter()
+            .filter(|item| item.severity == "warning")
+            .count(),
+        items,
+        generated_at: Utc::now(),
+    }
+}
+
 async fn load_execution_state_metadata(
     state: &AppState,
     recent_limit: usize,
@@ -2201,6 +2323,15 @@ pub async fn get_value_bets(
     Json(ApiResponse::ok(value_bets))
 }
 
+pub async fn get_middles(
+    State(state): State<AppState>,
+    Query(params): Query<SurebetsQuery>,
+) -> Json<ApiResponse<Vec<MiddleOpportunity>>> {
+    let limit = params.limit.unwrap_or(50) as usize;
+    let middles = state.scanner.get_middles(limit);
+    Json(ApiResponse::ok(middles))
+}
+
 pub async fn get_odds_errors(
     State(state): State<AppState>,
     Query(params): Query<SurebetsQuery>,
@@ -2298,6 +2429,17 @@ pub async fn get_execution_state(
     )))
 }
 
+pub async fn get_execution_operator_queue(
+    State(state): State<AppState>,
+    Query(params): Query<SurebetsQuery>,
+) -> Json<ApiResponse<ExecutionOperatorQueueAudit>> {
+    let limit = params.limit.unwrap_or(50).max(1) as usize;
+    let replay = load_execution_state_replay(&state).await;
+    let registry = execution_registry(&state);
+    let audit = build_execution_state_audit(registry.as_ref(), replay, limit);
+    Json(ApiResponse::ok(build_execution_operator_queue(&audit)))
+}
+
 pub async fn start_autobet(
     State(state): State<AppState>,
 ) -> Json<ApiResponse<AutoBetStatusResponse>> {
@@ -2386,7 +2528,9 @@ pub async fn get_bookmakers(
 pub async fn get_bookmaker_status_catalog(
     State(state): State<AppState>,
 ) -> Json<ApiResponse<BookmakerStatusCatalog>> {
-    Json(ApiResponse::ok(build_bookmaker_status_catalog(&live_parsers_coverage(&state))))
+    Json(ApiResponse::ok(build_bookmaker_status_catalog(
+        &live_parsers_coverage(&state),
+    )))
 }
 
 pub async fn get_parsers_coverage(
@@ -2405,7 +2549,9 @@ pub async fn get_parsers_promotion_kpi(
     State(state): State<AppState>,
 ) -> Json<ApiResponse<ParserPromotionKpi>> {
     let coverage = live_parsers_coverage(&state);
-    Json(ApiResponse::ok(ParserPromotionKpi::from_coverage(&coverage)))
+    Json(ApiResponse::ok(ParserPromotionKpi::from_coverage(
+        &coverage,
+    )))
 }
 
 /// Swarm lane status from board config - read-only developer panel data
@@ -2649,6 +2795,101 @@ pub async fn autobet_dry_run(
         .into_response()
 }
 
+pub async fn autobet_execute_leg(
+    State(state): State<AppState>,
+    Json(request): Json<AutoBetExecuteLegRequest>,
+) -> axum::response::Response {
+    let registry = execution_registry(&state);
+    let preflight = match build_stake_preflight(
+        &registry,
+        StakeValidationPreflightRequest {
+            bookmaker: request.bookmaker.clone(),
+            desired_stake: request.desired_stake,
+            min_stake: request.min_stake,
+            max_stake: request.max_stake,
+            bankroll_available_balance: request.bankroll_available_balance,
+            allow_auto_adjust: request.allow_auto_adjust,
+        },
+    )
+    .await
+    {
+        Ok(response) => response,
+        Err(error) => {
+            return (
+                StatusCode::BAD_GATEWAY,
+                Json(ApiResponse::<AutoBetExecuteLegResponse>::error(&error)),
+            )
+                .into_response();
+        }
+    };
+
+    if !preflight.executable {
+        return (
+            StatusCode::CONFLICT,
+            Json(ApiResponse::<AutoBetExecuteLegResponse>::error(
+                "leg is not executable under current account/session/balance readiness",
+            )),
+        )
+            .into_response();
+    }
+
+    let execute_submission = request.execute_submission
+        && preflight.placement_ready
+        && preflight.real_money_enabled
+        && !preflight.approval_required
+        && !preflight.submit_blocked_by_safe_mode;
+    let allow_dry_run = !execute_submission;
+
+    let execution_request = BetExecutionRequest {
+        bookmaker: request.bookmaker,
+        event_id: request.event_id,
+        market: request.market,
+        selection: request.selection,
+        odds: request.odds,
+        stake: preflight.validation.adjusted_stake,
+        allow_dry_run,
+        reference: request.reference,
+    };
+
+    if execute_submission
+        && execution_request
+            .reference
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .is_none()
+    {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ApiResponse::<AutoBetExecuteLegResponse>::error(
+                "submission execution requires a non-empty approval reference",
+            )),
+        )
+            .into_response();
+    }
+
+    let receipt = match registry.execute_bet(&execution_request).await {
+        Ok(receipt) => receipt,
+        Err(error) => {
+            return (
+                StatusCode::BAD_GATEWAY,
+                Json(ApiResponse::<AutoBetExecuteLegResponse>::error(&error)),
+            )
+                .into_response();
+        }
+    };
+
+    (
+        StatusCode::OK,
+        Json(ApiResponse::ok(AutoBetExecuteLegResponse {
+            preflight,
+            execution_request,
+            receipt,
+        })),
+    )
+        .into_response()
+}
+
 pub async fn get_capabilities(State(state): State<AppState>) -> Json<ApiResponse<ApiSurfacePlan>> {
     let parser_coverage = live_parsers_coverage(&state);
     let parser_capabilities = build_parser_capability_catalog(&parser_coverage);
@@ -2834,6 +3075,268 @@ pub async fn telegram_history() -> Json<ApiResponse<serde_json::Value>> {
         "history": [],
         "limit": 20,
         "total": 0
+    })))
+}
+
+pub async fn execute_surebet_v2(
+    State(state): State<AppState>,
+    axum::extract::Path(_surebet_id): axum::extract::Path<String>,
+) -> Json<ApiResponse<AutoBetStatusResponse>> {
+    state.auto_bet_engine.start();
+    Json(ApiResponse::ok(AutoBetStatusResponse {
+        status: state.auto_bet_engine.get_status(),
+        limits: state.auto_bet_engine.get_limiter_stats(),
+    }))
+}
+
+pub async fn get_bonus_calendar_v2(
+    State(state): State<AppState>,
+) -> Json<ApiResponse<serde_json::Value>> {
+    let items: Vec<serde_json::Value> = state
+        .bonus_hunter
+        .get_best_bonuses(100)
+        .into_iter()
+        .map(|bonus| {
+            serde_json::json!({
+                "bookmaker": bonus.bookmaker,
+                "bonus_type": bonus.bonus_type,
+                "name": bonus.name,
+                "expected_value": bonus.ev,
+                "expires_in_days": bonus.expiry_days
+            })
+        })
+        .collect();
+    Json(ApiResponse::ok(serde_json::json!({
+        "generated_at": Utc::now(),
+        "items": items
+    })))
+}
+
+pub async fn post_bankroll_allocate_v2(
+    State(state): State<AppState>,
+) -> Json<ApiResponse<BankrollRecommendationsResponse>> {
+    Json(ApiResponse::ok(BankrollRecommendationsResponse {
+        rebalance: state.bankroll_manager.get_rebalance_recommendations(),
+        deposit_guidance: state.bankroll_manager.get_deposit_allocation_guidance(),
+    }))
+}
+
+pub async fn get_bankroll_advice_v2(
+    State(state): State<AppState>,
+) -> Json<ApiResponse<BankrollRecommendationsResponse>> {
+    Json(ApiResponse::ok(BankrollRecommendationsResponse {
+        rebalance: state.bankroll_manager.get_rebalance_recommendations(),
+        deposit_guidance: state.bankroll_manager.get_deposit_allocation_guidance(),
+    }))
+}
+
+pub async fn post_freebet_qualify_v2(
+    State(state): State<AppState>,
+) -> Json<ApiResponse<Vec<FreebetConversionPlan>>> {
+    let plans = state
+        .freebet_hunter
+        .scan_freebets()
+        .into_iter()
+        .map(|opportunity| build_recommended_freebet_plan(&state.bonus_hunter, &opportunity))
+        .collect();
+    Json(ApiResponse::ok(plans))
+}
+
+pub async fn get_clv_analytics_v2(
+    State(state): State<AppState>,
+    Query(params): Query<SurebetsQuery>,
+) -> Json<ApiResponse<serde_json::Value>> {
+    let limit = params.limit.unwrap_or(200) as usize;
+    let placements = load_recent_execution_placements(&state, limit).await;
+    let clv_ready = placements
+        .iter()
+        .filter(|placement| placement.result.is_some())
+        .count();
+    Json(ApiResponse::ok(serde_json::json!({
+        "generated_at": Utc::now(),
+        "placements_scanned": placements.len(),
+        "placements_with_result": clv_ready,
+        "coverage_percent": if placements.is_empty() { 0.0 } else { (clv_ready as f64 / placements.len() as f64) * 100.0 }
+    })))
+}
+
+pub async fn post_execution_panic_v2(
+    State(state): State<AppState>,
+) -> Json<ApiResponse<AutoBetStatusResponse>> {
+    state.auto_bet_engine.emergency_stop();
+    Json(ApiResponse::ok(AutoBetStatusResponse {
+        status: state.auto_bet_engine.get_status(),
+        limits: state.auto_bet_engine.get_limiter_stats(),
+    }))
+}
+
+pub async fn get_ghost_health_v2(
+    State(state): State<AppState>,
+) -> Json<ApiResponse<serde_json::Value>> {
+    let scanner_state = state.scanner.get_state();
+    Json(ApiResponse::ok(serde_json::json!({
+        "generated_at": Utc::now(),
+        "scanner_running": scanner_state.running,
+        "cycle_count": scanner_state.cycle_count,
+        "autobet_status": state.auto_bet_engine.get_status(),
+        "limiter": state.auto_bet_engine.get_limiter_stats()
+    })))
+}
+
+pub async fn get_opportunities_v2(
+    State(state): State<AppState>,
+    Query(params): Query<SurebetsQuery>,
+) -> Json<ApiResponse<Vec<UnifiedOpportunity>>> {
+    let limit = params.limit.unwrap_or(100) as usize;
+    let now = Utc::now();
+
+    let surebets = state.scanner.get_surebets(limit);
+    let values = state.scanner.get_value_bets(limit);
+    let corridors = state.scanner.get_corridors(limit);
+    let express = state.scanner.get_express_forks(limit);
+    let middles = state.scanner.get_middles(limit);
+
+    let mut items = Vec::new();
+
+    for s in surebets {
+        let kind = if s.legs.len() >= 3 {
+            OpportunityKind::Surebet3way
+        } else {
+            OpportunityKind::Surebet2way
+        };
+        items.push(UnifiedOpportunity {
+            id: s.id,
+            kind,
+            sport: Some(s.sport.clone()),
+            league: Some(s.league.clone()),
+            home_team: Some(s.home_team.clone()),
+            away_team: Some(s.away_team.clone()),
+            bookmaker_pairs: s.legs.iter().map(|leg| leg.bookmaker.clone()).collect(),
+            market: s.legs.first().map(|leg| leg.market.clone()),
+            expected_value: s.profit_percent,
+            profit_percent: Some(s.profit_percent),
+            detected_at: s.detected_at,
+            correlation_blocked: false,
+            rationale: Some("Derived from surebet scanner output".to_string()),
+        });
+    }
+
+    for v in values {
+        items.push(UnifiedOpportunity {
+            id: v.id,
+            kind: OpportunityKind::ValueBet,
+            sport: Some(v.event.sport.clone()),
+            league: Some(v.event.league.clone()),
+            home_team: Some(v.event.home_team.clone()),
+            away_team: Some(v.event.away_team.clone()),
+            bookmaker_pairs: vec![v.bookmaker.clone()],
+            market: Some(v.market.clone()),
+            expected_value: v.edge_percent,
+            profit_percent: Some(v.edge_percent),
+            detected_at: v.detected_at,
+            correlation_blocked: false,
+            rationale: Some("Positive edge against fair odds baseline".to_string()),
+        });
+    }
+
+    for c in corridors {
+        items.push(UnifiedOpportunity {
+            id: c.id,
+            kind: OpportunityKind::Corridor,
+            sport: Some(c.sport.clone()),
+            league: Some(c.league.clone()),
+            home_team: Some(c.home_team.clone()),
+            away_team: Some(c.away_team.clone()),
+            bookmaker_pairs: vec![c.bookmaker_a.clone(), c.bookmaker_b.clone()],
+            market: Some(c.market.clone()),
+            expected_value: c.expected_roi,
+            profit_percent: Some(c.expected_roi),
+            detected_at: c.detected_at,
+            correlation_blocked: false,
+            rationale: Some("Line corridor opportunity".to_string()),
+        });
+    }
+
+    for e in express {
+        items.push(UnifiedOpportunity {
+            id: e.id,
+            kind: OpportunityKind::ExpressFork,
+            sport: e.legs.first().map(|leg| leg.event.sport.clone()),
+            league: e.legs.first().map(|leg| leg.event.league.clone()),
+            home_team: e.legs.first().map(|leg| leg.event.home_team.clone()),
+            away_team: e.legs.first().map(|leg| leg.event.away_team.clone()),
+            bookmaker_pairs: e.legs.iter().map(|leg| leg.bookmaker.clone()).collect(),
+            market: e.legs.first().map(|leg| leg.market.clone()),
+            expected_value: e.profit_percent,
+            profit_percent: Some(e.profit_percent),
+            detected_at: e.detected_at,
+            correlation_blocked: false,
+            rationale: Some("Express fork chain".to_string()),
+        });
+    }
+
+    for m in middles {
+        items.push(UnifiedOpportunity {
+            id: Uuid::new_v4(),
+            kind: OpportunityKind::Middle,
+            sport: Some(m.sport.clone()),
+            league: None,
+            home_team: None,
+            away_team: None,
+            bookmaker_pairs: vec![m.bookmaker_a.clone(), m.bookmaker_b.clone()],
+            market: Some(m.market_a.clone()),
+            expected_value: m.expected_value,
+            profit_percent: Some(m.expected_value),
+            detected_at: now,
+            correlation_blocked: false,
+            rationale: Some("Middle overlap opportunity".to_string()),
+        });
+    }
+
+    if items.len() > limit {
+        items.truncate(limit);
+    }
+    if items.is_empty() {
+        items.push(UnifiedOpportunity {
+            id: Uuid::new_v4(),
+            kind: OpportunityKind::CrossMarket,
+            sport: None,
+            league: None,
+            home_team: None,
+            away_team: None,
+            bookmaker_pairs: vec![],
+            market: None,
+            expected_value: 0.0,
+            profit_percent: Some(0.0),
+            detected_at: now,
+            correlation_blocked: true,
+            rationale: Some("No active opportunities in current snapshot".to_string()),
+        });
+    }
+    Json(ApiResponse::ok(items))
+}
+
+pub async fn get_accounts_readiness_v2(
+    State(state): State<AppState>,
+) -> Json<ApiResponse<ExecutionStateReadinessSummary>> {
+    let replay = load_execution_state_replay(&state).await;
+    let registry = execution_registry(&state);
+    let audit = build_execution_state_audit(registry.as_ref(), replay, 50);
+    Json(ApiResponse::ok(audit.readiness))
+}
+
+pub async fn get_freebet_funding_advice_v2(
+    State(state): State<AppState>,
+) -> Json<ApiResponse<serde_json::Value>> {
+    let lifecycle = load_freebet_lifecycle(&state).await;
+    let summary = build_freebet_lifecycle_summary(&lifecycle);
+    Json(ApiResponse::ok(serde_json::json!({
+        "generated_at": Utc::now(),
+        "total_bookmakers": summary.total_bookmakers,
+        "active_bonuses": summary.active_bonuses,
+        "total_funding_gap": summary.total_funding_gap,
+        "largest_funding_gap": summary.largest_funding_gap,
+        "deposit_required_bookmakers": summary.deposit_required_bookmakers
     })))
 }
 
@@ -3692,7 +4195,10 @@ mod tests {
             BookmakerTriageBucket::Unfinished
         ));
         assert_eq!(catalog.bookmakers[0].slug, "melbet");
-        assert_eq!(catalog.bookmakers[0].top_issue.as_deref(), Some("bootstrap still unverified"));
+        assert_eq!(
+            catalog.bookmakers[0].top_issue.as_deref(),
+            Some("bootstrap still unverified")
+        );
         assert_eq!(
             catalog.bookmakers[0].nightly_kpi_gate.status,
             ParserNightlyKpiGateStatus::Warn

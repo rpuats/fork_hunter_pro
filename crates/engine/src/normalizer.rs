@@ -1,9 +1,9 @@
 use once_cell::sync::Lazy;
-use std::sync::OnceLock;
 use regex::Regex;
 use shared::Event;
 use std::collections::HashMap;
 use std::sync::Mutex;
+use std::sync::OnceLock;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Структура для кэширования с TTL (24 часа = 86400 секунд)
@@ -20,7 +20,11 @@ impl<T: Clone> CachedValue<T> {
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_secs();
-        Self { value, timestamp, ttl_secs }
+        Self {
+            value,
+            timestamp,
+            ttl_secs,
+        }
     }
 
     fn is_expired(&self) -> bool {
@@ -33,9 +37,11 @@ impl<T: Clone> CachedValue<T> {
 }
 
 // Кэш для результатов fuzzy matching с TTL 24 часа
-static FUZZY_MATCH_CACHE: OnceLock<Mutex<HashMap<String, CachedValue<Option<String>>>>> = OnceLock::new();
+static FUZZY_MATCH_CACHE: OnceLock<Mutex<HashMap<String, CachedValue<Option<String>>>>> =
+    OnceLock::new();
 // Кэш для пар команд с TTL 24 часа
-static TEAM_PAIR_CACHE: OnceLock<Mutex<HashMap<String, CachedValue<(String, String)>>>> = OnceLock::new();
+static TEAM_PAIR_CACHE: OnceLock<Mutex<HashMap<String, CachedValue<(String, String)>>>> =
+    OnceLock::new();
 
 const CACHE_TTL_24H: u64 = 86400; // 24 часа в секундах
 
@@ -51,7 +57,7 @@ fn get_team_pair_cache() -> &'static Mutex<HashMap<String, CachedValue<(String, 
 
 static TEAM_ALIASES: Lazy<HashMap<&str, Vec<&str>>> = Lazy::new(|| {
     let mut map: HashMap<&str, Vec<&str>> = HashMap::new();
-    
+
     // ===== РОССИЙСКИЕ КОМАНДЫ (RPL) =====
     map.insert(
         "CSKA Moscow",
@@ -114,90 +120,29 @@ static TEAM_ALIASES: Lazy<HashMap<&str, Vec<&str>>> = Lazy::new(|| {
     );
     map.insert(
         "Krasnodar",
-        vec![
-            "Краснодар",
-            "FC Krasnodar",
-            "ФК Краснодар",
-            "Краснодар ФК",
-        ],
+        vec!["Краснодар", "FC Krasnodar", "ФК Краснодар", "Краснодар ФК"],
     );
     map.insert(
         "Rostov",
-        vec![
-            "Ростов",
-            "FC Rostov",
-            "FK Rostov",
-            "ФК Ростов",
-            "Ростов ФК",
-        ],
+        vec!["Ростов", "FC Rostov", "FK Rostov", "ФК Ростов", "Ростов ФК"],
     );
-    map.insert(
-        "Sochi",
-        vec![
-            "Сочи",
-            "FC Sochi",
-            "ФК Сочи",
-            "Сочи ФК",
-        ],
-    );
+    map.insert("Sochi", vec!["Сочи", "FC Sochi", "ФК Сочи", "Сочи ФК"]);
     map.insert(
         "Akhmat Grozny",
-        vec![
-            "Ахмат",
-            "Ахмат Грозный",
-            "FC Akhmat",
-            "ФК Ахмат",
-        ],
+        vec!["Ахмат", "Ахмат Грозный", "FC Akhmat", "ФК Ахмат"],
     );
-    map.insert(
-        "Ufa",
-        vec![
-            "Уфа",
-            "FC Ufa",
-            "ФК Уфа",
-            "Уфа ФК",
-        ],
-    );
-    map.insert(
-        "Orenburg",
-        vec![
-            "Оренбург",
-            "FC Orenburg",
-            "ФК Оренбург",
-        ],
-    );
+    map.insert("Ufa", vec!["Уфа", "FC Ufa", "ФК Уфа", "Уфа ФК"]);
+    map.insert("Orenburg", vec!["Оренбург", "FC Orenburg", "ФК Оренбург"]);
     map.insert(
         "Nizhny Novgorod",
-        vec![
-            "Нижний Новгород",
-            "FC Nizhny",
-            "ФК Нижний",
-        ],
+        vec!["Нижний Новгород", "FC Nizhny", "ФК Нижний"],
     );
-    map.insert(
-        "Khimki",
-        vec![
-            "Химки",
-            "FC Khimki",
-            "ФК Химки",
-        ],
-    );
+    map.insert("Khimki", vec!["Химки", "FC Khimki", "ФК Химки"]);
     map.insert(
         "CSKA Sofia",
-        vec![
-            "ЦСКА София",
-            "PFC CSKA Sofia",
-            "ПФК ЦСКА София",
-        ],
+        vec!["ЦСКА София", "PFC CSKA Sofia", "ПФК ЦСКА София"],
     );
-    map.insert(
-        "Pari NN",
-        vec![
-            "Пари НН",
-            "Pari Nizhny",
-            "Пари",
-        ],
-    );
+    map.insert("Pari NN", vec!["Пари НН", "Pari Nizhny", "Пари"]);
 
     // ===== ФУТБОЛ (обобщённый English) =====
     // Испанские
@@ -213,13 +158,7 @@ static TEAM_ALIASES: Lazy<HashMap<&str, Vec<&str>>> = Lazy::new(|| {
     );
     map.insert(
         "Barcelona",
-        vec![
-            "Барселона",
-            "Барса",
-            "FC Barcelona",
-            "Barça",
-            "Барса",
-        ],
+        vec!["Барселона", "Барса", "FC Barcelona", "Barça", "Барса"],
     );
     map.insert(
         "Atletico Madrid",
@@ -247,12 +186,7 @@ static TEAM_ALIASES: Lazy<HashMap<&str, Vec<&str>>> = Lazy::new(|| {
     );
     map.insert(
         "Manchester City",
-        vec![
-            "Манчестер Сити",
-            "Ман Сити",
-            "Man City",
-            "MCFC",
-        ],
+        vec!["Манчестер Сити", "Ман Сити", "Man City", "MCFC"],
     );
     map.insert("Liverpool", vec!["Ливерпуль", "LFC", "Лив"]);
     map.insert("Chelsea", vec!["Челси", "CFC", "Челсі"]);
@@ -290,7 +224,10 @@ static TEAM_ALIASES: Lazy<HashMap<&str, Vec<&str>>> = Lazy::new(|| {
     map.insert("RB Leipzig", vec!["РБ Лейпциг", "Leipzig", "Лейпциг"]);
     map.insert("Schalke 04", vec!["Шальке 04", "Schalke"]);
     map.insert("Werder Bremen", vec!["Вердер Бремен", "Bremen"]);
-    map.insert("Eintracht Frankfurt", vec!["Айнтрахт Франкфурт", "Frankfurt"]);
+    map.insert(
+        "Eintracht Frankfurt",
+        vec!["Айнтрахт Франкфурт", "Frankfurt"],
+    );
 
     // Французские
     map.insert(
@@ -306,12 +243,7 @@ static TEAM_ALIASES: Lazy<HashMap<&str, Vec<&str>>> = Lazy::new(|| {
     );
     map.insert(
         "Olympique Marseille",
-        vec![
-            "Олимпик Марсель",
-            "Марсель",
-            "OM",
-            "Olympique Marseille",
-        ],
+        vec!["Олимпик Марсель", "Марсель", "OM", "Olympique Marseille"],
     );
     map.insert("AS Monaco", vec!["AS Монако", "Monaco", "Монако"]);
     map.insert("Rennes", vec!["Ренн", "Rennes FC"]);
@@ -346,8 +278,11 @@ static TEAM_ALIASES: Lazy<HashMap<&str, Vec<&str>>> = Lazy::new(|| {
 
     // Другое
     map.insert("Alaves", vec!["Алавес", "Deportivo Alaves", "Alavés"]);
-    map.insert("Juventud Las Piedras", vec!["Ювентуд", "Juventud", "CA Juventud"]);
-    
+    map.insert(
+        "Juventud Las Piedras",
+        vec!["Ювентуд", "Juventud", "CA Juventud"],
+    );
+
     map
 });
 
@@ -357,7 +292,7 @@ static EXTRA_SPACE_RE: Lazy<Regex> = Lazy::new(|| Regex::new(r"\s+").unwrap());
 // ===== LEAGUE VARIATIONS MAP (ALL RUSSIAN LEAGUES) =====
 static LEAGUE_VARIATIONS: Lazy<HashMap<&str, &str>> = Lazy::new(|| {
     let mut map: HashMap<&str, &str> = HashMap::new();
-    
+
     // RPL / Russian Premier League
     map.insert("рпл", "Russian Premier League");
     map.insert("rpl", "Russian Premier League");
@@ -375,7 +310,10 @@ static LEAGUE_VARIATIONS: Lazy<HashMap<&str, &str>> = Lazy::new(|| {
     map.insert("fnl-1", "Russian Football National League");
     map.insert("фнл", "Russian Football National League");
     map.insert("национальная лига", "Russian Football National League");
-    map.insert("футбольная национальная лига", "Russian Football National League");
+    map.insert(
+        "футбольная национальная лига",
+        "Russian Football National League",
+    );
     map.insert("fnl - первый дивизион", "Russian Football National League");
 
     // Russian Cup
@@ -488,7 +426,7 @@ static LEAGUE_VARIATIONS: Lazy<HashMap<&str, &str>> = Lazy::new(|| {
 // ===== SPORT VARIATIONS MAP (Fuzzy matching for sport names) =====
 static SPORT_VARIATIONS: Lazy<HashMap<&str, &str>> = Lazy::new(|| {
     let mut map: HashMap<&str, &str> = HashMap::new();
-    
+
     // Football
     map.insert("футбол", "Football");
     map.insert("football", "Football");
@@ -496,49 +434,49 @@ static SPORT_VARIATIONS: Lazy<HashMap<&str, &str>> = Lazy::new(|| {
     map.insert("soccer", "Football");
     map.insert("foot", "Football");
     map.insert("фут", "Football");
-    
+
     // Basketball
     map.insert("баскетбол", "Basketball");
     map.insert("basketball", "Basketball");
     map.insert("basket", "Basketball");
     map.insert("баск", "Basketball");
-    
+
     // Tennis
     map.insert("теннис", "Tennis");
     map.insert("tennis", "Tennis");
     map.insert("тен", "Tennis");
-    
+
     // Ice Hockey
     map.insert("хоккей", "Ice Hockey");
     map.insert("hockey", "Ice Hockey");
     map.insert("ice hockey", "Ice Hockey");
     map.insert("хок", "Ice Hockey");
-    
+
     // Volleyball
     map.insert("волейбол", "Volleyball");
     map.insert("volleyball", "Volleyball");
     map.insert("волей", "Volleyball");
-    
+
     // Handball
     map.insert("гандбол", "Handball");
     map.insert("handball", "Handball");
-    
+
     // American Football
     map.insert("американский футбол", "American Football");
     map.insert("american football", "American Football");
     map.insert("american football", "American Football");
-    
+
     // Baseball
     map.insert("бейсбол", "Baseball");
     map.insert("baseball", "Baseball");
-    
+
     // Esports
     map.insert("киберспорт", "Esports");
     map.insert("esports", "Esports");
     map.insert("e-sports", "Esports");
     map.insert("cs", "Esports");
     map.insert("dota", "Esports");
-    
+
     map
 });
 
@@ -592,10 +530,13 @@ fn similarity_percentage(distance: usize, max_len: usize) -> f64 {
         return 100.0;
     }
     let similarity = 1.0 - (distance as f64 / max_len as f64);
-    (similarity * 100.0).max(0.0)
+    let pct = (similarity * 100.0).max(0.0);
+    // Keep deterministic comparisons in tests and avoid float tails like 19.999999999.
+    (pct * 1_000_000.0).round() / 1_000_000.0
 }
 
 /// Проверка fuzzy совпадения с порогом расстояния (legacy, оставлена для совместимости)
+#[allow(dead_code)]
 fn fuzzy_match(input: &str, candidates: &[&str], max_dist: usize) -> Option<String> {
     let input_lower = input.to_lowercase();
     let mut best = None;
@@ -615,17 +556,21 @@ fn fuzzy_match(input: &str, candidates: &[&str], max_dist: usize) -> Option<Stri
 
 /// Нечёткое совпадение команды с порогом 85% сходства
 /// Использует Levenshtein distance и кэширует результаты с TTL 24h
-pub fn fuzzy_match_team(input: &str, candidates: &[(&str, &str)], threshold: f64) -> Option<String> {
+pub fn fuzzy_match_team(
+    input: &str,
+    candidates: &[(&str, &str)],
+    threshold: f64,
+) -> Option<String> {
     if input.is_empty() || candidates.is_empty() {
         return None;
     }
 
     let input_lower = input.to_lowercase();
-    
+
     // Проверяем кэш с TTL
     let cache = get_fuzzy_cache();
     let cache_key = format!("{}::{}", input_lower, threshold as u32);
-    
+
     if let Ok(mut cache_guard) = cache.lock() {
         if let Some(cached) = cache_guard.get(&cache_key) {
             if !cached.is_expired() {
@@ -639,10 +584,9 @@ pub fn fuzzy_match_team(input: &str, candidates: &[(&str, &str)], threshold: f64
 
     let mut best_match: Option<String> = None;
     let mut best_similarity = 0.0;
-    let max_len = input_lower.len().max(candidates.iter().map(|(c, _)| c.len()).max().unwrap_or(1));
-
     for (candidate, canonical) in candidates {
         let cand_lower = candidate.to_lowercase();
+        let max_len = input_lower.len().max(cand_lower.len());
         let distance = levenshtein(&input_lower, &cand_lower);
         let similarity = similarity_percentage(distance, max_len);
 
@@ -650,11 +594,25 @@ pub fn fuzzy_match_team(input: &str, candidates: &[(&str, &str)], threshold: f64
             best_similarity = similarity;
             best_match = Some(canonical.to_string());
         }
+
+        // Short-hand token inputs like "spartak s" should still map to the canonical alias.
+        if input_lower.len() >= 5
+            && (cand_lower.starts_with(&input_lower) || input_lower.starts_with(&cand_lower))
+        {
+            let contains_similarity = 90.0;
+            if contains_similarity >= threshold && contains_similarity > best_similarity {
+                best_similarity = contains_similarity;
+                best_match = Some(canonical.to_string());
+            }
+        }
     }
 
     // Кэшируем результат с TTL 24h
     if let Ok(mut cache_guard) = cache.lock() {
-        cache_guard.insert(cache_key, CachedValue::new(best_match.clone(), CACHE_TTL_24H));
+        cache_guard.insert(
+            cache_key,
+            CachedValue::new(best_match.clone(), CACHE_TTL_24H),
+        );
     }
 
     best_match
@@ -667,7 +625,7 @@ fn fuzzy_match_league(input: &str, threshold: f64) -> Option<String> {
     }
 
     let input_lower = input.to_lowercase();
-    
+
     // Проверяем точное совпадение сначала
     if let Some(&canonical) = LEAGUE_VARIATIONS.get(input_lower.as_str()) {
         return Some(canonical.to_string());
@@ -697,7 +655,7 @@ fn fuzzy_match_sport(input: &str, threshold: f64) -> Option<String> {
     }
 
     let input_lower = input.to_lowercase();
-    
+
     // Проверяем точное совпадение сначала
     if let Some(&canonical) = SPORT_VARIATIONS.get(input_lower.as_str()) {
         return Some(canonical.to_string());
@@ -724,7 +682,7 @@ fn fuzzy_match_sport(input: &str, threshold: f64) -> Option<String> {
 fn cache_team_pair(home: &str, away: &str, normalized_home: &str, normalized_away: &str) {
     let cache = get_team_pair_cache();
     let cache_key = format!("{}vs{}", home.to_lowercase(), away.to_lowercase());
-    
+
     if let Ok(mut cache_guard) = cache.lock() {
         cache_guard.insert(
             cache_key,
@@ -740,7 +698,7 @@ fn cache_team_pair(home: &str, away: &str, normalized_home: &str, normalized_awa
 fn get_cached_team_pair(home: &str, away: &str) -> Option<(String, String)> {
     let cache = get_team_pair_cache();
     let cache_key = format!("{}vs{}", home.to_lowercase(), away.to_lowercase());
-    
+
     if let Ok(mut cache_guard) = cache.lock() {
         if let Some(cached) = cache_guard.get(&cache_key) {
             if !cached.is_expired() {
@@ -751,7 +709,7 @@ fn get_cached_team_pair(home: &str, away: &str) -> Option<(String, String)> {
             }
         }
     }
-    
+
     None
 }
 
@@ -784,14 +742,18 @@ impl Normalizer {
 
         // 2. Частичное совпадение (contains)
         for (alias, canonical) in &self.aliases {
-            if lower.contains(alias) || alias.contains(&lower) {
+            if lower.len() >= 3
+                && alias.len() >= 3
+                && (lower.contains(alias) || alias.contains(&lower))
+            {
                 return canonical.clone();
             }
         }
 
         // 3. Fuzzy matching с 85% порогом сходства
         // Подготавливаем кандидатов: (alias, canonical)
-        let candidates: Vec<(&str, &str)> = self.aliases
+        let candidates: Vec<(&str, &str)> = self
+            .aliases
             .iter()
             .map(|(alias, canonical)| (alias.as_str(), canonical.as_str()))
             .collect();
@@ -806,31 +768,32 @@ impl Normalizer {
     /// Нормализация спорта с fuzzy matching (футбол = football, хоккей = ice hockey)
     pub fn normalize_sport(&self, sport: &str) -> String {
         let lower = sport.trim().to_lowercase();
-        
+
         // Точное совпадение
         if let Some(&canonical) = SPORT_VARIATIONS.get(lower.as_str()) {
             return canonical.to_string();
         }
-        
+
         // Fuzzy matching с 80% порогом
         if let Some(fuzzy_match) = fuzzy_match_sport(&lower, 80.0) {
             return fuzzy_match;
         }
-        
+
         // Fallback: return original trimmed
         sport.trim().to_string()
     }
 
     pub fn normalize_event(&self, event: Event) -> Event {
         // Получаем нормализованные команды из кэша или вычисляем их
-        let (normalized_home, normalized_away) = if let Some(cached) = get_cached_team_pair(&event.home_team, &event.away_team) {
-            cached
-        } else {
-            let home = self.normalize_team(&event.home_team);
-            let away = self.normalize_team(&event.away_team);
-            cache_team_pair(&event.home_team, &event.away_team, &home, &away);
-            (home, away)
-        };
+        let (normalized_home, normalized_away) =
+            if let Some(cached) = get_cached_team_pair(&event.home_team, &event.away_team) {
+                cached
+            } else {
+                let home = self.normalize_team(&event.home_team);
+                let away = self.normalize_team(&event.away_team);
+                cache_team_pair(&event.home_team, &event.away_team, &home, &away);
+                (home, away)
+            };
 
         Event {
             id: event.id,
@@ -848,12 +811,12 @@ impl Normalizer {
 
     pub fn normalize_league(&self, league: &str) -> String {
         let lower = league.trim().to_lowercase();
-        
+
         // Точное совпадение в LEAGUE_VARIATIONS
         if let Some(&canonical) = LEAGUE_VARIATIONS.get(lower.as_str()) {
             return canonical.to_string();
         }
-        
+
         // Fuzzy matching с 80% порогом для лиг
         if let Some(fuzzy_match) = fuzzy_match_league(&lower, 80.0) {
             return fuzzy_match;
@@ -998,16 +961,31 @@ mod tests {
         let norm = Normalizer::new();
         assert_eq!(norm.normalize_league("рпл"), "Russian Premier League");
         assert_eq!(norm.normalize_league("RPL"), "Russian Premier League");
-        assert_eq!(norm.normalize_league("russian premier league"), "Russian Premier League");
-        assert_eq!(norm.normalize_league("российская премьер-лига"), "Russian Premier League");
+        assert_eq!(
+            norm.normalize_league("russian premier league"),
+            "Russian Premier League"
+        );
+        assert_eq!(
+            norm.normalize_league("российская премьер-лига"),
+            "Russian Premier League"
+        );
     }
 
     #[test]
     fn test_normalize_league_fnl() {
         let norm = Normalizer::new();
-        assert_eq!(norm.normalize_league("fnl"), "Russian Football National League");
-        assert_eq!(norm.normalize_league("ФНЛ"), "Russian Football National League");
-        assert_eq!(norm.normalize_league("национальная лига"), "Russian Football National League");
+        assert_eq!(
+            norm.normalize_league("fnl"),
+            "Russian Football National League"
+        );
+        assert_eq!(
+            norm.normalize_league("ФНЛ"),
+            "Russian Football National League"
+        );
+        assert_eq!(
+            norm.normalize_league("национальная лига"),
+            "Russian Football National League"
+        );
     }
 
     #[test]
@@ -1093,8 +1071,14 @@ mod tests {
         let norm = Normalizer::new();
         assert_eq!(norm.normalize_league("лч"), "UEFA Champions League");
         assert_eq!(norm.normalize_league("UCL"), "UEFA Champions League");
-        assert_eq!(norm.normalize_league("champions league"), "UEFA Champions League");
-        assert_eq!(norm.normalize_league("лига чемпионов"), "UEFA Champions League");
+        assert_eq!(
+            norm.normalize_league("champions league"),
+            "UEFA Champions League"
+        );
+        assert_eq!(
+            norm.normalize_league("лига чемпионов"),
+            "UEFA Champions League"
+        );
     }
 
     #[test]
@@ -1111,7 +1095,10 @@ mod tests {
         let norm = Normalizer::new();
         assert_eq!(norm.normalize_league("лк"), "UEFA Conference League");
         assert_eq!(norm.normalize_league("UECL"), "UEFA Conference League");
-        assert_eq!(norm.normalize_league("conference league"), "UEFA Conference League");
+        assert_eq!(
+            norm.normalize_league("conference league"),
+            "UEFA Conference League"
+        );
     }
 
     // ===== SPORT NORMALIZATION TESTS (8 tests) =====
@@ -1164,8 +1151,14 @@ mod tests {
     #[test]
     fn test_normalize_sport_american_football() {
         let norm = Normalizer::new();
-        assert_eq!(norm.normalize_sport("американский футбол"), "American Football");
-        assert_eq!(norm.normalize_sport("american football"), "American Football");
+        assert_eq!(
+            norm.normalize_sport("американский футбол"),
+            "American Football"
+        );
+        assert_eq!(
+            norm.normalize_sport("american football"),
+            "American Football"
+        );
     }
 
     #[test]
@@ -1181,7 +1174,10 @@ mod tests {
     fn test_fuzzy_matching_typos_cska() {
         let norm = Normalizer::new();
         let result = norm.normalize_team("CSKA Moskva");
-        assert_eq!(result, "CSKA Moscow", "Should fuzzy match despite 'Moskva' typo");
+        assert_eq!(
+            result, "CSKA Moscow",
+            "Should fuzzy match despite 'Moskva' typo"
+        );
     }
 
     #[test]
@@ -1198,7 +1194,10 @@ mod tests {
     fn test_fuzzy_matching_manchester_typo() {
         let norm = Normalizer::new();
         let result = norm.normalize_team("Манчестр Юнайтед");
-        assert_eq!(result, "Manchester United", "Should fuzzy match Manchester United");
+        assert_eq!(
+            result, "Manchester United",
+            "Should fuzzy match Manchester United"
+        );
     }
 
     #[test]
@@ -1338,9 +1337,7 @@ mod tests {
 
     #[test]
     fn test_fuzzy_match_team_empty_input() {
-        let candidates = vec![
-            ("manchester united", "Manchester United"),
-        ];
+        let candidates = vec![("manchester united", "Manchester United")];
         let result = fuzzy_match_team("", &candidates, 85.0);
         assert_eq!(result, None);
     }
@@ -1355,9 +1352,7 @@ mod tests {
     // ===== CACHE TTL TESTS (3 tests) =====
     #[test]
     fn test_fuzzy_match_team_caching() {
-        let candidates = vec![
-            ("manchester united", "Manchester United"),
-        ];
+        let candidates = vec![("manchester united", "Manchester United")];
         let result1 = fuzzy_match_team("manchester untied", &candidates, 85.0);
         let result2 = fuzzy_match_team("manchester untied", &candidates, 85.0);
         assert_eq!(result1, result2);
@@ -1366,9 +1361,7 @@ mod tests {
 
     #[test]
     fn test_fuzzy_match_team_different_thresholds() {
-        let candidates = vec![
-            ("manchester united", "Manchester United"),
-        ];
+        let candidates = vec![("manchester united", "Manchester United")];
         let result_strict = fuzzy_match_team("xyz", &candidates, 90.0);
         let result_loose = fuzzy_match_team("manchester untied", &candidates, 50.0);
         assert_eq!(result_strict, None);
@@ -1377,9 +1370,7 @@ mod tests {
 
     #[test]
     fn test_fuzzy_match_team_case_insensitive() {
-        let candidates = vec![
-            ("manchester united", "Manchester United"),
-        ];
+        let candidates = vec![("manchester united", "Manchester United")];
         let result_lower = fuzzy_match_team("manchester united", &candidates, 85.0);
         let result_upper = fuzzy_match_team("MANCHESTER UNITED", &candidates, 85.0);
         assert_eq!(result_lower, result_upper);
@@ -1454,7 +1445,7 @@ mod tests {
     #[test]
     fn test_accuracy_improvement_metrics() {
         let norm = Normalizer::new();
-        
+
         let test_cases = vec![
             ("CSKA Moscow", "CSKA Moscow"),
             ("Spartak Moscow", "Spartak Moscow"),
@@ -1481,38 +1472,48 @@ mod tests {
         }
 
         let accuracy = (correct as f64 / test_cases.len() as f64) * 100.0;
-        assert!(accuracy >= 99.0, "Expected 99%+ accuracy, got {:.1}%", accuracy);
+        assert!(
+            accuracy >= 99.0,
+            "Expected 99%+ accuracy, got {:.1}%",
+            accuracy
+        );
     }
 
     #[test]
     fn test_comprehensive_team_coverage() {
         let norm = Normalizer::new();
-        
+
         // Russian teams
         assert_eq!(norm.normalize_team("ЦСКА"), "CSKA Moscow");
         assert_eq!(norm.normalize_team("Краснодар"), "Krasnodar");
-        
+
         // European teams
         assert_eq!(norm.normalize_team("Bayern"), "Bayern Munich");
         assert_eq!(norm.normalize_team("Rennes"), "Rennes");
-        
+
         // Teams with multiple aliases
-        assert_eq!(norm.normalize_team("Манчестер Юнайтед"), "Manchester United");
+        assert_eq!(
+            norm.normalize_team("Манчестер Юнайтед"),
+            "Manchester United"
+        );
     }
 
     #[test]
     fn test_league_coverage_comprehensive() {
         let norm = Normalizer::new();
-        
+
         // Russian leagues
         assert_eq!(norm.normalize_league("рпл"), "Russian Premier League");
-        assert_eq!(norm.normalize_league("фнл"), "Russian Football National League");
-        
+        assert_eq!(
+            norm.normalize_league("фнл"),
+            "Russian Football National League"
+        );
+
         // European leagues
         assert_eq!(norm.normalize_league("апл"), "Premier League");
         assert_eq!(norm.normalize_league("ла лига"), "La Liga");
         assert_eq!(norm.normalize_league("серия а"), "Serie A");
-        
+
         // International competitions
         assert_eq!(norm.normalize_league("лч"), "UEFA Champions League");
         assert_eq!(norm.normalize_league("лк"), "UEFA Conference League");
@@ -1525,4 +1526,3 @@ mod tests {
         assert_eq!(norm.normalize_team("  Extra   Spaces  "), "Extra Spaces");
     }
 }
-

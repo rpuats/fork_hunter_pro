@@ -1,9 +1,9 @@
-use crate::baltbet::BaltbetParser;
-use crate::base::BookmakerParser;
+
 use crate::betboom::BetboomParser;
 use crate::betcity::BetcityParser;
 // use crate::ligastavok::LigaStavokParser; // TODO: Re-enable once schema is fixed
 use crate::melbet::MelbetParser;
+use crate::parser_factory::ParserFactory;
 use crate::tennisi::TennisiParser;
 use crate::winline::WinlineParser;
 use crate::zenit::ZenitParser;
@@ -14,18 +14,14 @@ use std::sync::Arc;
 use std::time::Duration;
 
 pub const DEFAULT_RUNTIME_DIAGNOSTIC_SLUGS: &[&str] = &[
-    "winline",
-    "melbet",
-    "zenit",
-    "betcity",
-    "baltbet",
-    "ligastavok",
-    "betboom",
+    "pari", "marathon", "bettery", "fonbet", "leon", "zenit", "betcity", "baltbet", "tennisi",
+    "bet24", "olimp",
 ];
 
 pub const LIVE_THRESHOLD: usize = 150;
 pub const PREMATCH_THRESHOLD: usize = 3000;
 const FETCH_TIMEOUT: Duration = Duration::from_secs(90);
+type RuntimeFetchResult = Result<(Vec<Event>, Vec<shared::Odd>), String>;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct RuntimeKpiCheck {
@@ -103,6 +99,15 @@ pub struct RuntimeDiagnosticsRun {
 
 impl RuntimeCountReport {
     fn from_events(bookmaker_slug: &str, events: &[Event], duration_ms: u128) -> Self {
+        Self::from_events_with_mode(bookmaker_slug, events, duration_ms, true)
+    }
+
+    fn from_events_with_mode(
+        bookmaker_slug: &str,
+        events: &[Event],
+        duration_ms: u128,
+        runtime_only: bool,
+    ) -> Self {
         let live_events = events.iter().filter(|event| event.is_live).count();
         let prematch_events = events.len().saturating_sub(live_events);
         let live_kpi = RuntimeKpiCheck::new(live_events, LIVE_THRESHOLD);
@@ -120,13 +125,22 @@ impl RuntimeCountReport {
             live_threshold_met,
             prematch_threshold_met,
             passed: live_threshold_met && prematch_threshold_met,
-            runtime_only: true,
+            runtime_only,
             duration_ms,
             error: None,
         }
     }
 
     fn from_error(bookmaker_slug: &str, error: String, duration_ms: u128) -> Self {
+        Self::from_error_with_mode(bookmaker_slug, error, duration_ms, true)
+    }
+
+    fn from_error_with_mode(
+        bookmaker_slug: &str,
+        error: String,
+        duration_ms: u128,
+        runtime_only: bool,
+    ) -> Self {
         Self {
             bookmaker_slug: bookmaker_slug.to_string(),
             total_events: 0,
@@ -137,7 +151,7 @@ impl RuntimeCountReport {
             live_threshold_met: false,
             prematch_threshold_met: false,
             passed: false,
-            runtime_only: true,
+            runtime_only,
             duration_ms,
             error: Some(error),
         }
@@ -148,7 +162,7 @@ pub async fn run_runtime_diagnostics(
     client: Arc<reqwest::Client>,
     slugs: &[String],
 ) -> RuntimeDiagnosticsRun {
-    let requested: Vec<String> = if slugs.is_empty() {
+    let requested_raw: Vec<String> = if slugs.is_empty() {
         DEFAULT_RUNTIME_DIAGNOSTIC_SLUGS
             .iter()
             .map(|slug| (*slug).to_string())
@@ -156,6 +170,13 @@ pub async fn run_runtime_diagnostics(
     } else {
         slugs.iter().map(|slug| slug.to_lowercase()).collect()
     };
+
+    let mut seen = std::collections::HashSet::new();
+    let requested = requested_raw
+        .into_iter()
+        .map(|slug| canonical_runtime_slug(&slug))
+        .filter(|slug| seen.insert(slug.clone()))
+        .collect::<Vec<_>>();
 
     let mut reports = Vec::with_capacity(requested.len());
     for slug in &requested {
@@ -217,32 +238,85 @@ async fn run_single_runtime_diagnostic(
 ) -> RuntimeCountReport {
     let started = std::time::Instant::now();
 
-    let result = match slug {
-        "winline" => with_timeout(WinlineParser::new(client).fetch_runtime_data()).await,
-        "melbet" => with_timeout(MelbetParser::new(client).fetch_runtime_data()).await,
-        "zenit" => with_timeout(ZenitParser::new(client).fetch_runtime_data()).await,
-        "betboom" => with_timeout(BetboomParser::new(client).fetch_runtime_data()).await,
+    let (runtime_only, result): (bool, RuntimeFetchResult) = match slug {
+        "winline" => (
+            true,
+            with_timeout(WinlineParser::new(client).fetch_runtime_data()).await,
+        ),
+        "melbet" => (
+            true,
+            with_timeout(MelbetParser::new(client).fetch_runtime_data()).await,
+        ),
+        "zenit" => (
+            true,
+            with_timeout(ZenitParser::new(client).fetch_runtime_data()).await,
+        ),
+        "betboom" => (
+            true,
+            with_timeout(BetboomParser::new(client).fetch_runtime_data()).await,
+        ),
         "baltbet" => {
-            let parser = BaltbetParser::new(client);
-            with_timeout(async {
-                let events = parser.fetch_events().await?;
-                Ok::<_, Box<dyn std::error::Error + Send + Sync>>((events, Vec::new()))
-            })
-            .await
+            let factory = ParserFactory::new(client.clone());
+            if let Some(parser) = factory.get(slug) {
+                let result = with_timeout(async move {
+                    let result = parser.fetch_all().await?;
+                    Ok::<(Vec<Event>, Vec<shared::Odd>), Box<dyn std::error::Error + Send + Sync>>((
+                        result.events,
+                        result.odds,
+                    ))
+                })
+                .await;
+                (false, result)
+            } else {
+                (false, Err("bookmaker baltbet not registered in parser factory".to_string()))
+            }
         }
-        "betcity" => with_timeout(BetcityParser::new(client).fetch_runtime_data()).await,
+        "betcity" => (
+            true,
+            with_timeout(BetcityParser::new(client).fetch_runtime_data()).await,
+        ),
         // "ligastavok" => with_timeout(LigaStavokParser::new(client).fetch_runtime_data()).await,
-        "tennisi" => with_timeout(TennisiParser::new(client).fetch_runtime_data()).await,
-        _ => Err(format!(
-            "bookmaker {} not supported in diagnostics yet",
-            slug
-        )),
+        "tennisi" => (
+            true,
+            with_timeout(TennisiParser::new(client).fetch_runtime_data()).await,
+        ),
+        _ => {
+            let factory = ParserFactory::new(client.clone());
+            if let Some(parser) = factory.get(slug) {
+                let result = with_timeout(async move {
+                    let result = parser.fetch_all().await?;
+                    Ok::<(Vec<Event>, Vec<shared::Odd>), Box<dyn std::error::Error + Send + Sync>>(
+                        (result.events, result.odds),
+                    )
+                })
+                .await;
+                (false, result)
+            } else {
+                (
+                    false,
+                    Err(format!(
+                        "bookmaker {} not registered in parser factory",
+                        slug
+                    )),
+                )
+            }
+        }
     };
 
     let elapsed = started.elapsed().as_millis();
     match result {
-        Ok((events, _odds)) => RuntimeCountReport::from_events(slug, &events, elapsed),
-        Err(error) => RuntimeCountReport::from_error(slug, error, elapsed),
+        Ok((events, _odds)) => {
+            RuntimeCountReport::from_events_with_mode(slug, &events, elapsed, runtime_only)
+        }
+        Err(error) => RuntimeCountReport::from_error_with_mode(slug, error, elapsed, runtime_only),
+    }
+}
+
+fn canonical_runtime_slug(slug: &str) -> String {
+    match slug {
+        "_24bet" => "bet24".to_string(),
+        "olimpbet" => "olimp".to_string(),
+        other => other.to_string(),
     }
 }
 

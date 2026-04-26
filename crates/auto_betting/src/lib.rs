@@ -1,6 +1,6 @@
+pub mod account_pool;
 pub mod adapters;
 pub mod approval;
-pub mod account_pool;
 pub mod bet_command;
 pub mod bet_state_machine;
 pub mod engine;
@@ -12,13 +12,14 @@ pub mod registry;
 pub mod state_machine;
 pub mod stealth;
 pub mod validator;
+pub mod auth;
 
+pub use account_pool::{
+    AccountManager, AccountPool, AccountType, BettingAccount, PoolStatistics, SelectionStrategy,
+};
 pub use adapters::{
     builtin_adapter, register_builtin_adapters, supported_bookmakers, FonbetExecutionAdapter,
     PariExecutionAdapter,
-};
-pub use account_pool::{
-    AccountManager, AccountPool, AccountType, BettingAccount, PoolStatistics, SelectionStrategy,
 };
 pub use approval::{
     build_surebet_execution_plan, ApprovalGateDecision, RankedLegPlan, SurebetExecutionPlan,

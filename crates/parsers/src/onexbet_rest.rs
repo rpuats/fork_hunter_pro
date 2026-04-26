@@ -1,6 +1,5 @@
 /// Улучшенный 1xBet/1xStavka REST API парсер
 /// Работает с обходом защиты через несколько методов
-
 use reqwest::Client;
 use shared::{Event, Sport};
 use std::collections::HashMap;
@@ -18,19 +17,19 @@ impl OnexbetRestParser {
     /// Получить события 1xBet
     pub async fn fetch_events(&self) -> Result<Vec<Event>, String> {
         // 1xBet использует GraphQL API, но также доступны обычные endpoints
-        
+
         if let Ok(events) = self.fetch_via_bff_api().await {
             return Ok(events);
         }
-        
+
         if let Ok(events) = self.fetch_via_sports_api().await {
             return Ok(events);
         }
-        
+
         if let Ok(events) = self.fetch_via_main_page().await {
             return Ok(events);
         }
-        
+
         Err("No events found from any 1xBet endpoint".to_string())
     }
 
@@ -41,11 +40,12 @@ impl OnexbetRestParser {
             ("https://1xbet.com/api/bff/v1/events/all", "en"),
             ("https://1xstavka.ru/api/sport/events/live", "ru"),
         ];
-        
+
         let mut all_events = Vec::new();
-        
+
         for (endpoint, _lang) in endpoints {
-            match self.client
+            match self
+                .client
                 .get(endpoint)
                 .header("X-Requested-With", "XMLHttpRequest")
                 .send()
@@ -59,11 +59,11 @@ impl OnexbetRestParser {
                 _ => continue,
             }
         }
-        
+
         if all_events.is_empty() {
             return Err("BFF API returned no events".to_string());
         }
-        
+
         Ok(all_events)
     }
 
@@ -71,7 +71,7 @@ impl OnexbetRestParser {
     async fn fetch_via_sports_api(&self) -> Result<Vec<Event>, String> {
         let sport_ids = vec![1, 2, 3, 4, 5]; // Football, Hockey, Basketball, Tennis, etc.
         let mut all_events = Vec::new();
-        
+
         for sport_id in sport_ids {
             let url = format!("https://1xstavka.ru/api/sports/{}/list", sport_id);
             match self.client.get(&url).send().await {
@@ -83,39 +83,42 @@ impl OnexbetRestParser {
                 _ => continue,
             }
         }
-        
+
         if all_events.is_empty() {
             return Err("Sports API returned no events".to_string());
         }
-        
+
         Ok(all_events)
     }
 
     /// Метод 3: Главная страница (парсинг DOM)
     async fn fetch_via_main_page(&self) -> Result<Vec<Event>, String> {
-        let resp = self.client
+        let resp = self
+            .client
             .get("https://1xstavka.ru/")
             .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
             .send()
             .await
             .map_err(|e| format!("Failed to fetch: {}", e))?;
-        
-        let html = resp.text().await
+
+        let html = resp
+            .text()
+            .await
             .map_err(|e| format!("Failed to read: {}", e))?;
-        
+
         let events = self.extract_from_html(&html);
-        
+
         if events.is_empty() {
             return Err("No events in main page".to_string());
         }
-        
+
         Ok(events)
     }
 
     /// Парсит BFF API ответ
     fn parse_bff_response(&self, json_str: &str) -> Vec<Event> {
         let mut events = Vec::new();
-        
+
         if let Ok(json) = serde_json::from_str::<serde_json::Value>(json_str) {
             // Структура может быть разной, пытаемся разные пути
             let objects = vec![
@@ -123,7 +126,7 @@ impl OnexbetRestParser {
                 json.get("data").and_then(|d| d.get("events")),
                 json.get("result"),
             ];
-            
+
             for obj in objects {
                 if let Some(arr) = obj.and_then(|o| o.as_array()) {
                     for item in arr {
@@ -134,14 +137,14 @@ impl OnexbetRestParser {
                 }
             }
         }
-        
+
         events
     }
 
     /// Парсит Sports API ответ
     fn parse_sports_response(&self, json_str: &str) -> Vec<Event> {
         let mut events = Vec::new();
-        
+
         if let Ok(json) = serde_json::from_str::<serde_json::Value>(json_str) {
             if let Some(arr) = json.as_array() {
                 for item in arr {
@@ -151,31 +154,31 @@ impl OnexbetRestParser {
                 }
             }
         }
-        
+
         events
     }
 
     /// Извлекает события из HTML
     fn extract_from_html(&self, html: &str) -> Vec<Event> {
         let mut events = Vec::new();
-        
+
         // Поиск data-event-id или event ID в разных форматах
         for line in html.lines() {
-            if line.contains("data-event-id") || 
-               line.contains("eventId") || 
-               line.contains("event-") {
+            if line.contains("data-event-id") || line.contains("eventId") || line.contains("event-")
+            {
                 if let Some(event) = self.parse_event_from_line(line) {
                     events.push(event);
                 }
             }
         }
-        
+
         events
     }
 
     /// Конструирует Event из API объекта
     fn build_event_from_api(&self, obj: &serde_json::Value) -> Option<Event> {
-        let id = obj.get("id")
+        let id = obj
+            .get("id")
             .or(obj.get("eventId"))
             .or(obj.get("event_id"))
             .and_then(|v| {
@@ -187,26 +190,29 @@ impl OnexbetRestParser {
                     None
                 }
             })?;
-        
-        let home_team = obj.get("homeTeam")
+
+        let home_team = obj
+            .get("homeTeam")
             .or(obj.get("home"))
             .or(obj.get("team1"))
             .and_then(|v| v.as_str())
             .map(|s| s.to_string())?;
-        
-        let away_team = obj.get("awayTeam")
+
+        let away_team = obj
+            .get("awayTeam")
             .or(obj.get("away"))
             .or(obj.get("team2"))
             .and_then(|v| v.as_str())
             .map(|s| s.to_string())?;
-        
-        let league = obj.get("league")
+
+        let league = obj
+            .get("league")
             .or(obj.get("tournament"))
             .or(obj.get("competition"))
             .and_then(|v| v.as_str())
             .unwrap_or("Unknown")
             .to_string();
-        
+
         Some(Event {
             id: id.clone(),
             sport: Sport::Football,
@@ -214,7 +220,8 @@ impl OnexbetRestParser {
             home_team,
             away_team,
             start_time: None,
-            is_live: obj.get("is_live")
+            is_live: obj
+                .get("is_live")
                 .or(obj.get("live"))
                 .or(obj.get("inLive"))
                 .and_then(|v| v.as_bool())
@@ -231,7 +238,7 @@ impl OnexbetRestParser {
             let rest = &line[start + 15..];
             if let Some(end) = rest.find("\"") {
                 let id = rest[..end].to_string();
-                
+
                 return Some(Event {
                     id: id.clone(),
                     sport: Sport::Football,
@@ -246,7 +253,7 @@ impl OnexbetRestParser {
                 });
             }
         }
-        
+
         None
     }
 }

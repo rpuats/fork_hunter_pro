@@ -1,11 +1,10 @@
+use chrono::{DateTime, Utc};
 /// Account pooling for load balancing bets across multiple accounts per bookmaker
 /// Enables better risk distribution and coverage for high-volume auto-betting
-
 use dashmap::DashMap;
+use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use parking_lot::RwLock;
-use chrono::{DateTime, Utc};
 
 /// Represents a single betting account
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -36,8 +35,8 @@ impl BettingAccount {
     }
 
     pub fn can_bet(&self, amount: f64) -> bool {
-        self.is_active 
-            && self.available_balance() >= amount 
+        self.is_active
+            && self.available_balance() >= amount
             && amount <= self.max_bet
             && (self.daily_spent + amount) <= self.daily_limit
     }
@@ -75,10 +74,8 @@ impl AccountPool {
         if account.bookmaker_slug != self.bookmaker_slug {
             return Err("Account bookmaker mismatch".to_string());
         }
-        self.accounts.insert(
-            account.id.clone(),
-            Arc::new(RwLock::new(account)),
-        );
+        self.accounts
+            .insert(account.id.clone(), Arc::new(RwLock::new(account)));
         Ok(())
     }
 
@@ -106,7 +103,7 @@ impl AccountPool {
     /// Select best account for betting based on strategy
     pub fn select_account(&self, min_amount: f64) -> Option<Arc<RwLock<BettingAccount>>> {
         let strategy = *self.selection_strategy.read();
-        
+
         match strategy {
             SelectionStrategy::RoundRobin => self.select_round_robin(min_amount),
             SelectionStrategy::MaxAvailableBalance => self.select_max_balance(min_amount),
@@ -116,22 +113,23 @@ impl AccountPool {
     }
 
     fn select_round_robin(&self, min_amount: f64) -> Option<Arc<RwLock<BettingAccount>>> {
-        let accounts_vec: Vec<_> = self.accounts
+        let accounts_vec: Vec<_> = self
+            .accounts
             .iter()
             .map(|entry| entry.value().clone())
             .collect();
-        
+
         if accounts_vec.is_empty() {
             return None;
         }
 
         let mut idx = self.round_robin_index.write();
         let start_idx = *idx;
-        
+
         for i in 0..accounts_vec.len() {
             let account_idx = (*idx + i) % accounts_vec.len();
             let account = accounts_vec[account_idx].read();
-            
+
             if account.can_bet(min_amount) {
                 *idx = (account_idx + 1) % accounts_vec.len();
                 drop(account);
@@ -149,7 +147,8 @@ impl AccountPool {
             .map(|entry| entry.value().clone())
             .filter(|acc| acc.read().can_bet(min_amount))
             .max_by(|a, b| {
-                a.read().available_balance()
+                a.read()
+                    .available_balance()
                     .partial_cmp(&b.read().available_balance())
                     .unwrap_or(std::cmp::Ordering::Equal)
             })
@@ -161,7 +160,8 @@ impl AccountPool {
             .map(|entry| entry.value().clone())
             .filter(|acc| acc.read().can_bet(min_amount))
             .min_by(|a, b| {
-                a.read().daily_spent
+                a.read()
+                    .daily_spent
                     .partial_cmp(&b.read().daily_spent)
                     .unwrap_or(std::cmp::Ordering::Equal)
             })
@@ -169,7 +169,7 @@ impl AccountPool {
 
     fn select_random(&self, min_amount: f64) -> Option<Arc<RwLock<BettingAccount>>> {
         use rand::seq::IteratorRandom;
-        
+
         self.accounts
             .iter()
             .map(|entry| entry.value().clone())
@@ -205,7 +205,7 @@ impl AccountPool {
         let total_available: f64 = accounts.iter().map(|a| a.available_balance()).sum();
         let total_daily_spent: f64 = accounts.iter().map(|a| a.daily_spent).sum();
         let total_daily_profit: f64 = accounts.iter().map(|a| a.daily_profit).sum();
-        
+
         PoolStatistics {
             total_accounts: accounts.len(),
             active_accounts: self.active_account_count(),
@@ -213,7 +213,11 @@ impl AccountPool {
             total_available,
             total_daily_spent,
             total_daily_profit,
-            avg_balance: if !accounts.is_empty() { total_balance / accounts.len() as f64 } else { 0.0 },
+            avg_balance: if !accounts.is_empty() {
+                total_balance / accounts.len() as f64
+            } else {
+                0.0
+            },
         }
     }
 }
@@ -269,8 +273,12 @@ impl AccountManager {
     /// Get global stats
     pub fn get_global_stats(&self) -> GlobalAccountStats {
         let total_balance: f64 = self.pools.iter().map(|p| p.value().total_balance()).sum();
-        let total_available: f64 = self.pools.iter().map(|p| p.value().total_available_balance()).sum();
-        
+        let total_available: f64 = self
+            .pools
+            .iter()
+            .map(|p| p.value().total_available_balance())
+            .sum();
+
         GlobalAccountStats {
             total_bookmakers: self.pools.len(),
             total_accounts: self.pools.iter().map(|p| p.value().accounts.len()).sum(),
@@ -301,7 +309,7 @@ mod tests {
     #[test]
     fn test_account_pool_round_robin() {
         let pool = AccountPool::new("pari".to_string());
-        
+
         for i in 0..3 {
             let account = BettingAccount {
                 id: format!("acc_{}", i),
@@ -319,7 +327,7 @@ mod tests {
         }
 
         pool.set_strategy(SelectionStrategy::RoundRobin);
-        
+
         for i in 0..6 {
             let account = pool.select_account(100.0);
             assert!(account.is_some());
@@ -329,7 +337,7 @@ mod tests {
     #[test]
     fn test_account_manager() {
         let manager = AccountManager::new();
-        
+
         let account = BettingAccount {
             id: "test_acc".to_string(),
             bookmaker_slug: "zenit".to_string(),
@@ -342,9 +350,9 @@ mod tests {
             last_updated: Utc::now(),
             is_active: true,
         };
-        
+
         manager.add_account(account).unwrap();
-        
+
         let stats = manager.get_global_stats();
         assert_eq!(stats.total_bookmakers, 1);
         assert_eq!(stats.total_accounts, 1);

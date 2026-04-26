@@ -1,9 +1,9 @@
+use chrono::{DateTime, Utc};
+use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
+use shared::Surebet;
 use std::collections::VecDeque;
 use std::sync::Arc;
-use parking_lot::Mutex;
-use chrono::{DateTime, Utc};
-use shared::Surebet;
 use std::time::Instant;
 
 /// Configuration for Telegram alerts
@@ -15,8 +15,8 @@ pub struct TelegramAlertConfig {
     pub only_live: bool,
     pub alert_on_verified_only: bool,
     pub history_size: usize,
-    pub batch_window_seconds: u64,  // NEW: Batch window for deduplication (default: 60)
-    pub batch_max_size: usize,       // NEW: Max surebets per batch (default: 10)
+    pub batch_window_seconds: u64, // NEW: Batch window for deduplication (default: 60)
+    pub batch_max_size: usize,     // NEW: Max surebets per batch (default: 10)
 }
 
 impl Default for TelegramAlertConfig {
@@ -60,21 +60,22 @@ pub struct AlertBatch {
     pub created_at: Instant,
     pub surebets: Vec<Surebet>,
     pub last_sent: Option<Instant>,
-    pub event_key: String,  // "sport-league-home-away" for deduplication
+    pub event_key: String, // "sport-league-home-away" for deduplication
 }
 
 /// Manages alert history and filtering
 pub struct AlertManager {
     config: Arc<Mutex<TelegramAlertConfig>>,
     history: Arc<Mutex<VecDeque<AlertHistoryEntry>>>,
-    batches: Arc<Mutex<std::collections::HashMap<String, AlertBatch>>>,  // NEW: Event key -> batch
+    batches: Arc<Mutex<std::collections::HashMap<String, AlertBatch>>>, // NEW: Event key -> batch
 }
 
 impl AlertManager {
     pub fn new(config: TelegramAlertConfig) -> Self {
+        let history_size = config.history_size;
         Self {
             config: Arc::new(Mutex::new(config)),
-            history: Arc::new(Mutex::new(VecDeque::with_capacity(config.history_size))),
+            history: Arc::new(Mutex::new(VecDeque::with_capacity(history_size))),
             batches: Arc::new(Mutex::new(std::collections::HashMap::new())),
         }
     }
@@ -95,25 +96,26 @@ impl AlertManager {
     /// Returns true if should send batch immediately
     pub fn add_to_batch(&self, surebet: Surebet) -> bool {
         let config = self.config.lock().clone();
-        drop(config);  // Release lock early
-        
+        drop(config); // Release lock early
+
         let key = Self::create_event_key(&surebet);
         let mut batches = self.batches.lock();
-        
+
         let batch = batches.entry(key.clone()).or_insert_with(|| AlertBatch {
             created_at: Instant::now(),
             surebets: Vec::new(),
             last_sent: None,
             event_key: key.clone(),
         });
-        
+
         batch.surebets.push(surebet);
-        
+
         // Check if should send batch
         let config = self.config.lock();
         let elapsed = batch.created_at.elapsed().as_secs();
-        let should_send = elapsed >= config.batch_window_seconds || batch.surebets.len() >= config.batch_max_size;
-        
+        let should_send =
+            elapsed >= config.batch_window_seconds || batch.surebets.len() >= config.batch_max_size;
+
         should_send
     }
 
@@ -127,7 +129,7 @@ impl AlertManager {
     pub fn get_all_pending_batches(&self) -> Vec<AlertBatch> {
         let config = self.config.lock();
         let batches = self.batches.lock();
-        
+
         batches
             .values()
             .filter(|b| {
@@ -199,8 +201,14 @@ impl AlertManager {
     pub fn get_stats(&self) -> AlertStats {
         let history = self.history.lock();
         let total = history.len();
-        let sent = history.iter().filter(|e| e.status == AlertStatus::Sent).count();
-        let throttled = history.iter().filter(|e| e.status == AlertStatus::Throttled).count();
+        let sent = history
+            .iter()
+            .filter(|e| e.status == AlertStatus::Sent)
+            .count();
+        let throttled = history
+            .iter()
+            .filter(|e| e.status == AlertStatus::Throttled)
+            .count();
         let skipped = total - sent - throttled;
 
         let avg_roi = if !history.is_empty() {
@@ -287,7 +295,11 @@ pub fn format_surebet_alert(surebet: &Surebet) -> String {
         surebet.away_team,
         surebet.league,
         time_str,
-        if surebet.verified { "✅ Verified" } else { "⚠️ Raw" },
+        if surebet.verified {
+            "✅ Verified"
+        } else {
+            "⚠️ Raw"
+        },
         if surebet.is_live { " | 🔴 LIVE" } else { "" }
     );
 
@@ -295,7 +307,7 @@ pub fn format_surebet_alert(surebet: &Surebet) -> String {
     if !surebet.legs.is_empty() {
         msg.push_str("\n<b>Legs:</b>\n");
         for (i, leg) in surebet.legs.iter().enumerate() {
-            let line_str = leg.line.map(|v| format!(" {:.2}")).unwrap_or_default();
+            let line_str = leg.line.map(|v| format!(" {:.2}", v)).unwrap_or_default();
             msg.push_str(&format!(
                 "{}. <code>{}</code> {}{} @ <b>{:.2}</b> | {} ({}x)\n",
                 i + 1,
@@ -315,11 +327,7 @@ pub fn format_surebet_alert(surebet: &Surebet) -> String {
          <b>Expected Payout:</b> {:.0} RUB\n\
          <code>ID: {}</code>",
         surebet.total_stake,
-        surebet
-            .legs
-            .first()
-            .map(|l| l.payout)
-            .unwrap_or(0.0),
+        surebet.legs.first().map(|l| l.payout).unwrap_or(0.0),
         surebet.id
     ));
 
@@ -379,8 +387,8 @@ pub fn format_help_message() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use uuid::Uuid;
     use shared::Sport;
+    use uuid::Uuid;
 
     fn create_test_surebet(roi: f64, verified: bool, is_live: bool) -> Surebet {
         Surebet {

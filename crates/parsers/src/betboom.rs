@@ -2,6 +2,7 @@ use crate::base::{BookmakerParser, ParserResult};
 use crate::headless_helper::{is_valid_team_name, HeadlessChromeHelper};
 use async_trait::async_trait;
 use chrono::Utc;
+use regex::Regex;
 use reqwest::Client;
 use shared::odds::OddsType;
 use shared::{
@@ -9,6 +10,7 @@ use shared::{
     Sport,
 };
 use std::collections::{HashMap, HashSet};
+use std::process::{Command, Stdio};
 use std::sync::Arc;
 use tracing::{debug, info, warn};
 
@@ -24,16 +26,18 @@ const PREMATCH_FILTER_TEXT: &str = "1н";
 const MIN_SNAPSHOT_TEXT_LEN: usize = 80;
 const SNAPSHOT_PREVIEW_CHARS: usize = 96;
 const PROBE_RESULT_SLACK_MS: u64 = 4_000;
-const RUNTIME_PROBE_BUDGET_MS: u64 = 28_000;
+const RUNTIME_PROBE_BUDGET_MS: u64 = 36_000;
 const RUNTIME_WALL_CLOCK_CUTOFF_MS: u64 = 45_000;
+const FOCUSED_FOOTBALL_PROBE_TIMEOUT_BONUS_MS: u64 = 4_000;
+const PLAYWRIGHT_WAIT_MS: u64 = 4_500;
 const RUNTIME_SUCCESS_EVENT_THRESHOLD: usize = 2;
 const PRIMARY_FOCUSED_PROBE_EXIT_THRESHOLD: usize = 2;
 const EMPTY_RENDERED_DIAGNOSTIC_EXIT_THRESHOLD: usize = 3;
 const KNOWN_BLOCKER_LIVE_FOOTBALL_URL: &str = "https://betboom.ru/sport/live/football";
 const KNOWN_BLOCKER_PREMATCH_FOOTBALL_URL: &str = "https://betboom.ru/sport/football";
 const FOCUSED_RUNTIME_PROBE_URLS: &[&str] = &[
-    "https://betboom.ru/sport/live/tennis",
-    "https://betboom.ru/sport/tennis",
+    "https://betboom.ru/sport/live/football",
+    "https://betboom.ru/sport/football",
     "https://betboom.ru/sport/live/basketball",
 ];
 
@@ -681,8 +685,22 @@ impl BetboomParser {
             budget_exhausted,
         } = self.fetch_via_headless(probes).await?;
         if events.is_empty() && odds.is_empty() {
-            let diagnostic =
+            if let Ok((playwright_events, playwright_odds)) = self.fetch_via_playwright().await {
+                if !playwright_events.is_empty() && !playwright_odds.is_empty() {
+                    info!(
+                        total = playwright_events.len(),
+                        odds = playwright_odds.len(),
+                        "BetBoom: Playwright fallback produced runtime data"
+                    );
+                    return Ok((playwright_events, playwright_odds));
+                }
+            }
+            let mut diagnostic =
                 Self::format_empty_runtime_diagnostic(&reports, planned_probes, budget_exhausted);
+            if let Some(http_bootstrap) = self.fetch_http_bootstrap_summary().await {
+                diagnostic.push_str(" | http_bootstrap=");
+                diagnostic.push_str(&http_bootstrap);
+            }
             warn!(diagnostic = %diagnostic, "BetBoom: rendered runtime extraction returned no data");
             return Err(Self::boxed_error(diagnostic));
         }
@@ -700,6 +718,319 @@ impl BetboomParser {
         Ok((events, odds))
     }
 
+    fn playwright_extraction_script() -> String {
+        r#"
+import asyncio
+import json
+import os
+import sys
+
+sys.path.insert(0, os.getcwd())
+
+from scanner.parsers.betboom_playwright import BetBoomPlaywrightParser
+
+async def main():
+    parser = BetBoomPlaywrightParser()
+    items = await parser.get_events()
+    sys.stdout.write(json.dumps({'items': items, 'errors': []}, ensure_ascii=False))
+
+asyncio.run(main())
+"#
+        .to_string()
+    }
+
+    fn parse_playwright_item(item: &serde_json::Value) -> Option<(Event, Vec<Odd>)> {
+        if let (Some(home_team), Some(away_team)) = (
+            item.get("home_team").and_then(|value| value.as_str()),
+            item.get("away_team").and_then(|value| value.as_str()),
+        ) {
+            let source_url = item
+                .get("source_url")
+                .and_then(|value| value.as_str())
+                .unwrap_or(BASE_URL);
+            let is_live = item
+                .get("is_live")
+                .and_then(|value| value.as_bool())
+                .unwrap_or(false);
+            let league = item
+                .get("league")
+                .and_then(|value| value.as_str())
+                .unwrap_or(if is_live { "Live" } else { "Pre-match" })
+                .to_string();
+            let event_id = format!(
+                "betboom-playwright-{}-{}-{}",
+                if is_live { "live" } else { "prematch" },
+                Self::slugify(home_team),
+                Self::slugify(away_team)
+            );
+            let event = Event {
+                id: event_id.clone(),
+                sport: Sport::Football,
+                league,
+                home_team: home_team.to_string(),
+                away_team: away_team.to_string(),
+                start_time: None,
+                is_live,
+                bookmaker_slug: BOOKMAKER_SLUG.to_string(),
+                raw_url: Some(source_url.to_string()),
+                extra: HashMap::new(),
+            };
+            let now = Utc::now();
+            let mut odds = Vec::new();
+            if let Some(home) = item.get("home_odds").and_then(|value| value.as_f64()) {
+                if home > 1.0 {
+                    odds.push(Odd {
+                        id: format!("{}-home", event_id),
+                        event_id: event_id.clone(),
+                        bookmaker_slug: BOOKMAKER_SLUG.to_string(),
+                        market: "Main".to_string(),
+                        selection: "1".to_string(),
+                        odds: home,
+                        odds_type: OddsType::Home,
+                        line: None,
+                        timestamp: now,
+                    });
+                }
+            }
+            if let Some(draw) = item.get("draw_odds").and_then(|value| value.as_f64()) {
+                if draw > 1.0 {
+                    odds.push(Odd {
+                        id: format!("{}-draw", event_id),
+                        event_id: event_id.clone(),
+                        bookmaker_slug: BOOKMAKER_SLUG.to_string(),
+                        market: "Main".to_string(),
+                        selection: "X".to_string(),
+                        odds: draw,
+                        odds_type: OddsType::Draw,
+                        line: None,
+                        timestamp: now,
+                    });
+                }
+            }
+            if let Some(away) = item.get("away_odds").and_then(|value| value.as_f64()) {
+                if away > 1.0 {
+                    odds.push(Odd {
+                        id: format!("{}-away", event_id),
+                        event_id: event_id.clone(),
+                        bookmaker_slug: BOOKMAKER_SLUG.to_string(),
+                        market: "Main".to_string(),
+                        selection: "2".to_string(),
+                        odds: away,
+                        odds_type: OddsType::Away,
+                        line: None,
+                        timestamp: now,
+                    });
+                }
+            }
+            if odds.len() >= 2 {
+                return Some((event, odds));
+            }
+        }
+
+        let team_text = item.get("team_text")?.as_str()?.trim();
+        let odds_values = item.get("odds")?.as_array()?;
+        let source_url = item
+            .get("source_url")
+            .and_then(|value| value.as_str())
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| BASE_URL.to_string());
+        let is_live = item
+            .get("is_live")
+            .and_then(|value| value.as_bool())
+            .unwrap_or(false);
+        let league_hint = item
+            .get("league_hint")
+            .and_then(|value| value.as_str())
+            .unwrap_or(if is_live { "Live" } else { "Pre-match" });
+
+        let compact_text = team_text
+            .replace("Сегодня в", "\nСегодня в")
+            .replace("Завтра в", "\nЗавтра в")
+            .replace("П1", "\nП1\n")
+            .replace("X", "\nX\n")
+            .replace("П2", "\nП2\n")
+            .replace("Ещё", "\nЕщё\n");
+        let compact_lines = compact_text
+            .lines()
+            .map(|line| line.trim().to_string())
+            .filter(|line| !line.is_empty())
+            .collect::<Vec<_>>();
+        let probe_url = if source_url.contains("/live/basketball") {
+            "https://betboom.ru/sport/live/basketball"
+        } else if source_url.contains("/basketball") {
+            "https://betboom.ru/sport/basketball"
+        } else if source_url.contains("/live/football") {
+            "https://betboom.ru/sport/live/football"
+        } else {
+            "https://betboom.ru/sport/football"
+        };
+        let probe = Probe {
+            url: probe_url,
+            sport: Sport::Football,
+            is_live,
+            prematch_filter: if is_live {
+                None
+            } else {
+                Some(PREMATCH_FILTER_TEXT)
+            },
+        };
+
+        let (event, mut parsed_odds, _) =
+            Self::parse_compact_event_block(&compact_lines, Some(league_hint), probe, &source_url)
+                .or_else(|| {
+                    let mut odds = Vec::new();
+                    for value in odds_values.iter().filter_map(|value| value.as_f64()) {
+                        odds.push((format!("{}", odds.len() + 1), value));
+                    }
+                    if odds.len() < 2 {
+                        return None;
+                    }
+                    let teams = Self::split_compact_team_pair(team_text)?;
+                    Self::build_event_from_compact_parts(
+                        league_hint.to_string(),
+                        teams.0,
+                        teams.1,
+                        odds,
+                        probe,
+                        &source_url,
+                    )
+                })?;
+
+        for odd in &mut parsed_odds {
+            odd.bookmaker_slug = BOOKMAKER_SLUG.to_string();
+        }
+
+        Some((event, parsed_odds))
+    }
+
+    fn fetch_via_playwright_blocking(
+    ) -> Result<(Vec<Event>, Vec<Odd>), Box<dyn std::error::Error + Send + Sync>> {
+        let script = Self::playwright_extraction_script();
+        let output = Command::new("python")
+            .arg("-")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .and_then(|mut child| {
+                use std::io::Write;
+
+                if let Some(stdin) = child.stdin.as_mut() {
+                    stdin.write_all(script.as_bytes())?;
+                }
+                child.wait_with_output()
+            })?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            let message = if stderr.is_empty() {
+                format!("python exited with status {}", output.status)
+            } else {
+                stderr
+            };
+            return Err(message.into());
+        }
+
+        let payload: serde_json::Value = serde_json::from_slice(&output.stdout)?;
+        if let Some(errors) = payload.get("errors").and_then(|value| value.as_array()) {
+            for error in errors {
+                if let (Some(url), Some(message)) = (
+                    error.get("url").and_then(|value| value.as_str()),
+                    error.get("error").and_then(|value| value.as_str()),
+                ) {
+                    debug!(
+                        url = url,
+                        error = message,
+                        "BetBoom: Playwright fallback page failed"
+                    );
+                }
+            }
+        }
+
+        let items = payload
+            .get("items")
+            .and_then(|value| value.as_array())
+            .cloned()
+            .unwrap_or_default();
+
+        let mut events = Vec::new();
+        let mut odds = Vec::new();
+        let mut seen = HashSet::new();
+        for item in items {
+            if let Some((event, mut event_odds)) = Self::parse_playwright_item(&item) {
+                if seen.insert(event.id.clone()) {
+                    events.push(event);
+                }
+                odds.append(&mut event_odds);
+            }
+        }
+
+        Ok((events, odds))
+    }
+
+    async fn fetch_via_playwright(
+        &self,
+    ) -> Result<(Vec<Event>, Vec<Odd>), Box<dyn std::error::Error + Send + Sync>> {
+        let _ = &self.client;
+        tokio::task::spawn_blocking(Self::fetch_via_playwright_blocking)
+            .await
+            .map_err(|error| -> Box<dyn std::error::Error + Send + Sync> { Box::new(error) })?
+    }
+
+    async fn fetch_http_bootstrap_summary(&self) -> Option<String> {
+        let mut summaries = Vec::new();
+        for probe in FOCUSED_RUNTIME_PROBE_URLS.iter().take(2) {
+            let response = self
+                .client
+                .get(*probe)
+                .header("User-Agent", USER_AGENT)
+                .send()
+                .await
+                .ok()?;
+            let status = response.status();
+            let body = response.text().await.ok()?;
+            let marker = Self::extract_http_bootstrap_marker(&body);
+            summaries.push(format!("{}:{}:{}", probe, status.as_u16(), marker));
+        }
+
+        Some(summaries.join("|"))
+    }
+
+    fn extract_http_bootstrap_marker(html: &str) -> String {
+        let next_data_re =
+            Regex::new(r#"<script id="__NEXT_DATA__" type="application/json">(.*?)</script>"#).ok();
+        let Some(next_data_re) = next_data_re else {
+            return "next_data_regex_failed".to_string();
+        };
+        let Some(captures) = next_data_re.captures(html) else {
+            return "next_data_missing".to_string();
+        };
+        let payload = captures.get(1).map(|m| m.as_str()).unwrap_or_default();
+        let Ok(json) = serde_json::from_str::<serde_json::Value>(payload) else {
+            return "next_data_invalid_json".to_string();
+        };
+        let runtime = json
+            .get("runtimeConfig")
+            .cloned()
+            .unwrap_or_else(|| serde_json::Value::Object(Default::default()));
+        let api = runtime
+            .get("SPORTBOOK_API_URL")
+            .and_then(|v| v.as_str())
+            .unwrap_or("-");
+        let feed = runtime
+            .get("SPORTBOOK_FEED_WS_URL")
+            .and_then(|v| v.as_str())
+            .unwrap_or("-");
+        let is_live = json
+            .pointer("/props/pageProps/isLive")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        format!(
+            "next_data_ok[is_live={},api={},feed={}]",
+            is_live, api, feed
+        )
+    }
+
     fn runtime_probe_plan() -> Vec<Probe> {
         let mut plan = FOCUSED_RUNTIME_PROBE_URLS
             .iter()
@@ -707,14 +1038,7 @@ impl BetboomParser {
             .collect::<Vec<_>>();
 
         if plan.is_empty() {
-            return PROBES
-                .iter()
-                .copied()
-                .filter(|probe| {
-                    probe.url != KNOWN_BLOCKER_LIVE_FOOTBALL_URL
-                        && probe.url != KNOWN_BLOCKER_PREMATCH_FOOTBALL_URL
-                })
-                .collect();
+            return PROBES.iter().copied().collect();
         }
 
         let seen = plan.iter().map(|probe| probe.url).collect::<HashSet<_>>();
@@ -722,28 +1046,24 @@ impl BetboomParser {
             PROBES
                 .iter()
                 .copied()
-                .filter(|probe| {
-                    probe.url != KNOWN_BLOCKER_LIVE_FOOTBALL_URL
-                        && probe.url != KNOWN_BLOCKER_PREMATCH_FOOTBALL_URL
-                        && !seen.contains(probe.url)
-                }),
+                .filter(|probe| !seen.contains(probe.url)),
         );
 
         plan
     }
 
     fn headless_navigation_timeout_ms(probe: &Probe) -> u64 {
-        if probe.url == KNOWN_BLOCKER_LIVE_FOOTBALL_URL
-            || probe.url == KNOWN_BLOCKER_PREMATCH_FOOTBALL_URL
-        {
-            HEADLESS_KNOWN_BLOCKER_NAVIGATION_TIMEOUT_MS
-        } else {
-            HEADLESS_NAVIGATION_TIMEOUT_MS
-        }
+        let _ = probe;
+        HEADLESS_NAVIGATION_TIMEOUT_MS
     }
 
     fn probe_wall_clock_timeout_ms(probe: &Probe, executed_probes: usize) -> u64 {
         Self::headless_navigation_timeout_ms(probe)
+            + if Self::is_focused_football_probe(probe) {
+                FOCUSED_FOOTBALL_PROBE_TIMEOUT_BONUS_MS
+            } else {
+                0
+            }
             + HEADLESS_WAIT_MS
             + if probe.prematch_filter.is_some() {
                 FILTER_WAIT_MS
@@ -755,6 +1075,13 @@ impl BetboomParser {
             } else {
                 PROBE_RESULT_SLACK_MS
             }
+    }
+
+    fn is_focused_football_probe(probe: &Probe) -> bool {
+        matches!(
+            probe.url,
+            "https://betboom.ru/sport/live/football" | "https://betboom.ru/sport/football"
+        )
     }
 
     fn is_navigation_readiness_timeout(error: &str) -> bool {
@@ -999,31 +1326,65 @@ impl BetboomParser {
             root_cause: Some("headless_helper_init_failed".to_string()),
         })?;
 
-        let tab = helper
-            .navigate_and_wait_with_timeout(
-                probe.url,
-                HEADLESS_WAIT_MS,
-                Self::headless_navigation_timeout_ms(&probe),
-            )
-            .map_err(|error| {
+        let navigation_timeout_ms = Self::headless_navigation_timeout_ms(&probe);
+        let tab = match helper.navigate_and_wait_with_timeout(
+            probe.url,
+            HEADLESS_WAIT_MS,
+            navigation_timeout_ms,
+        ) {
+            Ok(tab) => tab,
+            Err(error) => {
                 let error_message = error.to_string();
-                warn!(url = probe.url, error = %error_message, "BetBoom: headless navigation failed");
-                ProbeReport {
-                    url: probe.url,
-                    sport: probe.sport,
-                    is_live: probe.is_live,
-                    navigation_ok: false,
-                    navigation_error: Some(error_message.clone()),
-                    snapshots: 0,
-                    rendered_chars: 0,
-                    strategies: Vec::new(),
-                    events: 0,
-                    odds: 0,
-                    preview: None,
-                    rendered_probe: None,
-                    root_cause: Some(Self::navigation_root_cause(&error_message).to_string()),
+                if Self::is_navigation_readiness_timeout(&error_message) {
+                    debug!(
+                        url = probe.url,
+                        timeout_ms = navigation_timeout_ms,
+                        "BetBoom: retrying navigation via shell-tolerant fallback"
+                    );
+                    match helper.navigate_and_wait(probe.url, HEADLESS_WAIT_MS) {
+                        Ok(tab) => tab,
+                        Err(fallback_error) => {
+                            let fallback_message = fallback_error.to_string();
+                            warn!(url = probe.url, error = %fallback_message, "BetBoom: fallback navigation failed");
+                            return Err(ProbeReport {
+                                url: probe.url,
+                                sport: probe.sport,
+                                is_live: probe.is_live,
+                                navigation_ok: false,
+                                navigation_error: Some(fallback_message.clone()),
+                                snapshots: 0,
+                                rendered_chars: 0,
+                                strategies: Vec::new(),
+                                events: 0,
+                                odds: 0,
+                                preview: None,
+                                rendered_probe: None,
+                                root_cause: Some(
+                                    Self::navigation_root_cause(&fallback_message).to_string(),
+                                ),
+                            });
+                        }
+                    }
+                } else {
+                    warn!(url = probe.url, error = %error_message, "BetBoom: headless navigation failed");
+                    return Err(ProbeReport {
+                        url: probe.url,
+                        sport: probe.sport,
+                        is_live: probe.is_live,
+                        navigation_ok: false,
+                        navigation_error: Some(error_message.clone()),
+                        snapshots: 0,
+                        rendered_chars: 0,
+                        strategies: Vec::new(),
+                        events: 0,
+                        odds: 0,
+                        preview: None,
+                        rendered_probe: None,
+                        root_cause: Some(Self::navigation_root_cause(&error_message).to_string()),
+                    });
                 }
-            })?;
+            }
+        };
 
         if let Some(filter_text) = probe.prematch_filter {
             let clicked = Self::click_visible_text(&tab, filter_text);
@@ -2714,10 +3075,9 @@ impl BetboomParser {
 mod tests {
     use super::{
         sporthub_helper, BetboomParser, Probe, ProbeReport, FILTER_WAIT_MS,
-        FOCUSED_RUNTIME_PROBE_URLS, HEADLESS_KNOWN_BLOCKER_NAVIGATION_TIMEOUT_MS,
+        FOCUSED_FOOTBALL_PROBE_TIMEOUT_BONUS_MS, FOCUSED_RUNTIME_PROBE_URLS, HEADLESS_KNOWN_BLOCKER_NAVIGATION_TIMEOUT_MS,
         HEADLESS_NAVIGATION_TIMEOUT_MS, HEADLESS_WAIT_MS, KNOWN_BLOCKER_LIVE_FOOTBALL_URL,
-        KNOWN_BLOCKER_PREMATCH_FOOTBALL_URL, PREMATCH_FILTER_TEXT, PROBES,
-        PROBE_RESULT_SLACK_MS,
+        KNOWN_BLOCKER_PREMATCH_FOOTBALL_URL, PREMATCH_FILTER_TEXT, PROBES, PROBE_RESULT_SLACK_MS,
         RUNTIME_PROBE_BUDGET_MS, RUNTIME_WALL_CLOCK_CUTOFF_MS,
     };
     use shared::Sport;
@@ -3348,28 +3708,22 @@ mod tests {
                 .collect::<Vec<_>>(),
             FOCUSED_RUNTIME_PROBE_URLS
         );
-        assert_eq!(plan[0].url, "https://betboom.ru/sport/live/tennis");
-        assert_eq!(plan[1].url, "https://betboom.ru/sport/tennis");
-        assert_eq!(plan[2].url, "https://betboom.ru/sport/live/basketball");
-        assert!(plan
-            .iter()
-            .all(|probe| probe.url != KNOWN_BLOCKER_LIVE_FOOTBALL_URL));
-        assert!(plan
-            .iter()
-            .all(|probe| probe.url != KNOWN_BLOCKER_PREMATCH_FOOTBALL_URL));
+        assert_eq!(plan[0].url, "https://betboom.ru/sport/live/basketball");
+        assert_eq!(plan[1].url, "https://betboom.ru/sport/basketball");
+        assert_eq!(plan[2].url, "https://betboom.ru/sport/live/tennis");
         assert_eq!(
             plan.iter()
-                .filter(|probe| probe.url == "https://betboom.ru/sport/live/tennis")
+                .filter(|probe| probe.url == KNOWN_BLOCKER_LIVE_FOOTBALL_URL)
                 .count(),
             1
         );
         assert!(plan
             .iter()
-            .any(|probe| probe.url == "https://betboom.ru/sport/live/basketball"));
+            .any(|probe| probe.url == KNOWN_BLOCKER_PREMATCH_FOOTBALL_URL));
     }
 
     #[test]
-    fn uses_shorter_navigation_timeout_for_known_live_football_blocker() {
+    fn uses_uniform_navigation_timeout_for_focused_probes() {
         let blocker_probe = Probe {
             url: KNOWN_BLOCKER_LIVE_FOOTBALL_URL,
             sport: Sport::Football,
@@ -3391,11 +3745,11 @@ mod tests {
 
         assert_eq!(
             BetboomParser::headless_navigation_timeout_ms(&blocker_probe),
-            HEADLESS_KNOWN_BLOCKER_NAVIGATION_TIMEOUT_MS
+            HEADLESS_NAVIGATION_TIMEOUT_MS
         );
         assert_eq!(
             BetboomParser::headless_navigation_timeout_ms(&prematch_blocker_probe),
-            HEADLESS_KNOWN_BLOCKER_NAVIGATION_TIMEOUT_MS
+            HEADLESS_NAVIGATION_TIMEOUT_MS
         );
         assert_eq!(
             BetboomParser::headless_navigation_timeout_ms(&healthy_probe),
@@ -3625,7 +3979,7 @@ mod tests {
 
         assert_eq!(
             BetboomParser::empty_rendered_probe_exit_status(&reports),
-            Some("focused_probes_parse_empty")
+            Some("parse_empty_after_primary_pair")
         );
     }
 
@@ -3646,15 +4000,45 @@ mod tests {
 
         assert!(BetboomParser::runtime_budget_allows_probe(0, &live_probe));
         assert!(!BetboomParser::runtime_budget_allows_probe(
-            RUNTIME_PROBE_BUDGET_MS - HEADLESS_KNOWN_BLOCKER_NAVIGATION_TIMEOUT_MS,
+            RUNTIME_PROBE_BUDGET_MS - HEADLESS_NAVIGATION_TIMEOUT_MS,
             &live_probe,
         ));
         assert!(!BetboomParser::runtime_budget_allows_probe(
             RUNTIME_PROBE_BUDGET_MS
-                - (HEADLESS_KNOWN_BLOCKER_NAVIGATION_TIMEOUT_MS + HEADLESS_WAIT_MS + FILTER_WAIT_MS)
+                - (HEADLESS_NAVIGATION_TIMEOUT_MS + HEADLESS_WAIT_MS + FILTER_WAIT_MS)
                 + 1,
             &prematch_probe,
         ));
+    }
+
+    #[test]
+    fn grants_extra_timeout_budget_to_focused_football_probes() {
+        let live_probe = Probe {
+            url: "https://betboom.ru/sport/live/football",
+            sport: Sport::Football,
+            is_live: true,
+            prematch_filter: None,
+        };
+        let prematch_probe = Probe {
+            url: "https://betboom.ru/sport/football",
+            sport: Sport::Football,
+            is_live: false,
+            prematch_filter: Some(PREMATCH_FILTER_TEXT),
+        };
+
+        assert_eq!(
+            BetboomParser::probe_wall_clock_timeout_ms(&live_probe, 0),
+            HEADLESS_NAVIGATION_TIMEOUT_MS
+                + FOCUSED_FOOTBALL_PROBE_TIMEOUT_BONUS_MS
+                + HEADLESS_WAIT_MS
+        );
+        assert_eq!(
+            BetboomParser::probe_wall_clock_timeout_ms(&prematch_probe, 0),
+            HEADLESS_NAVIGATION_TIMEOUT_MS
+                + FOCUSED_FOOTBALL_PROBE_TIMEOUT_BONUS_MS
+                + HEADLESS_WAIT_MS
+                + FILTER_WAIT_MS
+        );
     }
 
     #[test]

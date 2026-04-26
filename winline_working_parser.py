@@ -159,8 +159,8 @@ class WinlineWorkingParser:
                 page = await context.new_page()
                 
                 # Устанавливаем таймауты
-                page.set_default_timeout(30000)
-                page.set_default_navigation_timeout(30000)
+                page.set_default_timeout(90000)
+                page.set_default_navigation_timeout(90000)
                 
                 # Перехватываем запросы к API
                 collected_api_data = []
@@ -181,7 +181,7 @@ class WinlineWorkingParser:
                 # Загружаем главную страницу
                 logger.info("Loading Winline main page...")
                 try:
-                    await page.goto(f"{self.BASE_URL}/", wait_until="networkidle", timeout=30000)
+                    await page.goto(f"{self.BASE_URL}/", wait_until="load", timeout=60000)
                 except Exception as e:
                     logger.warning(f"Navigation timeout: {e}, continuing...")
                 
@@ -213,7 +213,7 @@ class WinlineWorkingParser:
                 # Переходим на страницу лайв событий
                 logger.info("Loading live events page...")
                 try:
-                    await page.goto(f"{self.BASE_URL}/live", wait_until="networkidle", timeout=30000)
+                    await page.goto(f"{self.BASE_URL}/live", wait_until="load", timeout=60000)
                 except:
                     logger.warning("Live page load timeout, continuing...")
                 
@@ -234,7 +234,7 @@ class WinlineWorkingParser:
                 # Переходим на страницу прематч футбола
                 logger.info("Loading prematch football page...")
                 try:
-                    await page.goto(f"{self.BASE_URL}/stavki/sport/futbol/", wait_until="networkidle", timeout=30000)
+                    await page.goto(f"{self.BASE_URL}/stavki/sport/futbol/", wait_until="load", timeout=60000)
                 except:
                     logger.warning("Football page timeout, continuing...")
                 

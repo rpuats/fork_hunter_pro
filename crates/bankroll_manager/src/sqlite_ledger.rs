@@ -47,29 +47,21 @@ impl SqliteBetLedger {
         .await?;
 
         // Создаем индексы для быстрого поиска
-        sqlx::query(
-            "CREATE INDEX IF NOT EXISTS idx_surebet_id ON bet_ledger(surebet_id)",
-        )
-        .execute(&pool)
-        .await?;
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_surebet_id ON bet_ledger(surebet_id)")
+            .execute(&pool)
+            .await?;
 
-        sqlx::query(
-            "CREATE INDEX IF NOT EXISTS idx_bookmaker ON bet_ledger(bookmaker)",
-        )
-        .execute(&pool)
-        .await?;
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_bookmaker ON bet_ledger(bookmaker)")
+            .execute(&pool)
+            .await?;
 
-        sqlx::query(
-            "CREATE INDEX IF NOT EXISTS idx_status ON bet_ledger(status)",
-        )
-        .execute(&pool)
-        .await?;
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_status ON bet_ledger(status)")
+            .execute(&pool)
+            .await?;
 
-        sqlx::query(
-            "CREATE INDEX IF NOT EXISTS idx_placed_at ON bet_ledger(placed_at)",
-        )
-        .execute(&pool)
-        .await?;
+        sqlx::query("CREATE INDEX IF NOT EXISTS idx_placed_at ON bet_ledger(placed_at)")
+            .execute(&pool)
+            .await?;
 
         Ok(Self { pool })
     }
@@ -78,7 +70,7 @@ impl SqliteBetLedger {
     pub async fn new_with_file<P: AsRef<Path>>(path: P) -> anyhow::Result<Self> {
         let path = path.as_ref();
         let db_url = format!("sqlite://{}", path.display());
-        
+
         // Убеждаемся, что директория существует
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
@@ -247,8 +239,7 @@ impl BetLedgerEntryRow {
             id: Uuid::parse_str(&self.id).unwrap_or_else(|_| Uuid::new_v4()),
             bet_command_id: Uuid::parse_str(&self.bet_command_id)
                 .unwrap_or_else(|_| Uuid::new_v4()),
-            surebet_id: Uuid::parse_str(&self.surebet_id)
-                .unwrap_or_else(|_| Uuid::new_v4()),
+            surebet_id: Uuid::parse_str(&self.surebet_id).unwrap_or_else(|_| Uuid::new_v4()),
             bookmaker: self.bookmaker,
             event_id: self.event_id,
             market: self.market,
@@ -296,7 +287,10 @@ mod tests {
         let result = ledger.add_entry(entry.clone()).await;
         assert!(result.is_ok());
 
-        let retrieved = ledger.get_entry(entry.id).await.expect("Failed to get entry");
+        let retrieved = ledger
+            .get_entry(entry.id)
+            .await
+            .expect("Failed to get entry");
         assert!(retrieved.is_some());
         let retrieved = retrieved.unwrap();
         assert_eq!(retrieved.bookmaker, "Pari");
@@ -320,12 +314,21 @@ mod tests {
             2.0,
         );
 
-        ledger.add_entry(entry.clone()).await.expect("Failed to add entry");
+        ledger
+            .add_entry(entry.clone())
+            .await
+            .expect("Failed to add entry");
 
         entry.mark_won(2000.0);
-        ledger.update_entry(entry.clone()).await.expect("Failed to update entry");
+        ledger
+            .update_entry(entry.clone())
+            .await
+            .expect("Failed to update entry");
 
-        let retrieved = ledger.get_entry(entry.id).await.expect("Failed to get entry");
+        let retrieved = ledger
+            .get_entry(entry.id)
+            .await
+            .expect("Failed to get entry");
         assert!(retrieved.is_some());
         let retrieved = retrieved.unwrap();
         assert_eq!(retrieved.status, "settled");
@@ -366,7 +369,10 @@ mod tests {
         ledger.add_entry(entry1).await.expect("Failed to add entry");
         ledger.add_entry(entry2).await.expect("Failed to add entry");
 
-        let entries = ledger.get_entries_by_surebet(surebet_id).await.expect("Failed to get entries");
+        let entries = ledger
+            .get_entries_by_surebet(surebet_id)
+            .await
+            .expect("Failed to get entries");
         assert_eq!(entries.len(), 2);
     }
 
@@ -407,7 +413,10 @@ mod tests {
         ledger.add_entry(entry1).await.expect("Failed to add entry");
         ledger.add_entry(entry2).await.expect("Failed to add entry");
 
-        let stats = ledger.get_statistics(start, end).await.expect("Failed to get statistics");
+        let stats = ledger
+            .get_statistics(start, end)
+            .await
+            .expect("Failed to get statistics");
         assert_eq!(stats.total_bets, 2);
         assert_eq!(stats.winning_bets, 1);
         assert_eq!(stats.losing_bets, 1);

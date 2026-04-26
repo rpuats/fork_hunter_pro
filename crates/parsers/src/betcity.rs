@@ -5,8 +5,8 @@ use reqwest::Client;
 use scraper::{Html, Selector};
 use shared::odds::OddsType;
 use shared::{
-    DiagnosticSeverity, Event, Odd, ParserDiagnosticCheck, ParserReadiness,
-    ParserReadinessStage, Sport,
+    DiagnosticSeverity, Event, Odd, ParserDiagnosticCheck, ParserReadiness, ParserReadinessStage,
+    Sport,
 };
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -135,7 +135,10 @@ impl BetcityParser {
             match operation().await {
                 Ok(result) => {
                     if attempt > 0 {
-                        info!(attempt, description, "Betcity operation succeeded after retries");
+                        info!(
+                            attempt,
+                            description, "Betcity operation succeeded after retries"
+                        );
                     }
                     return Ok(result);
                 }
@@ -144,7 +147,12 @@ impl BetcityParser {
                     last_error = Some(err_str.clone());
 
                     if !Self::is_transient_error(&err_str) {
-                        error!(attempt, error = &err_str, description, "Betcity permanent error (not retrying)");
+                        error!(
+                            attempt,
+                            error = &err_str,
+                            description,
+                            "Betcity permanent error (not retrying)"
+                        );
                         return Err(err);
                     }
 
@@ -220,10 +228,7 @@ impl BetcityParser {
         }
 
         info!("Betcity: attempting live API endpoints");
-        match self
-            .fetch_best_api_result(client, Self::live_urls(), true)
-            .await
-        {
+        match self.fetch_merged_live_api_results(client).await {
             Ok((events, odds)) => {
                 info!(count = events.len(), "Betcity: live API succeeded");
                 all_events.extend(events);
@@ -242,6 +247,78 @@ impl BetcityParser {
             "Betcity: API stage finished"
         );
         Ok((all_events, all_odds))
+    }
+
+    async fn fetch_merged_live_api_results(
+        &self,
+        client: &reqwest::Client,
+    ) -> Result<(Vec<Event>, Vec<Odd>), Box<dyn std::error::Error + Send + Sync>> {
+        let mut merged_events = Vec::new();
+        let mut merged_odds = Vec::new();
+        let mut last_error = None;
+        let mut successful_endpoints = 0usize;
+
+        for (idx, url) in Self::live_urls().iter().enumerate() {
+            debug!(
+                url = *url,
+                endpoint_num = idx + 1,
+                total_endpoints = Self::live_urls().len(),
+                "Betcity: trying live API endpoint for merge"
+            );
+
+            match self.fetch_api(client, url, true).await {
+                Ok((events, odds)) => {
+                    let previous_event_count = merged_events.len();
+                    let previous_odd_count = merged_odds.len();
+
+                    let (deduped_events, deduped_odds) = Self::merge_api_payloads(vec![
+                        (merged_events, merged_odds),
+                        (events, odds),
+                    ]);
+                    let unique_event_gain =
+                        deduped_events.len().saturating_sub(previous_event_count);
+                    let unique_odd_gain = deduped_odds.len().saturating_sub(previous_odd_count);
+
+                    info!(
+                        url = *url,
+                        endpoint_num = idx + 1,
+                        unique_event_gain,
+                        unique_odd_gain,
+                        merged_events = deduped_events.len(),
+                        merged_odds = deduped_odds.len(),
+                        overlapping_events = previous_event_count.saturating_sub(unique_event_gain),
+                        "Betcity: merged live API payload"
+                    );
+
+                    merged_events = deduped_events;
+                    merged_odds = deduped_odds;
+                    successful_endpoints += 1;
+                }
+                Err(error) => {
+                    warn!(
+                        url = *url,
+                        error = %error,
+                        endpoint_num = idx + 1,
+                        "Betcity: live API endpoint failed during merge"
+                    );
+                    last_error = Some(error.to_string());
+                }
+            }
+        }
+
+        if successful_endpoints > 0 {
+            info!(
+                successful_endpoints,
+                events = merged_events.len(),
+                odds = merged_odds.len(),
+                "Betcity: merged live API endpoints selected"
+            );
+            Ok((merged_events, merged_odds))
+        } else if let Some(error) = last_error {
+            Err(error.into())
+        } else {
+            Ok((Vec::new(), Vec::new()))
+        }
     }
 
     async fn fetch_best_api_result(
@@ -332,6 +409,20 @@ impl BetcityParser {
         }
 
         (unique_events, unique_odds)
+    }
+
+    fn merge_api_payloads(
+        endpoint_payloads: Vec<(Vec<Event>, Vec<Odd>)>,
+    ) -> (Vec<Event>, Vec<Odd>) {
+        let mut merged_events = Vec::new();
+        let mut merged_odds = Vec::new();
+
+        for (events, odds) in endpoint_payloads {
+            merged_events.extend(events);
+            merged_odds.extend(odds);
+        }
+
+        Self::deduplicate_results(merged_events, merged_odds)
     }
 
     fn prematch_urls() -> &'static [&'static str] {
@@ -426,7 +517,11 @@ impl BetcityParser {
         let client = Self::build_client()?;
 
         for (idx, url) in urls.iter().enumerate() {
-            debug!(url = *url, attempt = idx + 1, "Betcity: HTML script extraction attempt");
+            debug!(
+                url = *url,
+                attempt = idx + 1,
+                "Betcity: HTML script extraction attempt"
+            );
 
             let resp = match client
                 .get(*url)
@@ -483,7 +578,11 @@ impl BetcityParser {
         let client = Self::build_client()?;
 
         for (idx, url) in urls.iter().enumerate() {
-            debug!(url = *url, attempt = idx + 1, "Betcity: HTML DOM parsing attempt");
+            debug!(
+                url = *url,
+                attempt = idx + 1,
+                "Betcity: HTML DOM parsing attempt"
+            );
 
             let resp = match client
                 .get(*url)
@@ -893,6 +992,45 @@ impl BetcityParser {
                 );
             }
 
+            if block_obj.contains_key("Y")
+                && block_obj.contains_key("N")
+                && !market_name_lower.contains("обе забьют")
+                && !market_name_lower.contains("обе команды забьют")
+            {
+                let market = if market_name.is_empty() {
+                    "YesNo"
+                } else {
+                    market_name
+                };
+                let line = block_obj
+                    .get("Num")
+                    .and_then(Self::extract_numeric_value)
+                    .or_else(|| block_obj.get("Tot").and_then(Self::extract_numeric_value));
+
+                Self::push_named_outcome_unique(
+                    odds,
+                    seen,
+                    event_id,
+                    market,
+                    "Yes",
+                    OddsType::Custom,
+                    block_obj.get("Y"),
+                    line,
+                    now,
+                );
+                Self::push_named_outcome_unique(
+                    odds,
+                    seen,
+                    event_id,
+                    market,
+                    "No",
+                    OddsType::Custom,
+                    block_obj.get("N"),
+                    line,
+                    now,
+                );
+            }
+
             if market_name_lower.contains("двойн")
                 || (block_obj.contains_key("1X")
                     && block_obj.contains_key("12")
@@ -929,6 +1067,52 @@ impl BetcityParser {
                     OddsType::Custom,
                     block_obj.get("X2"),
                     None,
+                    now,
+                );
+            }
+
+            if block_obj.contains_key("T1")
+                && block_obj.contains_key("T2")
+                && block_obj.contains_key("D")
+            {
+                let market = if market_name.is_empty() {
+                    "ThreeWayNumeric"
+                } else {
+                    market_name
+                };
+                let line = block_obj.get("Num").and_then(Self::extract_numeric_value);
+
+                Self::push_named_outcome_unique(
+                    odds,
+                    seen,
+                    event_id,
+                    market,
+                    "T1",
+                    OddsType::Custom,
+                    block_obj.get("T1"),
+                    line,
+                    now,
+                );
+                Self::push_named_outcome_unique(
+                    odds,
+                    seen,
+                    event_id,
+                    market,
+                    "D",
+                    OddsType::Custom,
+                    block_obj.get("D"),
+                    line,
+                    now,
+                );
+                Self::push_named_outcome_unique(
+                    odds,
+                    seen,
+                    event_id,
+                    market,
+                    "T2",
+                    OddsType::Custom,
+                    block_obj.get("T2"),
+                    line,
                     now,
                 );
             }
@@ -1464,7 +1648,9 @@ impl BetcityParser {
                 return Ok((events, odds));
             }
             Ok(_) => {
-                warn!("Betcity: события в HTML DOM не найдены — переходим на демо-данные (stage 3)");
+                warn!(
+                    "Betcity: события в HTML DOM не найдены — переходим на демо-данные (stage 3)"
+                );
             }
             Err(e) => {
                 warn!(error = %e, "Betcity: ошибка при парсинге HTML DOM (stage 3)");
@@ -1748,7 +1934,10 @@ impl BookmakerParser for BetcityParser {
 #[cfg(test)]
 mod tests {
     use super::BetcityParser;
+    use chrono::Utc;
     use shared::{DiagnosticSeverity, OddsType, ParserReadinessStage, Sport};
+    use shared::{Event, Odd};
+    use std::collections::HashMap;
     use std::time::Duration;
 
     #[test]
@@ -1811,6 +2000,18 @@ mod tests {
         assert!(odds.iter().any(|odd| {
             odd.market == "1-й тайм" && odd.selection == "1" && odd.odds_type == OddsType::Home
         }));
+        assert!(odds.iter().any(|odd| {
+            odd.market == "Ничья и ТБ"
+                && odd.selection == "Yes"
+                && odd.odds_type == OddsType::Custom
+                && odd.line == Some(4.5)
+        }));
+        assert!(odds.iter().any(|odd| {
+            odd.market == "Кто забьет 7-й гол"
+                && odd.selection == "T1"
+                && odd.odds_type == OddsType::Custom
+                && odd.line == Some(7.0)
+        }));
     }
 
     #[test]
@@ -1838,6 +2039,71 @@ mod tests {
     }
 
     #[test]
+    fn merge_api_payloads_keeps_complementary_live_events() {
+        let now = Utc::now();
+        let first_event = Event {
+            id: "betcity-live-1".to_string(),
+            sport: Sport::Football,
+            league: "Live League".to_string(),
+            home_team: "Team A".to_string(),
+            away_team: "Team B".to_string(),
+            start_time: None,
+            is_live: true,
+            bookmaker_slug: "betcity".to_string(),
+            raw_url: Some("https://betcity.ru/ru/live".to_string()),
+            extra: HashMap::new(),
+        };
+        let second_event = Event {
+            id: "betcity-live-2".to_string(),
+            sport: Sport::Football,
+            league: "Live League".to_string(),
+            home_team: "Team C".to_string(),
+            away_team: "Team D".to_string(),
+            start_time: None,
+            is_live: true,
+            bookmaker_slug: "betcity".to_string(),
+            raw_url: Some("https://betcity.ru/ru/live".to_string()),
+            extra: HashMap::new(),
+        };
+
+        let first_odd = Odd {
+            id: "betcity-live-1-1".to_string(),
+            event_id: first_event.id.clone(),
+            bookmaker_slug: "betcity".to_string(),
+            market: "1X2".to_string(),
+            selection: "1".to_string(),
+            odds: 1.8,
+            odds_type: OddsType::Home,
+            line: None,
+            timestamp: now,
+        };
+        let second_odd = Odd {
+            id: "betcity-live-2-1".to_string(),
+            event_id: second_event.id.clone(),
+            bookmaker_slug: "betcity".to_string(),
+            market: "1X2".to_string(),
+            selection: "1".to_string(),
+            odds: 2.1,
+            odds_type: OddsType::Home,
+            line: None,
+            timestamp: now,
+        };
+
+        let (events, odds) = BetcityParser::merge_api_payloads(vec![
+            (vec![first_event.clone()], vec![first_odd.clone()]),
+            (
+                vec![first_event, second_event.clone()],
+                vec![first_odd, second_odd.clone()],
+            ),
+        ]);
+
+        assert_eq!(events.len(), 2);
+        assert_eq!(odds.len(), 2);
+        assert!(events.iter().any(|event| event.id == second_event.id));
+        assert!(odds.iter().any(|odd| odd.id == second_odd.id));
+    }
+
+    #[test]
     fn is_transient_error_detects_timeout() {
         assert!(BetcityParser::is_transient_error("operation timed out"));
         assert!(BetcityParser::is_transient_error("request timeout"));
@@ -1852,7 +2118,9 @@ mod tests {
         assert!(BetcityParser::is_transient_error("429 Too Many Requests"));
         assert!(BetcityParser::is_transient_error("connection refused"));
         assert!(BetcityParser::is_transient_error("ConnectError"));
-        assert!(BetcityParser::is_transient_error("Temporary failure in name resolution"));
+        assert!(BetcityParser::is_transient_error(
+            "Temporary failure in name resolution"
+        ));
     }
 
     #[test]

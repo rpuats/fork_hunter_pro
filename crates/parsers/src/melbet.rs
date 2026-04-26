@@ -4782,9 +4782,7 @@ mod tests {
         assert!(blocker.contains("blocker=navigation_failed:retry_known_sportsbook_route"));
         assert!(blocker.contains("confirmed_blocker=desktop_live_navigation_failed"));
         assert!(blocker.contains("next_step=retry_known_sportsbook_route"));
-        assert!(blocker.contains(
-            "reason=canonical_navigation_failed_before_bootstrap_capture"
-        ));
+        assert!(blocker.contains("reason=canonical_navigation_failed_before_bootstrap_capture"));
         assert!(blocker.contains(
             "target_route=https://sport.melbet.ru/partner/SportsBook/Home?initialRoute=%7B%22path%22%3A%22%2Flive%22%7D"
         ));

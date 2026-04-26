@@ -1,11 +1,10 @@
+use itertools::Itertools;
 /// Cascade selection for 6-7 leg parlays with multi-BK optimization
-/// 
+///
 /// Implements intelligent selection of 6-7 leg combinations while optimizing
 /// bookmaker selection and managing risk across multiple bookmakers.
-
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use itertools::Itertools;
 
 /// Strategy for selecting legs in 6-7 leg parlays
 #[derive(Debug, Clone, Copy)]
@@ -23,7 +22,7 @@ pub enum CascadeStrategy {
 }
 
 /// Leg selection with multi-BK context
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct CascadeLeg {
     pub position: usize,
     pub event_id: String,
@@ -43,9 +42,9 @@ pub struct CascadeResult {
     pub leg_count: usize,
     pub selected_legs: Vec<CascadeLeg>,
     pub total_odds: f64,
-    pub multi_bk_score: f64, // How well distributed across BKs
+    pub multi_bk_score: f64,    // How well distributed across BKs
     pub correlation_score: f64, // Measure of event correlation (lower is better)
-    pub diversity_score: f64, // 0-1, higher = more diverse
+    pub diversity_score: f64,   // 0-1, higher = more diverse
     pub optimal_allocation: HashMap<String, Vec<String>>, // BK -> list of events
 }
 
@@ -141,7 +140,11 @@ impl CascadeSelector {
     /// Greedy selection: pick highest odds first
     fn select_greedy_odds(&self, legs: &[CascadeLeg], count: usize) -> Vec<CascadeLeg> {
         let mut sorted = legs.to_vec();
-        sorted.sort_by(|a, b| b.odds.partial_cmp(&a.odds).unwrap_or(std::cmp::Ordering::Equal));
+        sorted.sort_by(|a, b| {
+            b.odds
+                .partial_cmp(&a.odds)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         sorted.into_iter().take(count).collect()
     }
 
@@ -153,7 +156,11 @@ impl CascadeSelector {
 
         // Sort by odds and take every n-th element to balance
         let mut sorted = legs.to_vec();
-        sorted.sort_by(|a, b| a.odds.partial_cmp(&b.odds).unwrap_or(std::cmp::Ordering::Equal));
+        sorted.sort_by(|a, b| {
+            a.odds
+                .partial_cmp(&b.odds)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         let step = legs.len() / count;
         sorted
@@ -170,7 +177,11 @@ impl CascadeSelector {
 
         // Sort by odds descending
         let mut sorted = legs.to_vec();
-        sorted.sort_by(|a, b| b.odds.partial_cmp(&a.odds).unwrap_or(std::cmp::Ordering::Equal));
+        sorted.sort_by(|a, b| {
+            b.odds
+                .partial_cmp(&a.odds)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
 
         for leg in sorted {
             if selected.len() >= count {
@@ -194,13 +205,15 @@ impl CascadeSelector {
         let mut sorted = legs.to_vec();
         // Sort by availability (descending), then odds (descending)
         sorted.sort_by(|a, b| {
-            match b.availability_score
+            match b
+                .availability_score
                 .partial_cmp(&a.availability_score)
                 .unwrap_or(std::cmp::Ordering::Equal)
             {
-                std::cmp::Ordering::Equal => {
-                    b.odds.partial_cmp(&a.odds).unwrap_or(std::cmp::Ordering::Equal)
-                }
+                std::cmp::Ordering::Equal => b
+                    .odds
+                    .partial_cmp(&a.odds)
+                    .unwrap_or(std::cmp::Ordering::Equal),
                 other => other,
             }
         });
@@ -221,15 +234,13 @@ impl CascadeSelector {
             })
             .collect();
 
-        scored_legs.sort_by(|a, b| {
-            b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal)
-        });
+        scored_legs.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
         // Apply light decorrelation: penalize 3rd+ occurrence of same league
         let mut selected = Vec::new();
         let mut league_counts: HashMap<String, usize> = HashMap::new();
 
-        for (leg, _score) in scored_legs {
+        for (leg, _score) in &scored_legs {
             if selected.len() >= count {
                 break;
             }
@@ -237,7 +248,7 @@ impl CascadeSelector {
             let count_in_league = league_counts.entry(leg.league.clone()).or_insert(0);
 
             if *count_in_league < 2 {
-                selected.push(leg);
+                selected.push(leg.clone());
                 *count_in_league += 1;
             }
         }
@@ -324,10 +335,7 @@ impl CascadeSelector {
     }
 
     /// Calculate optimal BK allocation
-    fn calculate_optimal_allocation(
-        &self,
-        legs: &[CascadeLeg],
-    ) -> HashMap<String, Vec<String>> {
+    fn calculate_optimal_allocation(&self, legs: &[CascadeLeg]) -> HashMap<String, Vec<String>> {
         let mut allocation: HashMap<String, Vec<String>> = HashMap::new();
 
         for leg in legs {
@@ -357,13 +365,7 @@ impl CascadeSelector {
 mod tests {
     use super::*;
 
-    fn make_cascade_leg(
-        id: &str,
-        odds: f64,
-        league: &str,
-        avail: f64,
-        bks: usize,
-    ) -> CascadeLeg {
+    fn make_cascade_leg(id: &str, odds: f64, league: &str, avail: f64, bks: usize) -> CascadeLeg {
         let mut backup_bks = Vec::new();
         for i in 0..bks.saturating_sub(1) {
             backup_bks.push(format!("bk{}", i + 2));
@@ -432,7 +434,11 @@ mod tests {
 
         assert_eq!(result.leg_count, 3);
         // Should prefer high availability legs
-        let avg_avail: f64 = result.selected_legs.iter().map(|l| l.availability_score).sum::<f64>()
+        let avg_avail: f64 = result
+            .selected_legs
+            .iter()
+            .map(|l| l.availability_score)
+            .sum::<f64>()
             / result.selected_legs.len() as f64;
         assert!(avg_avail > 0.7);
     }
@@ -526,8 +532,7 @@ mod tests {
             make_cascade_leg("e3", 6.0, "L3", 0.9, 4), // Too high
         ];
 
-        let selector = CascadeSelector::new(CascadeStrategy::GreedyOdds)
-            .with_odds_range(1.3, 5.0);
+        let selector = CascadeSelector::new(CascadeStrategy::GreedyOdds).with_odds_range(1.3, 5.0);
         let result = selector.select_cascade(legs, 2);
 
         assert!(result.is_some());

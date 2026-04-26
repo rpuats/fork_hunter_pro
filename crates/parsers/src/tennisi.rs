@@ -17,8 +17,44 @@ const BASE_URL: &str = "https://tennisi.bet";
 const LIVE_CATEGORY_ID: &str = "29010669";
 const LIVE_LINES_URL: &str = "https://tennisi.bet/rt/cgi/!book2_free.LiveBetsLines?val=1&gameid=5&categoryid=29010669&lang=rus&tbnohdr=1";
 const SPORT_PAGE_URL_TEMPLATE: &str = "https://tennisi.bet/sport/{slug}";
-const CATEGORY_INFO_URL_TEMPLATE: &str = "https://tennisi.bet/rt/cgi/!rt_home.CategoryInfo?gameid=5&categoryid={category_id}&more=today&lang=rus";
-const PREMATCH_FETCH_CONCURRENCY: usize = 8;
+const CATEGORY_INFO_URL_TEMPLATE: &str = "https://tennisi.bet/rt/cgi/!rt_home.CategoryInfo?gameid=5&categoryid={category_id}&more={horizon}&lang=rus";
+const CATEGORY_INFO_URL_NO_HORIZON_TEMPLATE: &str = "https://tennisi.bet/rt/cgi/!rt_home.CategoryInfo?gameid=5&categoryid={category_id}&lang=rus";
+const PREMATCH_FETCH_CONCURRENCY: usize = 32;
+const MAX_DISCOVERED_CATEGORY_IDS: usize = 25;
+const CATEGORY_HORIZONS: &[Option<&str>] = &[
+    Some("today"),
+    Some("tomorrow"),
+    Some("2"),
+    Some("3"),
+    Some("4"),
+    Some("5"),
+    Some("6"),
+    Some("7"),
+    Some("8"),
+    Some("9"),
+    Some("10"),
+    Some("11"),
+    Some("12"),
+    Some("13"),
+    Some("14"),
+    Some("15"),
+    Some("16"),
+    Some("17"),
+    Some("18"),
+    Some("19"),
+    Some("20"),
+    Some("21"),
+    Some("22"),
+    Some("23"),
+    Some("24"),
+    Some("25"),
+    Some("26"),
+    Some("27"),
+    Some("28"),
+    Some("29"),
+    Some("30"),
+    None,
+];
 
 #[derive(Clone, Copy, Debug)]
 struct PrematchProbe {
@@ -121,7 +157,78 @@ const PREMATCH_PROBES: &[PrematchProbe] = &[
     PrematchProbe {
         slug: "trends",
         sport: Sport::Other,
-        category_id: Some("491109347"),
+        category_id: Some("29010668"),
+    },
+    PrematchProbe {
+        slug: "beach_volleyball",
+        sport: Sport::BeachVolleyball,
+        category_id: None,
+    },
+    PrematchProbe {
+        slug: "aussie_rules",
+        sport: Sport::AussieRules,
+        category_id: None,
+    },
+    PrematchProbe {
+        slug: "floorball",
+        sport: Sport::Floorball,
+        category_id: None,
+    },
+    PrematchProbe {
+        slug: "cycling",
+        sport: Sport::Cycling,
+        category_id: None,
+    },
+    PrematchProbe {
+        slug: "motorsport",
+        sport: Sport::Motorsport,
+        category_id: None,
+    },
+
+    PrematchProbe {
+        slug: "golf",
+        sport: Sport::Golf,
+        category_id: Some("439908283"),
+    },
+    PrematchProbe {
+        slug: "mma",
+        sport: Sport::Mma,
+        category_id: Some("439908281"),
+    },
+    PrematchProbe {
+        slug: "biathlon",
+        sport: Sport::WinterSports,
+        category_id: Some("439908284"),
+    },
+    PrematchProbe {
+        slug: "skiing",
+        sport: Sport::Other,
+        category_id: Some("439908285"),
+    },
+    PrematchProbe {
+        slug: "badminton",
+        sport: Sport::Badminton,
+        category_id: None,
+    },
+    PrematchProbe {
+        slug: "cricket",
+        sport: Sport::Cricket,
+        category_id: None,
+    },
+    PrematchProbe {
+        slug: "mma",
+        sport: Sport::Other,
+        category_id: None,
+    },
+    PrematchProbe {
+        slug: "snooker",
+        sport: Sport::Snooker,
+        category_id: None,
+    },
+    PrematchProbe {
+        slug: "esoccer",
+        sport: Sport::Esports,
+        category_id: None,
     },
 ];
 
@@ -139,55 +246,153 @@ impl TennisiParser {
         &self,
         url: &str,
     ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
-        let response = self
-            .client
-            .get(url)
-            .header(
-                "Accept",
-                "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            )
-            .header("Accept-Language", "ru-RU,ru;q=0.9,en;q=0.8")
-            .header("Referer", BASE_URL)
-            .send()
-            .await?;
+        let mut last_error: Option<Box<dyn std::error::Error + Send + Sync>> = None;
+        for attempt in 0..2 {
+            let response = self
+                .client
+                .get(url)
+                .header(
+                    "Accept",
+                    "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                )
+                .header("Accept-Language", "ru-RU,ru;q=0.9,en;q=0.8")
+                .header("Cache-Control", "no-cache")
+                .header("Pragma", "no-cache")
+                .header("Referer", BASE_URL)
+                .send()
+                .await;
 
-        if !response.status().is_success() {
-            return Err(format!("Tennisi returned HTTP {} for {url}", response.status()).into());
+            let response = match response {
+                Ok(resp) => resp,
+                Err(error) => {
+                    last_error = Some(Box::new(error));
+                    if attempt == 0 {
+                        tokio::time::sleep(std::time::Duration::from_millis(350)).await;
+                    }
+                    continue;
+                }
+            };
+
+            if !response.status().is_success() {
+                last_error = Some(
+                    format!("Tennisi returned HTTP {} for {url}", response.status()).into(),
+                );
+                if attempt == 0 {
+                    tokio::time::sleep(std::time::Duration::from_millis(350)).await;
+                }
+                continue;
+            }
+
+            let body = response.text_with_charset("windows-1251").await?;
+            if body.trim().is_empty() {
+                last_error = Some(format!("Tennisi returned empty body for {url}").into());
+                if attempt == 0 {
+                    tokio::time::sleep(std::time::Duration::from_millis(350)).await;
+                }
+                continue;
+            }
+            return Ok(body);
         }
 
-        Ok(response.text_with_charset("windows-1251").await?)
+        Err(last_error.unwrap_or_else(|| "Tennisi request failed".into()))
     }
 
-    async fn discover_category_id(
+    async fn discover_category_ids(
         &self,
         slug: &str,
-    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    ) -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
+        let legacy_fallback = match slug {
+            "badminton" => Some("1000000"),
+            "cricket" => Some("2000000"),
+            "mma" => Some("3000000"),
+            "snooker" => Some("4000000"),
+            "esoccer" => Some("5000000"),
+            _ => None,
+        };
         let sport_page_url = SPORT_PAGE_URL_TEMPLATE.replace("{slug}", slug);
-        let html = self.fetch_text(&sport_page_url).await?;
-        let regex = Regex::new(r"categoryid=(\d+)")?;
-        let category_id = regex
-            .captures(&html)
-            .and_then(|captures| captures.get(1).map(|value| value.as_str().to_string()))
-            .ok_or_else(|| format!("Tennisi category id not found for sport {slug}"))?;
-        Ok(category_id)
+        let html = match self.fetch_text(&sport_page_url).await {
+            Ok(html) => html,
+            Err(error) => {
+                if let Some(fallback) = legacy_fallback {
+                    warn!(
+                        slug = slug,
+                        fallback = fallback,
+                        error = %error,
+                        "Tennisi: category discovery failed, using legacy fallback id"
+                    );
+                    return Ok(vec![fallback.to_string()]);
+                }
+                return Err(error);
+            }
+        };
+        let regex = Regex::new(r#"(?i)(?:categoryid=|categoryId["'=:\s]+)(\d+)"#)?;
+        let mut ids = Vec::new();
+        let mut seen = HashSet::new();
+        for caps in regex.captures_iter(&html) {
+            if let Some(value) = caps.get(1).map(|v| v.as_str().to_string()) {
+                if seen.insert(value.clone()) {
+                    ids.push(value);
+                }
+            }
+        }
+        if ids.is_empty() {
+            if let Some(fallback) = legacy_fallback {
+                warn!(
+                    slug = slug,
+                    fallback = fallback,
+                    "Tennisi: no category ids discovered, using legacy fallback id"
+                );
+                return Ok(vec![fallback.to_string()]);
+            }
+            return Err(format!("Tennisi category ids not found for sport {slug}").into());
+        }
+        if ids.len() > MAX_DISCOVERED_CATEGORY_IDS {
+            ids.truncate(MAX_DISCOVERED_CATEGORY_IDS);
+        }
+        Ok(ids)
     }
 
     async fn fetch_prematch_probe(
         &self,
         probe: PrematchProbe,
     ) -> Result<(Vec<Event>, Vec<Odd>), Box<dyn std::error::Error + Send + Sync>> {
-        let category_id = match probe.category_id {
-            Some(category_id) => category_id.to_string(),
-            None => self.discover_category_id(probe.slug).await?,
+        let category_ids: Vec<String> = match probe.category_id {
+            Some(category_id) => vec![category_id.to_string()],
+            None => self.discover_category_ids(probe.slug).await?,
         };
-        let url = CATEGORY_INFO_URL_TEMPLATE.replace("{category_id}", &category_id);
-        let html = self.fetch_text(&url).await?;
-        Ok(Self::parse_prematch_page(
-            &html,
-            probe.sport,
-            probe.slug,
-            &category_id,
-        ))
+        let mut merged_events = Vec::new();
+        let mut merged_odds = Vec::new();
+        let mut seen_events = HashSet::new();
+        let mut seen_odds = HashSet::new();
+
+        for category_id in category_ids {
+            for horizon in CATEGORY_HORIZONS {
+                let url = match horizon {
+                    Some(horizon) => CATEGORY_INFO_URL_TEMPLATE
+                        .replace("{category_id}", &category_id)
+                        .replace("{horizon}", horizon),
+                    None => {
+                        CATEGORY_INFO_URL_NO_HORIZON_TEMPLATE.replace("{category_id}", &category_id)
+                    }
+                };
+                let html = self.fetch_text(&url).await?;
+                let (events, odds) =
+                    Self::parse_prematch_page(&html, probe.sport, probe.slug, &category_id);
+
+                for event in events {
+                    if seen_events.insert(event.id.clone()) {
+                        merged_events.push(event);
+                    }
+                }
+                for odd in odds {
+                    if seen_odds.insert(odd.id.clone()) {
+                        merged_odds.push(odd);
+                    }
+                }
+            }
+        }
+
+        Ok((merged_events, merged_odds))
     }
 
     async fn fetch_live_runtime_data(
@@ -1238,6 +1443,6 @@ mod tests {
         assert_eq!(football.category_id, Some("137"));
         assert_eq!(basketball.category_id, Some("140"));
         assert_eq!(darts.category_id, Some("58446467"));
-        assert_eq!(trends.category_id, Some("491109347"));
+        assert_eq!(trends.category_id, Some("29010668"));
     }
 }

@@ -14,6 +14,10 @@ pub mod fonbet;
 pub mod headless_helper;
 pub mod health;
 pub mod leon;
+pub mod liga_stavok;
+pub mod ligastavok;
+// experimental mainline migration in progress; kept out of compile path while focusing BetBoom
+// pub mod liga_stavok;
 pub mod marathon;
 pub mod marathon_rest;
 pub mod melbet;
@@ -28,9 +32,11 @@ pub mod sportbet;
 pub mod stealth;
 pub mod tennisi;
 pub mod winline;
+pub mod winline_json;
 pub mod winline_real_working;
 pub mod winline_rest;
 pub mod winline_rest_adapter;
+pub mod winline_static;
 pub mod zenit;
 
 pub use base::BookmakerParser;

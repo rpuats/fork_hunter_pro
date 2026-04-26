@@ -96,6 +96,10 @@ impl ScannerRunner {
         self.scanner.get_value_bets(limit)
     }
 
+    pub fn get_middles(&self, limit: usize) -> Vec<engine::middle::MiddleOpportunity> {
+        self.scanner.get_middles(limit)
+    }
+
     pub fn get_odds_errors(&self, limit: usize) -> Vec<OddsError> {
         self.scanner.get_odds_errors(limit)
     }

@@ -1,0 +1,12 @@
+{
+  "name": "Auto-Approve Shell Commands",
+  "version": "1.0.0",
+  "description": "Disabled",
+  "when": {
+    "type": "userTriggered"
+  },
+  "then": {
+    "type": "runCommand",
+    "command": "echo ok"
+  }
+}

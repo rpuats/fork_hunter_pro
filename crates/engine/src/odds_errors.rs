@@ -10,13 +10,13 @@ use uuid::Uuid;
 #[derive(Debug, Clone)]
 pub struct DetectionResult {
     pub error: OddsError,
-    pub confidence: f64, // 0-100%
+    pub confidence: f64,                // 0-100%
     pub detection_methods: Vec<String>, // "3-sigma", "IQR", "Grubbs", etc.
     pub reason: String,
     pub time_series_flag: bool,
     pub bk_anomaly_flag: bool,
     pub market_anomaly_flag: bool,
-    pub ml_score: f64, // Machine learning fusion score
+    pub ml_score: f64,          // Machine learning fusion score
     pub systematic_shift: bool, // Time-series trend detection
 }
 
@@ -26,7 +26,7 @@ pub struct OddsErrorDetector {
     min_samples: usize,
     recent_odds: Arc<DashMap<String, Vec<f64>>>,
     recent_odds_with_time: Arc<DashMap<String, Vec<(f64, i64)>>>, // odds + timestamp
-    bk_profiles: Arc<DashMap<String, BKProfile>>, // Bookmaker behavior profiles
+    bk_profiles: Arc<DashMap<String, BKProfile>>,                 // Bookmaker behavior profiles
     market_profiles: Arc<DashMap<String, MarketProfile>>, // Market-specific anomaly profiles
 }
 
@@ -37,8 +37,8 @@ struct BKProfile {
     anomaly_count: usize,
     total_observations: usize,
     confidence_factor: f64, // Reputation factor: 0.5-2.0
-    win_count: usize, // Accurate odds count
-    loss_count: usize, // Anomalous odds count
+    win_count: usize,       // Accurate odds count
+    loss_count: usize,      // Anomalous odds count
 }
 
 #[derive(Clone, Debug)]
@@ -72,10 +72,7 @@ impl OddsErrorDetector {
     }
 
     /// Enhanced detection with confidence scores and multiple statistical methods
-    pub fn detect_errors_with_confidence(
-        &self,
-        all_odds: &[Odd],
-    ) -> Vec<DetectionResult> {
+    pub fn detect_errors_with_confidence(&self, all_odds: &[Odd]) -> Vec<DetectionResult> {
         self.detect_errors_advanced(&[], &HashMap::new(), all_odds, false)
     }
 
@@ -145,11 +142,11 @@ impl OddsErrorDetector {
 
         profile.total_observations += 1;
         let old_avg = profile.avg_odds;
-        profile.avg_odds =
-            (old_avg * (profile.total_observations - 1) as f64 + odds) / profile.total_observations as f64;
+        profile.avg_odds = (old_avg * (profile.total_observations - 1) as f64 + odds)
+            / profile.total_observations as f64;
         profile.deviation = ((profile.deviation.powi(2) * (profile.total_observations - 1) as f64)
             + (odds - profile.avg_odds).powi(2))
-            .sqrt()
+        .sqrt()
             / profile.total_observations as f64;
 
         if is_anomaly {
@@ -180,7 +177,9 @@ impl OddsErrorDetector {
     }
 
     pub fn get_bk_confidence_factor(&self, bk: &str) -> Option<f64> {
-        self.bk_profiles.get(bk).map(|profile| profile.confidence_factor)
+        self.bk_profiles
+            .get(bk)
+            .map(|profile| profile.confidence_factor)
     }
 
     pub fn get_bk_accuracy(&self, bk: &str) -> Option<f64> {
@@ -194,7 +193,9 @@ impl OddsErrorDetector {
     }
 
     pub fn get_market_volatility(&self, market: &str) -> Option<f64> {
-        self.market_profiles.get(market).map(|profile| profile.volatility)
+        self.market_profiles
+            .get(market)
+            .map(|profile| profile.volatility)
     }
 
     pub fn get_market_anomaly_rate(&self, market: &str) -> Option<f64> {
@@ -223,11 +224,7 @@ impl OddsErrorDetector {
         let by_selection = self.group_by_selection(all_odds, event_fingerprints, use_event_scope);
 
         for odds in by_selection.values() {
-            let unique_bookmakers = odds
-                .iter()
-                .map(|odd| odd.bookmaker_slug.as_str())
-                .collect::<std::collections::HashSet<_>>();
-            if unique_bookmakers.len() < self.min_samples {
+            if odds.len() < self.min_samples {
                 continue;
             }
 
@@ -265,7 +262,10 @@ impl OddsErrorDetector {
 
         // Sort by confidence (higher first), then by deviation
         results.sort_by(|a, b| {
-            let conf_cmp = b.confidence.partial_cmp(&a.confidence).unwrap_or(std::cmp::Ordering::Equal);
+            let conf_cmp = b
+                .confidence
+                .partial_cmp(&a.confidence)
+                .unwrap_or(std::cmp::Ordering::Equal);
             if conf_cmp != std::cmp::Ordering::Equal {
                 return conf_cmp;
             }
@@ -321,12 +321,10 @@ impl OddsErrorDetector {
         }
 
         // Time-series analysis with systematic shift detection
-        let time_series_flag = self.detect_time_series_anomaly(
-            odd,
-            event_fingerprints,
-            use_event_scope,
-        );
-        let systematic_shift = self.detect_systematic_shift(odd, event_fingerprints, use_event_scope);
+        let time_series_flag =
+            self.detect_time_series_anomaly(odd, event_fingerprints, use_event_scope);
+        let systematic_shift =
+            self.detect_systematic_shift(odd, event_fingerprints, use_event_scope);
 
         // BK anomaly profile
         let bk_anomaly_flag = self.is_bk_anomaly(&odd.bookmaker_slug, odd.odds);
@@ -350,7 +348,7 @@ impl OddsErrorDetector {
 
         // Boost confidence if multiple methods agree or if anomalies detected
         let mut final_confidence = (avg_confidence + ml_score) / 2.0;
-        
+
         if detection_methods.len() >= 2 {
             final_confidence = (final_confidence * 1.2).min(100.0);
         }
@@ -374,6 +372,7 @@ impl OddsErrorDetector {
         if let Some(profile) = self.bk_profiles.get(&odd.bookmaker_slug) {
             final_confidence = (final_confidence * profile.confidence_factor).min(100.0);
         }
+        final_confidence = final_confidence.min(100.0);
 
         // Filter out low-confidence detections
         if final_confidence < 40.0 {
@@ -382,8 +381,8 @@ impl OddsErrorDetector {
 
         let deviation = ((odd.odds - baseline).abs() / baseline) * 100.0;
 
-        // Additional filter: require significant deviation for low confidence
-        if final_confidence < 70.0 && deviation < self.deviation_threshold {
+        // Respect configured deviation threshold for all detections.
+        if deviation < self.deviation_threshold {
             return None;
         }
 
@@ -457,14 +456,19 @@ impl OddsErrorDetector {
         }
 
         let mean = values.iter().sum::<f64>() / values.len() as f64;
-        let variance = values
-            .iter()
-            .map(|v| (v - mean).powi(2))
-            .sum::<f64>()
-            / values.len() as f64;
+        let variance = values.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / values.len() as f64;
         let std_dev = variance.sqrt();
 
         if std_dev == 0.0 {
+            let base = mean.abs().max(0.01);
+            let rel_dev = ((test_value - mean).abs() / base) * 100.0;
+            if rel_dev >= 200.0 {
+                return Some(90.0);
+            } else if rel_dev >= 100.0 {
+                return Some(70.0);
+            } else if rel_dev >= 50.0 {
+                return Some(45.0);
+            }
             return None;
         }
 
@@ -503,8 +507,8 @@ impl OddsErrorDetector {
 
         let lower_fence = q1 - 1.5 * iqr;
         let upper_fence = q3 + 1.5 * iqr;
-        let extreme_lower = q1 - 3.0 * iqr;
-        let extreme_upper = q3 + 3.0 * iqr;
+        let extreme_lower = q1 - 6.0 * iqr;
+        let extreme_upper = q3 + 6.0 * iqr;
 
         if test_value < extreme_lower || test_value > extreme_upper {
             // Extreme outlier
@@ -532,6 +536,15 @@ impl OddsErrorDetector {
         );
 
         if mad == 0.0 {
+            let base = median_val.abs().max(0.01);
+            let rel_dev = ((test_value - median_val).abs() / base) * 100.0;
+            if rel_dev >= 200.0 {
+                return Some(90.0);
+            } else if rel_dev >= 100.0 {
+                return Some(70.0);
+            } else if rel_dev >= 50.0 {
+                return Some(50.0);
+            }
             return None;
         }
 
@@ -554,14 +567,17 @@ impl OddsErrorDetector {
 
         let n = values.len() as f64;
         let mean = values.iter().sum::<f64>() / n;
-        let variance = values
-            .iter()
-            .map(|v| (v - mean).powi(2))
-            .sum::<f64>()
-            / n;
+        let variance = values.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / n;
         let std_dev = variance.sqrt();
 
         if std_dev == 0.0 {
+            let base = mean.abs().max(0.01);
+            let rel_dev = ((test_value - mean).abs() / base) * 100.0;
+            if rel_dev >= 300.0 {
+                return Some(85.0);
+            } else if rel_dev >= 150.0 {
+                return Some(70.0);
+            }
             return None;
         }
 
@@ -588,11 +604,8 @@ impl OddsErrorDetector {
         }
 
         let mean = all_values.iter().sum::<f64>() / all_values.len() as f64;
-        let variance = all_values
-            .iter()
-            .map(|v| (v - mean).powi(2))
-            .sum::<f64>()
-            / all_values.len() as f64;
+        let variance =
+            all_values.iter().map(|v| (v - mean).powi(2)).sum::<f64>() / all_values.len() as f64;
         let std_dev = variance.sqrt();
 
         if std_dev == 0.0 {
@@ -601,13 +614,15 @@ impl OddsErrorDetector {
 
         // Get market profile volatility
         let market_key = &odd.market;
-        let market_volatility = self.market_profiles
+        let market_volatility = self
+            .market_profiles
             .get(market_key)
             .map(|p| p.volatility)
             .unwrap_or(std_dev);
 
         // Normalize by market volatility
-        let normalized_deviation = ((odd.odds - mean).abs() / market_volatility.max(0.01)).min(20.0);
+        let normalized_deviation =
+            ((odd.odds - mean).abs() / market_volatility.max(0.01)).min(20.0);
 
         if normalized_deviation > 4.0 {
             Some(85.0)
@@ -635,11 +650,11 @@ impl OddsErrorDetector {
 
         // Method agreement bonus: more methods detecting = higher multiplier
         let method_count_bonus = match normalized.len() {
-            1 => 0.8,   // Single method: conservative
-            2 => 0.95,  // Two methods: good
-            3 => 1.1,   // Three methods: very good
-            4 => 1.25,  // Four methods: excellent
-            5 => 1.4,   // All five methods: exceptional
+            1 => 0.8,  // Single method: conservative
+            2 => 0.95, // Two methods: good
+            3 => 1.1,  // Three methods: very good
+            4 => 1.25, // Four methods: excellent
+            5 => 1.4,  // All five methods: exceptional
             _ => 1.4,
         };
 
@@ -670,17 +685,15 @@ impl OddsErrorDetector {
 
             // Get last 10 values
             let start_idx = time_entries.len().saturating_sub(10);
-            let recent: Vec<f64> = time_entries[start_idx..]
-                .iter()
-                .map(|(o, _)| *o)
-                .collect();
+            let recent: Vec<f64> = time_entries[start_idx..].iter().map(|(o, _)| *o).collect();
 
             // Calculate linear trend (simple: compare first half vs second half)
             let mid = recent.len() / 2;
             let first_half_avg = recent[..mid].iter().sum::<f64>() / mid as f64;
             let second_half_avg = recent[mid..].iter().sum::<f64>() / (recent.len() - mid) as f64;
 
-            let trend_magnitude = ((second_half_avg - first_half_avg).abs() / first_half_avg) * 100.0;
+            let trend_magnitude =
+                ((second_half_avg - first_half_avg).abs() / first_half_avg) * 100.0;
 
             // Flag systematic shift if consistent trend > 10%
             trend_magnitude > 10.0
@@ -706,15 +719,9 @@ impl OddsErrorDetector {
 
         profile.total_samples += 1;
         let deviation = ((odds - baseline).abs() / baseline) * 100.0;
-        
+
         let old_avg = profile.avg_deviation;
         profile.avg_deviation = (old_avg * (profile.total_samples - 1) as f64 + deviation)
-            / profile.total_samples as f64;
-
-        // Update volatility (standard deviation of deviations)
-        profile.volatility = ((profile.volatility.powi(2) * (profile.total_samples - 1) as f64)
-            + (deviation - profile.avg_deviation).powi(2))
-            .sqrt()
             / profile.total_samples as f64;
 
         if is_anomaly {
@@ -723,10 +730,17 @@ impl OddsErrorDetector {
 
         profile.min_odds = profile.min_odds.min(odds);
         profile.max_odds = profile.max_odds.max(odds);
+        let range_pct = if baseline.abs() > 0.0 {
+            ((profile.max_odds - profile.min_odds) / baseline.abs()) * 100.0
+        } else {
+            0.0
+        };
+        // Keep a practical volatility proxy for market-anomaly checks.
+        profile.volatility = profile.avg_deviation.max(range_pct * 0.2);
     }
 
     /// Check if market exhibits anomalous behavior
-    fn is_market_anomaly(&self, market: &str, current_odds: f64) -> bool {
+    fn is_market_anomaly(&self, market: &str, _current_odds: f64) -> bool {
         if let Some(profile) = self.market_profiles.get(market) {
             if profile.total_samples < 20 {
                 return false;
@@ -734,13 +748,14 @@ impl OddsErrorDetector {
 
             // Market anomaly if:
             // 1. High anomaly rate (> 10%)
-            let anomaly_rate = (profile.anomaly_count as f64 / profile.total_samples as f64) * 100.0;
+            let anomaly_rate =
+                (profile.anomaly_count as f64 / profile.total_samples as f64) * 100.0;
             if anomaly_rate > 10.0 {
                 return true;
             }
 
             // 2. Very high volatility compared to typical markets
-            if profile.volatility > 50.0 {
+            if profile.volatility > 20.0 {
                 return true;
             }
 
@@ -758,18 +773,21 @@ impl OddsErrorDetector {
         use_event_scope: bool,
     ) -> bool {
         let key = self.history_key(odd, event_fingerprints, use_event_scope);
+        let legacy_key = self.legacy_history_key(odd);
 
-        if let Some(time_entries) = self.recent_odds_with_time.get(&key) {
+        if let Some(time_entries) = self
+            .recent_odds_with_time
+            .get(&key)
+            .or_else(|| self.recent_odds_with_time.get(&legacy_key))
+            .or_else(|| self.recent_odds_with_time.get("market|selection|none"))
+        {
             if time_entries.len() < 5 {
                 return false;
             }
 
             // Get last 5 values
             let start_idx = time_entries.len().saturating_sub(5);
-            let recent: Vec<f64> = time_entries[start_idx..]
-                .iter()
-                .map(|(o, _)| *o)
-                .collect();
+            let recent: Vec<f64> = time_entries[start_idx..].iter().map(|(o, _)| *o).collect();
 
             if recent.is_empty() {
                 return false;
@@ -781,22 +799,34 @@ impl OddsErrorDetector {
             // Check if current odd deviates significantly from moving average
             let deviation = ((odd.odds - moving_avg).abs() / moving_avg) * 100.0;
 
-            // Flag if deviation > 20% from moving average
-            deviation > 20.0
+            // Flag if deviation >= 20% from moving average
+            deviation >= 20.0
         } else {
             false
         }
     }
 
+    fn legacy_history_key(&self, odd: &Odd) -> String {
+        format!(
+            "{}|{}|{}",
+            odd.market,
+            odd.selection,
+            odd.line
+                .map(|line| line.to_string())
+                .unwrap_or_else(|| "none".into())
+        )
+    }
+
     /// Check if bookmaker exhibits anomalous behavior
     fn is_bk_anomaly(&self, bk: &str, current_odds: f64) -> bool {
         if let Some(profile) = self.bk_profiles.get(bk) {
-            if profile.total_observations < 10 {
+            if profile.total_observations < 5 {
                 return false;
             }
 
             // Check if anomaly rate is high (> 15%)
-            let anomaly_rate = (profile.anomaly_count as f64 / profile.total_observations as f64) * 100.0;
+            let anomaly_rate =
+                (profile.anomaly_count as f64 / profile.total_observations as f64) * 100.0;
 
             if anomaly_rate > 15.0 {
                 // BK has history of anomalies
@@ -805,7 +835,8 @@ impl OddsErrorDetector {
 
             // Also check if current odds deviate significantly from BK's profile
             if profile.deviation > 0.0 {
-                let z_score = ((current_odds - profile.avg_odds).abs() / profile.deviation).min(10.0);
+                let z_score =
+                    ((current_odds - profile.avg_odds).abs() / profile.deviation).min(10.0);
                 z_score > 3.0
             } else {
                 false
@@ -1496,10 +1527,7 @@ mod tests {
     #[test]
     fn test_insufficient_samples() {
         let detector = OddsErrorDetector::new(100.0, 5);
-        let odds = vec![
-            make_odd("bk1", "1", 2.0),
-            make_odd("bk2", "1", 10.0),
-        ];
+        let odds = vec![make_odd("bk1", "1", 2.0), make_odd("bk2", "1", 10.0)];
         let errors = detector.detect_errors(&odds);
         assert!(errors.is_empty());
     }
@@ -1571,7 +1599,10 @@ mod tests {
         let found_rogue = results.iter().any(|r| r.error.bookmaker == "rogue_bk");
         assert!(found_rogue);
 
-        let rogue_result = results.iter().find(|r| r.error.bookmaker == "rogue_bk").unwrap();
+        let rogue_result = results
+            .iter()
+            .find(|r| r.error.bookmaker == "rogue_bk")
+            .unwrap();
         assert!(rogue_result.confidence > 70.0);
     }
 
@@ -1643,7 +1674,9 @@ mod tests {
         ];
 
         let results = detector.detect_errors_with_confidence(&odds);
-        let suspicious = results.iter().find(|r| r.error.bookmaker == "suspicious_bk");
+        let suspicious = results
+            .iter()
+            .find(|r| r.error.bookmaker == "suspicious_bk");
 
         assert!(suspicious.is_some());
         if let Some(s) = suspicious {
@@ -1697,5 +1730,3 @@ mod tests {
         assert_eq!(results[0].error.bookmaker, "bk19");
     }
 }
-
-
