@@ -14,6 +14,7 @@ use crate::handlers::auth::{
     remove_account, submit_2fa, submit_captcha, supported_bookmakers,
 };
 use crate::ws::{ws_handler, ws_surebets_v1_handler};
+use crate::ws_execution::ws_execution_handler;
 
 async fn api_not_found() -> (StatusCode, Json<ApiResponse<serde_json::Value>>) {
     (
@@ -194,6 +195,7 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/v2/health/ghost", get(get_ghost_health_v2))
         .route("/ws", get(ws_handler))
         .route("/ws/v1/surebets", get(ws_surebets_v1_handler))
+        .route("/ws/execution", get(ws_execution_handler))
         .route("/api", any(api_not_found))
         .route("/api/*path", any(api_not_found))
         .layer(cors)

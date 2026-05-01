@@ -4,8 +4,12 @@ use std::time::Duration;
 
 use api::handlers::AppState;
 use api::routes::create_router;
+use api::EventBroadcaster;
 use auto_betting::engine::AutoBetEngine;
+use auto_betting::auth::AuthManager;
+use auto_betting::BrowserPool;
 use bankroll_manager::manager::BankrollManager;
+use tokio::sync::Mutex as TokioMutex;
 use bonus_hunter::hunter::BonusHunter;
 use corridor_scanner::scanner::CorridorScanner;
 use engine::calculator::SurebetCalculator;
@@ -201,6 +205,12 @@ async fn main() -> anyhow::Result<()> {
 
     let scanner_runner = Arc::new(ScannerRunner::new(scanner.clone()));
 
+    // Initialize new auth and event systems
+    let (auth_tx, _auth_rx) = tokio::sync::mpsc::channel(100);
+    let auth_manager = Arc::new(TokioMutex::new(AuthManager::new(auth_tx)));
+    let browser_pool = Arc::new(BrowserPool::default());
+    let event_broadcaster = Arc::new(EventBroadcaster::new(1000));
+
     let api_state = AppState {
         scanner: scanner_runner.clone(),
         parser_runtime_stale_after_secs: config.scanner.cache_ttl_secs,
@@ -216,6 +226,9 @@ async fn main() -> anyhow::Result<()> {
         bankroll_manager: bankroll_manager.clone(),
         bonus_hunter: bonus_hunter.clone(),
         event_bus: event_bus.clone(),
+        auth_manager,
+        browser_pool,
+        event_broadcaster,
     };
 
     let app = create_router(api_state);
