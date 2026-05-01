@@ -1,0 +1,417 @@
+    Checking engine v0.1.0 (C:\Users\Administrator\Desktop\ai\Grok ╨▓╨╕╨╗╨║╨╕\fork_hunter_pro\crates\engine)
+warning: unused import: `uuid::Uuid`
+ --> crates\engine\src\filters.rs:6:5
+  |
+6 | use uuid::Uuid;
+  |     ^^^^^^^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused import: `ForkLeg`
+ --> crates\engine\src\filters.rs:7:32
+  |
+7 | use crate::fork_finder::{Fork, ForkLeg, ForkType};
+  |                                ^^^^^^^
+
+warning: unused import: `super::*`
+   --> crates\engine\src\fork_finder.rs:714:9
+    |
+714 |     use super::*;
+    |         ^^^^^^^^
+
+error[E0308]: mismatched types
+   --> crates\engine\src\filters.rs:223:27
+    |
+223 |             if leg.odds < preset.min_odds || leg.odds > preset.max_odds {
+    |                --------   ^^^^^^^^^^^^^^^ expected `f64`, found `Decimal`
+    |                |
+    |                expected because this is `f64`
+
+error[E0308]: mismatched types
+   --> crates\engine\src\filters.rs:223:57
+    |
+223 |             if leg.odds < preset.min_odds || leg.odds > preset.max_odds {
+    |                                              --------   ^^^^^^^^^^^^^^^ expected `f64`, found `Decimal`
+    |                                              |
+    |                                              expected because this is `f64`
+
+error[E0277]: cannot divide `Decimal` by `&f64`
+   --> crates\engine\src\fork_finder.rs:382:57
+    |
+382 |                         let sum_inverses = Decimal::ONE / odds1 + Decimal::ONE / odds2;
+    |                                                         ^ no implementation for `Decimal / &f64`
+    |
+    = help: the trait `Div<&f64>` is not implemented for `Decimal`
+help: the following other types implement trait `Div<Rhs>`
+   --> C:\Users\Administrator\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\rust_decimal-1.41.0\src\arithmetic_impls.rs:116:9
+    |
+116 |         impl<'a> $imp<$res> for &'a $res {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&Decimal` implements `Div<Decimal>`
+...
+129 |         impl<'a> $imp<&'a $res> for $res {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `Decimal` implements `Div<&Decimal>`
+...
+142 |         impl $imp<$res> for $res {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^ `Decimal` implements `Div`
+...
+210 | forward_all_binop!(impl Div for Decimal, div);
+    | --------------------------------------------- in this macro invocation
+211 | impl Div<&Decimal> for &Decimal {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&Decimal` implements `Div`
+    = note: this error originates in the macro `forward_ref_val_binop` which comes from the expansion of the macro `forward_all_binop` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0277]: cannot divide `Decimal` by `&f64`
+   --> crates\engine\src\fork_finder.rs:382:80
+    |
+382 |                         let sum_inverses = Decimal::ONE / odds1 + Decimal::ONE / odds2;
+    |                                                                                ^ no implementation for `Decimal / &f64`
+    |
+    = help: the trait `Div<&f64>` is not implemented for `Decimal`
+help: the following other types implement trait `Div<Rhs>`
+   --> C:\Users\Administrator\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\rust_decimal-1.41.0\src\arithmetic_impls.rs:116:9
+    |
+116 |         impl<'a> $imp<$res> for &'a $res {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&Decimal` implements `Div<Decimal>`
+...
+129 |         impl<'a> $imp<&'a $res> for $res {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `Decimal` implements `Div<&Decimal>`
+...
+142 |         impl $imp<$res> for $res {
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^ `Decimal` implements `Div`
+...
+210 | forward_all_binop!(impl Div for Decimal, div);
+    | --------------------------------------------- in this macro invocation
+211 | impl Div<&Decimal> for &Decimal {
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `&Decimal` implements `Div`
+    = note: this error originates in the macro `forward_ref_val_binop` which comes from the expansion of the macro `forward_all_binop` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0308]: mismatched types
+   --> crates\engine\src\fork_finder.rs:392:40
+    |
+392 | ...                   sport: event.sport.clone(),
+    |                              ^^^^^^^^^^^^^^^^^^^ expected `String`, found `Sport`
+    |
+help: try using a conversion method
+    |
+392 -                                 sport: event.sport.clone(),
+392 +                                 sport: event.sport.to_string(),
+    |
+
+error[E0609]: no field `match_time` on type `&shared::Event`
+   --> crates\engine\src\fork_finder.rs:394:51
+    |
+394 | ...                   match_time: event.match_time.clone(),
+    |                                         ^^^^^^^^^^ unknown field
+    |
+    = note: available fields are: `id`, `sport`, `league`, `home_team`, `away_team` ... and 5 others
+
+error[E0308]: mismatched types
+   --> crates\engine\src\fork_finder.rs:399:49
+    |
+399 | ...                   market: market1.clone(),
+    |                               ^^^^^^^^^^^^^^^ expected `String`, found `&str`
+    |
+help: try using a conversion method
+    |
+399 -                                         market: market1.clone(),
+399 +                                         market: market1.to_string(),
+    |
+
+error[E0308]: mismatched types
+   --> crates\engine\src\fork_finder.rs:407:49
+    |
+407 | ...                   market: market2.clone(),
+    |                               ^^^^^^^^^^^^^^^ expected `String`, found `&str`
+    |
+help: try using a conversion method
+    |
+407 -                                         market: market2.clone(),
+407 +                                         market: market2.to_string(),
+    |
+
+error[E0599]: no method named `to_f64` found for struct `Decimal` in the current scope
+   --> crates\engine\src\fork_finder.rs:441:52
+    |
+441 |         let min_odds_f: f64 = self.config.min_odds.to_f64().unwrap_or(1.01);
+    |                                                    ^^^^^^
+    |
+   ::: C:\Users\Administrator\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\num-traits-0.2.19\src\cast.rs:120:8
+    |
+120 |     fn to_f64(&self) -> Option<f64> {
+    |        ------ the method is available for `Decimal` here
+    |
+    = help: items from traits can only be used if the trait is in scope
+help: trait `ToPrimitive` which provides `to_f64` is implemented but not in scope; perhaps you want to import it
+    |
+  4 + use rust_decimal::prelude::ToPrimitive;
+    |
+help: there is a method `to_i64` with a similar name
+    |
+441 -         let min_odds_f: f64 = self.config.min_odds.to_f64().unwrap_or(1.01);
+441 +         let min_odds_f: f64 = self.config.min_odds.to_i64().unwrap_or(1.01);
+    |
+
+error[E0599]: no method named `to_f64` found for struct `Decimal` in the current scope
+   --> crates\engine\src\fork_finder.rs:442:52
+    |
+442 |         let max_odds_f: f64 = self.config.max_odds.to_f64().unwrap_or(100.0);
+    |                                                    ^^^^^^
+    |
+   ::: C:\Users\Administrator\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\num-traits-0.2.19\src\cast.rs:120:8
+    |
+120 |     fn to_f64(&self) -> Option<f64> {
+    |        ------ the method is available for `Decimal` here
+    |
+    = help: items from traits can only be used if the trait is in scope
+help: trait `ToPrimitive` which provides `to_f64` is implemented but not in scope; perhaps you want to import it
+    |
+  4 + use rust_decimal::prelude::ToPrimitive;
+    |
+help: there is a method `to_i64` with a similar name
+    |
+442 -         let max_odds_f: f64 = self.config.max_odds.to_f64().unwrap_or(100.0);
+442 +         let max_odds_f: f64 = self.config.max_odds.to_i64().unwrap_or(100.0);
+    |
+
+error[E0599]: no method named `to_f64` found for struct `Decimal` in the current scope
+   --> crates\engine\src\fork_finder.rs:457:72
+    |
+457 |                   sum_inverses < 1.0 - self.config.max_negative_profit.to_f64().unwrap_or(-2.0) / 100.0 {
+    |                                                                        ^^^^^^
+    |
+   ::: C:\Users\Administrator\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\num-traits-0.2.19\src\cast.rs:120:8
+    |
+120 |     fn to_f64(&self) -> Option<f64> {
+    |        ------ the method is available for `Decimal` here
+    |
+    = help: items from traits can only be used if the trait is in scope
+help: trait `ToPrimitive` which provides `to_f64` is implemented but not in scope; perhaps you want to import it
+    |
+  4 + use rust_decimal::prelude::ToPrimitive;
+    |
+help: there is a method `to_i64` with a similar name
+    |
+457 -                   sum_inverses < 1.0 - self.config.max_negative_profit.to_f64().unwrap_or(-2.0) / 100.0 {
+457 +                   sum_inverses < 1.0 - self.config.max_negative_profit.to_i64().unwrap_or(-2.0) / 100.0 {
+    |
+
+error[E0308]: mismatched types
+   --> crates\engine\src\fork_finder.rs:477:20
+    |
+477 |             sport: event.sport.clone(),
+    |                    ^^^^^^^^^^^^^^^^^^^ expected `String`, found `Sport`
+    |
+help: try using a conversion method
+    |
+477 -             sport: event.sport.clone(),
+477 +             sport: event.sport.to_string(),
+    |
+
+error[E0609]: no field `match_time` on type `&shared::Event`
+   --> crates\engine\src\fork_finder.rs:479:31
+    |
+479 |             match_time: event.match_time.clone(),
+    |                               ^^^^^^^^^^ unknown field
+    |
+    = note: available fields are: `id`, `sport`, `league`, `home_team`, `away_team` ... and 5 others
+
+error[E0599]: no method named `to_f64` found for struct `Decimal` in the current scope
+   --> crates\engine\src\fork_finder.rs:520:52
+    |
+520 |         let min_odds_f: f64 = self.config.min_odds.to_f64().unwrap_or(1.01);
+    |                                                    ^^^^^^
+    |
+   ::: C:\Users\Administrator\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\num-traits-0.2.19\src\cast.rs:120:8
+    |
+120 |     fn to_f64(&self) -> Option<f64> {
+    |        ------ the method is available for `Decimal` here
+    |
+    = help: items from traits can only be used if the trait is in scope
+help: trait `ToPrimitive` which provides `to_f64` is implemented but not in scope; perhaps you want to import it
+    |
+  4 + use rust_decimal::prelude::ToPrimitive;
+    |
+help: there is a method `to_i64` with a similar name
+    |
+520 -         let min_odds_f: f64 = self.config.min_odds.to_f64().unwrap_or(1.01);
+520 +         let min_odds_f: f64 = self.config.min_odds.to_i64().unwrap_or(1.01);
+    |
+
+error[E0599]: no method named `to_f64` found for struct `Decimal` in the current scope
+   --> crates\engine\src\fork_finder.rs:521:52
+    |
+521 |         let max_odds_f: f64 = self.config.max_odds.to_f64().unwrap_or(100.0);
+    |                                                    ^^^^^^
+    |
+   ::: C:\Users\Administrator\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\num-traits-0.2.19\src\cast.rs:120:8
+    |
+120 |     fn to_f64(&self) -> Option<f64> {
+    |        ------ the method is available for `Decimal` here
+    |
+    = help: items from traits can only be used if the trait is in scope
+help: trait `ToPrimitive` which provides `to_f64` is implemented but not in scope; perhaps you want to import it
+    |
+  4 + use rust_decimal::prelude::ToPrimitive;
+    |
+help: there is a method `to_i64` with a similar name
+    |
+521 -         let max_odds_f: f64 = self.config.max_odds.to_f64().unwrap_or(100.0);
+521 +         let max_odds_f: f64 = self.config.max_odds.to_i64().unwrap_or(100.0);
+    |
+
+error[E0599]: no method named `to_f64` found for struct `Decimal` in the current scope
+   --> crates\engine\src\fork_finder.rs:536:72
+    |
+536 |                   sum_inverses < 1.0 - self.config.max_negative_profit.to_f64().unwrap_or(-2.0) / 100.0 {
+    |                                                                        ^^^^^^
+    |
+   ::: C:\Users\Administrator\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\num-traits-0.2.19\src\cast.rs:120:8
+    |
+120 |     fn to_f64(&self) -> Option<f64> {
+    |        ------ the method is available for `Decimal` here
+    |
+    = help: items from traits can only be used if the trait is in scope
+help: trait `ToPrimitive` which provides `to_f64` is implemented but not in scope; perhaps you want to import it
+    |
+  4 + use rust_decimal::prelude::ToPrimitive;
+    |
+help: there is a method `to_i64` with a similar name
+    |
+536 -                   sum_inverses < 1.0 - self.config.max_negative_profit.to_f64().unwrap_or(-2.0) / 100.0 {
+536 +                   sum_inverses < 1.0 - self.config.max_negative_profit.to_i64().unwrap_or(-2.0) / 100.0 {
+    |
+
+error[E0308]: mismatched types
+   --> crates\engine\src\fork_finder.rs:555:20
+    |
+555 |             sport: event.sport.clone(),
+    |                    ^^^^^^^^^^^^^^^^^^^ expected `String`, found `Sport`
+    |
+help: try using a conversion method
+    |
+555 -             sport: event.sport.clone(),
+555 +             sport: event.sport.to_string(),
+    |
+
+error[E0609]: no field `match_time` on type `&shared::Event`
+   --> crates\engine\src\fork_finder.rs:557:31
+    |
+557 |             match_time: event.match_time.clone(),
+    |                               ^^^^^^^^^^ unknown field
+    |
+    = note: available fields are: `id`, `sport`, `league`, `home_team`, `away_team` ... and 5 others
+
+error[E0599]: no method named `to_f64` found for struct `Decimal` in the current scope
+   --> crates\engine\src\fork_finder.rs:626:52
+    |
+626 |         let min_odds_f: f64 = self.config.min_odds.to_f64().unwrap_or(1.01);
+    |                                                    ^^^^^^
+    |
+   ::: C:\Users\Administrator\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\num-traits-0.2.19\src\cast.rs:120:8
+    |
+120 |     fn to_f64(&self) -> Option<f64> {
+    |        ------ the method is available for `Decimal` here
+    |
+    = help: items from traits can only be used if the trait is in scope
+help: trait `ToPrimitive` which provides `to_f64` is implemented but not in scope; perhaps you want to import it
+    |
+  4 + use rust_decimal::prelude::ToPrimitive;
+    |
+help: there is a method `to_i64` with a similar name
+    |
+626 -         let min_odds_f: f64 = self.config.min_odds.to_f64().unwrap_or(1.01);
+626 +         let min_odds_f: f64 = self.config.min_odds.to_i64().unwrap_or(1.01);
+    |
+
+error[E0599]: no method named `to_f64` found for struct `Decimal` in the current scope
+   --> crates\engine\src\fork_finder.rs:627:52
+    |
+627 |         let max_odds_f: f64 = self.config.max_odds.to_f64().unwrap_or(100.0);
+    |                                                    ^^^^^^
+    |
+   ::: C:\Users\Administrator\.cargo\registry\src\index.crates.io-1949cf8c6b5b557f\num-traits-0.2.19\src\cast.rs:120:8
+    |
+120 |     fn to_f64(&self) -> Option<f64> {
+    |        ------ the method is available for `Decimal` here
+    |
+    = help: items from traits can only be used if the trait is in scope
+help: trait `ToPrimitive` which provides `to_f64` is implemented but not in scope; perhaps you want to import it
+    |
+  4 + use rust_decimal::prelude::ToPrimitive;
+    |
+help: there is a method `to_i64` with a similar name
+    |
+627 -         let max_odds_f: f64 = self.config.max_odds.to_f64().unwrap_or(100.0);
+627 +         let max_odds_f: f64 = self.config.max_odds.to_i64().unwrap_or(100.0);
+    |
+
+error[E0716]: temporary value dropped while borrowed
+   --> crates\engine\src\fork_finder.rs:172:60
+    |
+172 |                 let odds1 = odds_by_bk.get(bk1).unwrap_or(&vec![]);
+    |                                                            ^^^^^^ - temporary value is freed at the end of this statement
+    |                                                            |
+    |                                                            creates a temporary value which is freed while still in use
+...
+177 |                     self.find_odds(odds1, &["1", "P1", "home", "Home"]),
+    |                                    ----- borrow later used here
+    |
+    = note: consider using a `let` binding to create a longer lived value
+    = note: this error originates in the macro `vec` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error[E0716]: temporary value dropped while borrowed
+   --> crates\engine\src\fork_finder.rs:173:60
+    |
+173 |                 let odds2 = odds_by_bk.get(bk2).unwrap_or(&vec![]);
+    |                                                            ^^^^^^ - temporary value is freed at the end of this statement
+    |                                                            |
+    |                                                            creates a temporary value which is freed while still in use
+...
+178 |                     self.find_odds(odds2, &["X", "draw", "Draw", "╨╜╨╕╤ç╤î╤Å"]),
+    |                                    ----- borrow later used here
+    |
+    = note: consider using a `let` binding to create a longer lived value
+    = note: this error originates in the macro `vec` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+warning: unused variable: `market1`
+   --> crates\engine\src\fork_finder.rs:243:23
+    |
+243 |             for (bk1, market1, over_odds) in &overs {
+    |                       ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_market1`
+    |
+    = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `market2`
+   --> crates\engine\src\fork_finder.rs:244:27
+    |
+244 |                 for (bk2, market2, under_odds) in &unders {
+    |                           ^^^^^^^ help: if this is intentional, prefix it with an underscore: `_market2`
+
+warning: unused variable: `odd_a`
+   --> crates\engine\src\middle.rs:257:9
+    |
+257 |         odd_a: &Odd,
+    |         ^^^^^ help: if this is intentional, prefix it with an underscore: `_odd_a`
+
+warning: unused variable: `odd_b`
+   --> crates\engine\src\middle.rs:258:9
+    |
+258 |         odd_b: &Odd,
+    |         ^^^^^ help: if this is intentional, prefix it with an underscore: `_odd_b`
+
+warning: unused variable: `ha`
+   --> crates\engine\src\middle.rs:259:9
+    |
+259 |         ha: f64,
+    |         ^^ help: if this is intentional, prefix it with an underscore: `_ha`
+
+warning: unused variable: `hb`
+   --> crates\engine\src\middle.rs:260:9
+    |
+260 |         hb: f64,
+    |         ^^ help: if this is intentional, prefix it with an underscore: `_hb`
+
+Some errors have detailed explanations: E0277, E0308, E0599, E0609, E0716.
+For more information about an error, try `rustc --explain E0277`.
+warning: `engine` (lib) generated 9 warnings
+error: could not compile `engine` (lib) due to 22 previous errors; 9 warnings emitted

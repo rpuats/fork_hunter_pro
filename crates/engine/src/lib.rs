@@ -1,6 +1,8 @@
 pub mod calculator;
 pub mod corridor;
 pub mod event_pool;
+pub mod filters;
+pub mod fork_finder;
 pub mod freebet;
 pub mod generosity;
 pub mod middle;
@@ -14,6 +16,8 @@ pub mod verifier;
 pub use calculator::SurebetCalculator;
 pub use corridor::CorridorFinder;
 pub use event_pool::EventPool;
+pub use filters::{ForkFilter, FilterPreset, LeaguesFilter};
+pub use fork_finder::{ForkFinder, Fork, ForkLeg, ForkType, StakePlan, LegStake, ForkConfig};
 pub use freebet::FreebetHunter;
 pub use generosity::GenerosityIndexCalc;
 pub use middle::MiddleDetector;
