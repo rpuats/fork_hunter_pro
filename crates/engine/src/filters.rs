@@ -3,8 +3,9 @@
 
 use serde::{Deserialize, Serialize};
 use rust_decimal::Decimal;
+use rust_decimal::prelude::ToPrimitive;
 use uuid::Uuid;
-use crate::fork_finder::{Fork, ForkLeg, ForkType};
+use crate::fork_finder::{Fork, ForkType};
 
 /// Leagues filter levels (like Forking)
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -220,7 +221,9 @@ impl ForkFilter {
         
         // Odds range for each leg
         for leg in &fork.legs {
-            if leg.odds < preset.min_odds || leg.odds > preset.max_odds {
+            let min_odds = preset.min_odds.to_f64().unwrap_or(1.0);
+            let max_odds = preset.max_odds.to_f64().unwrap_or(100.0);
+            if leg.odds < min_odds || leg.odds > max_odds {
                 return false;
             }
         }
@@ -332,15 +335,17 @@ impl ForkFilter {
         
         // Time to match (for prematch)
         if !fork.is_live {
-            if let Some(match_time) = &fork.match_time {
-                if let Some(minutes) = parse_minutes(match_time) {
+            if let Some(start_time) = fork.start_time {
+                let now = chrono::Utc::now();
+                let minutes_to_start = (start_time - now).num_minutes();
+                if minutes_to_start > 0 {
                     if let Some(min) = preset.time_to_match_min_minutes {
-                        if minutes < min {
+                        if minutes_to_start < min as i64 {
                             return false;
                         }
                     }
                     if let Some(max) = preset.time_to_match_max_minutes {
-                        if minutes > max {
+                        if minutes_to_start > max as i64 {
                             return false;
                         }
                     }

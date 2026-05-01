@@ -4,6 +4,7 @@
 use std::collections::HashMap;
 use chrono::{DateTime, Utc};
 use rust_decimal::Decimal;
+use rust_decimal::prelude::{FromPrimitive, ToPrimitive};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -169,14 +170,14 @@ impl ForkFinder {
             for j in (i+1)..bookmakers.len() {
                 let bk1 = bookmakers[i];
                 let bk2 = bookmakers[j];
-                let odds1 = odds_by_bk.get(bk1).unwrap_or(&vec![]);
-                let odds2 = odds_by_bk.get(bk2).unwrap_or(&vec![]);
+                let odds1 = odds_by_bk.get(bk1).cloned().unwrap_or_default();
+                let odds2 = odds_by_bk.get(bk2).cloned().unwrap_or_default();
                 
                 // Try 3-way (P1-X-P2)
                 if let (Some(p1), Some(x), Some(p2)) = (
-                    self.find_odds(odds1, &["1", "P1", "home", "Home"]),
-                    self.find_odds(odds2, &["X", "draw", "Draw", "ничья"]),
-                    self.find_odds(odds2, &["2", "P2", "away", "Away"]),
+                    self.find_odds(&odds1, &["1", "P1", "home", "Home"]),
+                    self.find_odds(&odds2, &["X", "draw", "Draw", "ничья"]),
+                    self.find_odds(&odds2, &["2", "P2", "away", "Away"]),
                 ) {
                     if let Some(fork) = self.calculate_fork_3way(
                         event, p1, x, p2,
@@ -189,8 +190,8 @@ impl ForkFinder {
                 
                 // Try 2-way (P1-P2) - no draw
                 if let (Some(p1), Some(p2)) = (
-                    self.find_odds(odds1, &["1", "P1", "home", "Home"]),
-                    self.find_odds(odds2, &["2", "P2", "away", "Away"]),
+                    self.find_odds(&odds1, &["1", "P1", "home", "Home"]),
+                    self.find_odds(&odds2, &["2", "P2", "away", "Away"]),
                 ) {
                     if let Some(fork) = self.calculate_fork_2way(
                         event, p1, p2,
@@ -379,7 +380,9 @@ impl ForkFinder {
                     let width = val2 - val1;
                     if width >= 0.5 { // Meaningful corridor
                         // Calculate if there's profit or minimal loss
-                        let sum_inverses = Decimal::ONE / odds1 + Decimal::ONE / odds2;
+                        let odds1_dec = Decimal::from_f64(*odds1).unwrap_or(Decimal::ONE);
+                        let odds2_dec = Decimal::from_f64(*odds2).unwrap_or(Decimal::ONE);
+                        let sum_inverses = Decimal::ONE / odds1_dec + Decimal::ONE / odds2_dec;
                         
                         // For corridors, we want sum close to 1 (small loss) with profit potential
                         if sum_inverses < Decimal::TWO { // At least some recovery
@@ -389,14 +392,14 @@ impl ForkFinder {
                                 home_team: event.home_team.clone(),
                                 away_team: event.away_team.clone(),
                                 league: event.league.clone(),
-                                sport: event.sport.clone(),
+                                sport: event.sport.to_string(),
                                 is_live: event.is_live,
                                 start_time: event.start_time.clone(),
                                 profit_percent: Decimal::ZERO, // Corridors have different metrics
                                 legs: vec![
                                     ForkLeg {
                                         bookmaker_slug: bk1.to_string(),
-                                        market: market1.clone(),
+                                        market: market1.to_string(),
                                         selection: format!("Over {}", val1),
                                         odds: *odds1,
                                         event_id: event.id.clone(),
@@ -404,7 +407,7 @@ impl ForkFinder {
                                     },
                                     ForkLeg {
                                         bookmaker_slug: bk2.to_string(),
-                                        market: market2.clone(),
+                                        market: market2.to_string(),
                                         selection: format!("Under {}", val2),
                                         odds: *odds2,
                                         event_id: event.id.clone(),
@@ -474,9 +477,9 @@ impl ForkFinder {
             home_team: event.home_team.clone(),
             away_team: event.away_team.clone(),
             league: event.league.clone(),
-            sport: event.sport.clone(),
+            sport: event.sport.to_string(),
             is_live: event.is_live,
-            match_time: event.match_time.clone(),
+            start_time: event.start_time,
             profit_percent: profit,
             legs: vec![
                 ForkLeg {
@@ -552,9 +555,9 @@ impl ForkFinder {
             home_team: event.home_team.clone(),
             away_team: event.away_team.clone(),
             league: event.league.clone(),
-            sport: event.sport.clone(),
+            sport: event.sport.to_string(),
             is_live: event.is_live,
-            match_time: event.match_time.clone(),
+            start_time: event.start_time,
             profit_percent: profit,
             legs: vec![
                 ForkLeg {

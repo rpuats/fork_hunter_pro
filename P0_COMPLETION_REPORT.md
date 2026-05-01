@@ -98,6 +98,16 @@
   - Account readiness tracking
   - Bankroll allocation
   - Daily limits enforcement
+
+### 6. Performance Monitor (P0)
+- **PerformanceMonitor** (`crates/auto_betting/src/performance/mod.rs`)
+  - Operation timing with metrics
+  - Targets: scan_cycle_ms, fork_to_display_ms, auto_bet_ms, semi_auto_bet_ms
+  - Percentile tracking (p95, p99)
+  - PerformanceHealth: Healthy, Degraded, Critical
+  - Global monitor with init/get functions
+  - API endpoints for metrics and health checks
+  - Integration in scanner_bridge, auto_bet, semi_auto_bet, runner
   
 - **BankrollPlan**
   - 3 allocation strategies

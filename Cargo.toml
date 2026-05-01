@@ -51,6 +51,7 @@ lru = "0.12"
 rand = "0.8"
 url = "2.5"
 rust_decimal = { version = "1.33", features = ["serde", "std", "maths"] }
+playwright = "0.0.20"
 time = "0.3"
 strum = { version = "0.25", features = ["derive"] }
 derive_more = "0.99"
