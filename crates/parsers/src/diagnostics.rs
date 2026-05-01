@@ -1,4 +1,3 @@
-
 use crate::betboom::BetboomParser;
 use crate::betcity::BetcityParser;
 // use crate::ligastavok::LigaStavokParser; // TODO: Re-enable once schema is fixed
@@ -260,15 +259,17 @@ async fn run_single_runtime_diagnostic(
             if let Some(parser) = factory.get(slug) {
                 let result = with_timeout(async move {
                     let result = parser.fetch_all().await?;
-                    Ok::<(Vec<Event>, Vec<shared::Odd>), Box<dyn std::error::Error + Send + Sync>>((
-                        result.events,
-                        result.odds,
-                    ))
+                    Ok::<(Vec<Event>, Vec<shared::Odd>), Box<dyn std::error::Error + Send + Sync>>(
+                        (result.events, result.odds),
+                    )
                 })
                 .await;
                 (false, result)
             } else {
-                (false, Err("bookmaker baltbet not registered in parser factory".to_string()))
+                (
+                    false,
+                    Err("bookmaker baltbet not registered in parser factory".to_string()),
+                )
             }
         }
         "betcity" => (

@@ -1,6 +1,6 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
-use std::collections::HashMap;
 
 use auto_betting::engine::AutoBetEngine;
 use bankroll_manager::manager::BankrollManager;
@@ -21,8 +21,8 @@ use express_forks::ExpressForkScanner;
 use parsers::parser_factory::ParserFactory;
 use persistence::history::SurebetHistory;
 use scanner::engine::GhostScanner;
+use shared::config::{FeatureFlag, FeatureFlags, RuntimeProfile};
 use shared::{AutoBetConfig, BankrollConfig, BonusConfig, EventBus};
-use shared::config::{FeatureFlags, RuntimeProfile, FeatureFlag};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

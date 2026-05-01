@@ -13,10 +13,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Проверим несколько парсеров
     let parsers = vec![
-        ("Pari", "https://line-lb01-w.pb06e2-resources.com/events/list?lang=ru&scopeMarket=2300"),
-        ("Marathon", "https://www.marathonbet.com/su/live/getFeed?partner=195&lang=ru&feedType=1"),
+        (
+            "Pari",
+            "https://line-lb01-w.pb06e2-resources.com/events/list?lang=ru&scopeMarket=2300",
+        ),
+        (
+            "Marathon",
+            "https://www.marathonbet.com/su/live/getFeed?partner=195&lang=ru&feedType=1",
+        ),
         ("Bettery", "https://bettery.ru/api/v1/live"),
-        ("Fonbet", "https://line02w.bk6bba-resources.com/events/list?lang=ru&scopeMarket=1500&version=2"),
+        (
+            "Fonbet",
+            "https://line02w.bk6bba-resources.com/events/list?lang=ru&scopeMarket=1500&version=2",
+        ),
     ];
 
     for (name, url) in parsers {
@@ -33,7 +42,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 if !stats.samples.is_empty() {
                     println!("🎯 Примеры событий:");
                     for (i, sample) in stats.samples.iter().enumerate().take(3) {
-                        println!("  {}. {}", i+1, sample);
+                        println!("  {}. {}", i + 1, sample);
                     }
                 }
             }
@@ -54,10 +63,16 @@ struct ParserStats {
     samples: Vec<String>,
 }
 
-async fn check_parser(client: &Client, url: &str) -> Result<ParserStats, Box<dyn std::error::Error>> {
+async fn check_parser(
+    client: &Client,
+    url: &str,
+) -> Result<ParserStats, Box<dyn std::error::Error>> {
     let resp = client
         .get(url)
-        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+        .header(
+            "User-Agent",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        )
         .header("Accept", "application/json")
         .send()
         .await?;
@@ -67,15 +82,27 @@ async fn check_parser(client: &Client, url: &str) -> Result<ParserStats, Box<dyn
     }
 
     let json: Value = resp.json().await?;
-    let events = json.get("events")
+    let events = json
+        .get("events")
         .or_else(|| json.get("data"))
         .or_else(|| json.get("result"))
         .and_then(|v| v.as_array())
         .ok_or("Нет массива events")?;
 
     let now = Utc::now().timestamp() * 1000;
-    let today_start = Utc::now().date_naive().and_hms_opt(0, 0, 0).unwrap().and_utc().timestamp() * 1000;
-    let today_end = (Utc::now().date_naive() + Duration::days(1)).and_hms_opt(0, 0, 0).unwrap().and_utc().timestamp() * 1000;
+    let today_start = Utc::now()
+        .date_naive()
+        .and_hms_opt(0, 0, 0)
+        .unwrap()
+        .and_utc()
+        .timestamp()
+        * 1000;
+    let today_end = (Utc::now().date_naive() + Duration::days(1))
+        .and_hms_opt(0, 0, 0)
+        .unwrap()
+        .and_utc()
+        .timestamp()
+        * 1000;
 
     let mut live_count = 0;
     let mut today_count = 0;
@@ -84,8 +111,14 @@ async fn check_parser(client: &Client, url: &str) -> Result<ParserStats, Box<dyn
 
     for event in events {
         if let (Some(team1), Some(team2)) = (
-            event.get("team1").or_else(|| event.get("home")).and_then(|t| t.as_str()),
-            event.get("team2").or_else(|| event.get("away")).and_then(|t| t.as_str()),
+            event
+                .get("team1")
+                .or_else(|| event.get("home"))
+                .and_then(|t| t.as_str()),
+            event
+                .get("team2")
+                .or_else(|| event.get("away"))
+                .and_then(|t| t.as_str()),
         ) {
             // Определяем время события
             let event_time = if let Some(ts) = event.get("startTime").and_then(|t| t.as_i64()) {
@@ -96,8 +129,10 @@ async fn check_parser(client: &Client, url: &str) -> Result<ParserStats, Box<dyn
                 continue;
             };
 
-            let event_str = format!("{} vs {} (время: {})",
-                team1, team2,
+            let event_str = format!(
+                "{} vs {} (время: {})",
+                team1,
+                team2,
                 chrono::DateTime::from_timestamp(event_time / 1000, 0)
                     .map(|dt: DateTime<Utc>| dt.format("%H:%M").to_string())
                     .unwrap_or("?".to_string())

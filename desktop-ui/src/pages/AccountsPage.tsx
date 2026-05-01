@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
-import { AlertTriangle, ArrowDownLeft, ArrowUpRight, BadgeAlert, CircleDollarSign, Landmark, ShieldAlert, ShieldCheck, ShieldQuestion, Wallet, X } from 'lucide-react'
+import { openUrl } from '@tauri-apps/plugin-opener'
+import { AlertTriangle, ArrowDownLeft, ArrowUpRight, BadgeAlert, CircleDollarSign, Landmark, PlusCircle, Power, RefreshCw, ShieldAlert, ShieldCheck, ShieldQuestion, Wallet, X } from 'lucide-react'
 import type {
+  AccountControlUpdate,
+  AccountSessionImportPayload,
   AccountSessionSummary,
   AccountStateResponse,
   BankrollRecommendationsResponse,
@@ -17,9 +20,25 @@ interface AccountsPageProps {
   bankrollRecommendations: BankrollRecommendationsResponse | null
   executionState: ExecutionStateAudit | null
   focusedBookmaker: string | null
+  onBootstrapAccountSession: (bookmaker: string, login?: string, sessionHint?: string, importPayload?: AccountSessionImportPayload) => Promise<AccountStateResponse | null>
+  onRefreshAccountBalance: (bookmaker: string) => Promise<AccountStateResponse | null>
+  onUpdateAccountControl: (bookmaker: string, update: AccountControlUpdate) => Promise<AccountStateResponse | null>
 }
 
 type NormalizedUrgency = 'high' | 'medium' | 'low'
+
+const BOOKMAKER_LOGIN_URLS: Record<string, string> = {
+  pari: 'https://pari.ru/',
+  fonbet: 'https://www.fon.bet/',
+  marathon: 'https://www.marathonbet.ru/',
+  zenit: 'https://zenit.win/',
+  betcity: 'https://betcity.ru/',
+  baltbet: 'https://www.baltbet.ru/',
+  bettery: 'https://bettery.ru/',
+  leon: 'https://leon.ru/',
+  sportbet: 'https://sportbet.ru/',
+  bet24: 'https://24betting.ru/',
+}
 
 const container = {
   hidden: { opacity: 0 },
@@ -170,8 +189,27 @@ function heatmapTone(coverage: number) {
   return 'rgba(248, 81, 73, 0.18)'
 }
 
-export function AccountsPage({ accounts, accountsSummary, bankrollState, bankrollRecommendations, executionState, focusedBookmaker }: AccountsPageProps) {
+function bookmakerLoginUrl(bookmaker: string) {
+  const normalized = bookmaker.toLowerCase()
+  return BOOKMAKER_LOGIN_URLS[normalized] ?? `https://www.google.com/search?q=${encodeURIComponent(`${bookmaker} login`)}`
+}
+
+export function AccountsPage({ accounts, accountsSummary, bankrollState, bankrollRecommendations, executionState, focusedBookmaker, onBootstrapAccountSession, onRefreshAccountBalance, onUpdateAccountControl }: AccountsPageProps) {
   const [selectedBookmaker, setSelectedBookmaker] = useState<string | null>(null)
+  const [testBookmaker, setTestBookmaker] = useState('pari')
+  const [accountLogin, setAccountLogin] = useState('')
+  const [sessionHint, setSessionHint] = useState('')
+  const [rawSessionImport, setRawSessionImport] = useState('')
+  const [cookieHeader, setCookieHeader] = useState('')
+  const [authorizationHeader, setAuthorizationHeader] = useState('')
+  const [csrfToken, setCsrfToken] = useState('')
+  const [userAgent, setUserAgent] = useState('')
+  const [availableBalance, setAvailableBalance] = useState('10000')
+  const [expiresInHours, setExpiresInHours] = useState('8')
+  const [accountModalOpen, setAccountModalOpen] = useState(false)
+  const [loginPageOpened, setLoginPageOpened] = useState(false)
+  const [bootstrappingSession, setBootstrappingSession] = useState(false)
+  const [accountAction, setAccountAction] = useState<string | null>(null)
   const accountMap = useMemo(() => new Map(accounts.map((entry) => [entry.bookmaker.toLowerCase(), entry])), [accounts])
   const guidanceMap = useMemo(() => new Map((bankrollRecommendations?.deposit_guidance.targets ?? []).map((entry) => [entry.bookmaker.toLowerCase(), entry])), [bankrollRecommendations])
 
@@ -406,6 +444,72 @@ export function AccountsPage({ accounts, accountsSummary, bankrollState, bankrol
     }
   }, [focusedBookmaker])
 
+  const accountBookmakers = useMemo(() => {
+    const preferred = ['pari', 'fonbet', 'marathon', 'zenit', 'betcity', 'baltbet', 'bettery']
+    const fromAccounts = accounts.map((entry) => entry.bookmaker.toLowerCase())
+    return Array.from(new Set([...preferred, ...fromAccounts])).sort()
+  }, [accounts])
+
+  const selectedLoginUrl = bookmakerLoginUrl(testBookmaker)
+
+  const handleOpenLoginPage = async () => {
+    setLoginPageOpened(true)
+    try {
+      await openUrl(selectedLoginUrl)
+    } catch {
+      const opened = window.open(selectedLoginUrl, '_blank', 'noopener,noreferrer')
+      if (!opened) {
+        window.location.assign(selectedLoginUrl)
+      }
+    }
+  }
+
+  const handleCreateTestAccount = async () => {
+    if (!accountLogin.trim()) return
+
+    const parsedBalance = Number(availableBalance.replace(',', '.'))
+    const parsedExpires = Number(expiresInHours)
+    const importPayload: AccountSessionImportPayload = {
+      rawImport: rawSessionImport.trim() || undefined,
+      cookieHeader: cookieHeader.trim() || undefined,
+      authorizationHeader: authorizationHeader.trim() || undefined,
+      csrfToken: csrfToken.trim() || undefined,
+      userAgent: userAgent.trim() || undefined,
+      availableBalance: Number.isFinite(parsedBalance) && parsedBalance >= 0 ? parsedBalance : 10000,
+      expiresInHours: Number.isFinite(parsedExpires) && parsedExpires > 0 ? parsedExpires : 8,
+    }
+
+    setBootstrappingSession(true)
+    try {
+      const account = await onBootstrapAccountSession(testBookmaker, accountLogin.trim(), sessionHint.trim() || undefined, importPayload)
+      if (account) {
+        setSelectedBookmaker(account.bookmaker)
+        setAccountModalOpen(false)
+        setSessionHint('')
+        setRawSessionImport('')
+        setCookieHeader('')
+        setAuthorizationHeader('')
+        setCsrfToken('')
+        setUserAgent('')
+      }
+    } finally {
+      setBootstrappingSession(false)
+    }
+  }
+
+  const runAccountAction = async (bookmaker: string, action: string, handler: () => Promise<AccountStateResponse | null>) => {
+    const actionKey = `${bookmaker.toLowerCase()}:${action}`
+    setAccountAction(actionKey)
+    try {
+      const account = await handler()
+      if (account) setSelectedBookmaker(account.bookmaker)
+    } finally {
+      setAccountAction(null)
+    }
+  }
+
+  const isAccountActionRunning = (bookmaker: string, action: string) => accountAction === `${bookmaker.toLowerCase()}:${action}`
+
   return (
     <motion.div variants={container} initial="hidden" animate="show" className="space-y-6">
       <motion.div variants={item} className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
@@ -416,7 +520,18 @@ export function AccountsPage({ accounts, accountsSummary, bankrollState, bankrol
           </p>
         </div>
 
-        <div className="flex flex-wrap gap-3 text-xs">
+        <div className="flex flex-wrap items-center gap-3 text-xs">
+          <div className="flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
+            <button
+              type="button"
+              onClick={() => setAccountModalOpen(true)}
+              className="inline-flex items-center gap-1 rounded-lg px-2 py-1 font-medium transition-opacity disabled:opacity-50"
+              style={{ background: 'rgba(63, 185, 80, 0.14)', color: 'var(--accent-green)' }}
+            >
+              <PlusCircle size={14} />
+              Добавить аккаунт
+            </button>
+          </div>
           <div className="rounded-xl px-3 py-2" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
             Accounts snapshot {accounts.length}
           </div>
@@ -425,6 +540,188 @@ export function AccountsPage({ accounts, accountsSummary, bankrollState, bankrol
           </div>
         </div>
       </motion.div>
+
+      {accountModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(1, 4, 9, 0.72)' }}>
+          <div className="w-full max-w-2xl max-h-[92vh] overflow-auto rounded-2xl p-5" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
+            <div className="flex items-start justify-between gap-4 mb-4">
+              <div>
+                <h3 className="text-lg font-semibold">Добавить аккаунт БК</h3>
+                <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
+                  Safe-mode bootstrap после ручного входа: пароль в Fork Hunter вводить не нужно.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAccountModalOpen(false)}
+                className="rounded-lg p-2 transition-colors"
+                style={{ color: 'var(--text-muted)' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <label className="block text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
+                Букмекер
+                <select
+                  value={testBookmaker}
+                  onChange={(event) => {
+                    setTestBookmaker(event.target.value)
+                    setLoginPageOpened(false)
+                  }}
+                  className="mt-1 w-full rounded-xl px-3 py-2 outline-none"
+                  style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', color: 'var(--text-primary)' }}
+                >
+                  {accountBookmakers.map((bookmaker) => (
+                    <option key={bookmaker} value={bookmaker}>{bookmaker}</option>
+                  ))}
+                </select>
+              </label>
+
+              <div className="rounded-xl p-3" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>Шаг 1: вход на сайт БК</p>
+                    <a
+                      href={selectedLoginUrl}
+                      className="text-xs mt-1 block break-all underline decoration-dotted"
+                      style={{ color: 'var(--text-muted)' }}
+                    >
+                      {selectedLoginUrl}
+                    </a>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleOpenLoginPage}
+                    className="rounded-xl px-3 py-2 text-xs font-semibold"
+                    style={{ background: 'rgba(88, 166, 255, 0.14)', color: 'var(--accent-blue)' }}
+                  >
+                    Открыть вход
+                  </button>
+                </div>
+                <p className="text-xs mt-3" style={{ color: loginPageOpened ? 'var(--accent-green)' : 'var(--text-muted)' }}>
+                  {loginPageOpened ? 'Если новое окно не открылось, приложение перейдёт на сайт БК в этом же окне. Назад можно вернуться кнопкой Back.' : 'Сначала открой сайт БК и авторизуйся вручную. Автозахват cookies ещё не включён.'}
+                </p>
+              </div>
+
+              <label className="block text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
+                Шаг 2: логин для safe-mode label
+                <input
+                  value={accountLogin}
+                  onChange={(event) => setAccountLogin(event.target.value)}
+                  placeholder="phone / email / account id"
+                  className="mt-1 w-full rounded-xl px-3 py-2 outline-none"
+                  style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', color: 'var(--text-primary)' }}
+                />
+              </label>
+
+              <label className="block text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
+                Заметка к ручной сессии (опционально)
+                <input
+                  value={sessionHint}
+                  onChange={(event) => setSessionHint(event.target.value)}
+                  placeholder="например: logged-in browser / 2FA ok"
+                  className="mt-1 w-full rounded-xl px-3 py-2 outline-none"
+                  style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', color: 'var(--text-primary)' }}
+                />
+              </label>
+
+              <div className="rounded-xl p-3" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
+                <p className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>Шаг 3: импорт реальной browser-сессии</p>
+                <p className="text-xs mt-1 leading-5" style={{ color: 'var(--text-muted)' }}>
+                  После входа на сайт БК скопируй из DevTools один authenticated запрос как cURL или вставь Cookie header. Raw cookies хранятся только в runtime памяти backend и не уходят в response/SQLite.
+                </p>
+                <textarea
+                  value={rawSessionImport}
+                  onChange={(event) => setRawSessionImport(event.target.value)}
+                  placeholder="curl 'https://...' -H 'Cookie: ...' -H 'User-Agent: ...'"
+                  rows={4}
+                  className="mt-3 w-full rounded-xl px-3 py-2 text-xs outline-none"
+                  style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-color)', color: 'var(--text-primary)' }}
+                />
+                <div className="grid grid-cols-1 gap-2 mt-3 sm:grid-cols-2">
+                  <input
+                    value={cookieHeader}
+                    onChange={(event) => setCookieHeader(event.target.value)}
+                    placeholder="Cookie: sid=... (optional)"
+                    className="rounded-xl px-3 py-2 text-xs outline-none"
+                    style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-color)', color: 'var(--text-primary)' }}
+                  />
+                  <input
+                    value={authorizationHeader}
+                    onChange={(event) => setAuthorizationHeader(event.target.value)}
+                    placeholder="Authorization: Bearer ..."
+                    className="rounded-xl px-3 py-2 text-xs outline-none"
+                    style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-color)', color: 'var(--text-primary)' }}
+                  />
+                  <input
+                    value={csrfToken}
+                    onChange={(event) => setCsrfToken(event.target.value)}
+                    placeholder="X-CSRF token"
+                    className="rounded-xl px-3 py-2 text-xs outline-none"
+                    style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-color)', color: 'var(--text-primary)' }}
+                  />
+                  <input
+                    value={userAgent}
+                    onChange={(event) => setUserAgent(event.target.value)}
+                    placeholder="User-Agent"
+                    className="rounded-xl px-3 py-2 text-xs outline-none"
+                    style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-color)', color: 'var(--text-primary)' }}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <label className="block text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
+                  Доступный баланс
+                  <input
+                    value={availableBalance}
+                    onChange={(event) => setAvailableBalance(event.target.value)}
+                    inputMode="decimal"
+                    className="mt-1 w-full rounded-xl px-3 py-2 outline-none"
+                    style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', color: 'var(--text-primary)' }}
+                  />
+                </label>
+                <label className="block text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
+                  TTL сессии, часов
+                  <input
+                    value={expiresInHours}
+                    onChange={(event) => setExpiresInHours(event.target.value)}
+                    inputMode="numeric"
+                    className="mt-1 w-full rounded-xl px-3 py-2 outline-none"
+                    style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', color: 'var(--text-primary)' }}
+                  />
+                </label>
+              </div>
+
+              <div className="rounded-xl p-3 text-xs" style={{ background: 'rgba(210, 153, 34, 0.12)', color: 'var(--text-secondary)', border: '1px solid rgba(210, 153, 34, 0.22)' }}>
+                Не вводи сюда пароль. Для реальной авторизации нужен Cookie или Authorization header из уже залогиненного браузера; backend вернёт только redacted summary.
+              </div>
+            </div>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setAccountModalOpen(false)}
+                className="rounded-xl px-4 py-2 text-sm"
+                style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)' }}
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                onClick={handleCreateTestAccount}
+                disabled={bootstrappingSession || !accountLogin.trim()}
+                className="rounded-xl px-4 py-2 text-sm font-semibold transition-opacity disabled:opacity-50"
+                style={{ background: 'rgba(63, 185, 80, 0.18)', color: 'var(--accent-green)' }}
+              >
+                {bootstrappingSession ? 'Сохраняю...' : 'Сохранить safe-mode сессию'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 xl:grid-cols-4 gap-4">
         {[
@@ -876,8 +1173,14 @@ export function AccountsPage({ accounts, accountsSummary, bankrollState, bankrol
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="text-lg font-semibold">{selectedEntry.bookmaker}</p>
                       <span className={`badge ${selectedEntry.riskScore >= 55 ? 'badge-danger' : selectedEntry.riskScore >= 30 ? 'badge-warning' : 'badge-success'}`}>risk {selectedEntry.riskScore}</span>
+                      {selectedEntry.account?.session_material ? <span className="badge badge-success">real session imported</span> : null}
                     </div>
                     <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>{readinessLabel(selectedEntry.account)}</p>
+                    {selectedEntry.account?.session_material ? (
+                      <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                        {selectedEntry.account.session_material.redacted_hint} · {selectedEntry.account.session_material.persistence}
+                      </p>
+                    ) : null}
                   </div>
                   {selectedEntry.account?.readiness.placement_ready ? <ShieldCheck size={18} style={{ color: 'var(--accent-green)' }} /> : <ShieldQuestion size={18} style={{ color: 'var(--accent-yellow)' }} />}
                 </div>
@@ -900,6 +1203,45 @@ export function AccountsPage({ accounts, accountsSummary, bankrollState, bankrol
                     {' • '}
                     {selectedEntry.account?.readiness.submit_blocked_by_safe_mode ? 'safe mode blocks submit' : 'no safe mode block'}
                   </p>
+                </div>
+
+                <div className="mt-4 grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => runAccountAction(selectedEntry.bookmaker, 'refresh', () => onRefreshAccountBalance(selectedEntry.bookmaker))}
+                    disabled={!selectedEntry.account?.account || isAccountActionRunning(selectedEntry.bookmaker, 'refresh')}
+                    className="rounded-xl px-3 py-2 text-xs font-semibold transition-opacity disabled:opacity-50"
+                    style={{ background: 'rgba(88, 166, 255, 0.14)', color: 'var(--accent-blue)' }}
+                  >
+                    <span className="inline-flex items-center gap-1"><RefreshCw size={12} /> {isAccountActionRunning(selectedEntry.bookmaker, 'refresh') ? 'Refreshing...' : 'Refresh balance'}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => runAccountAction(selectedEntry.bookmaker, 'dry-run', () => onUpdateAccountControl(selectedEntry.bookmaker, { enabled: true, armed: false }))}
+                    disabled={!selectedEntry.account?.account || isAccountActionRunning(selectedEntry.bookmaker, 'dry-run')}
+                    className="rounded-xl px-3 py-2 text-xs font-semibold transition-opacity disabled:opacity-50"
+                    style={{ background: 'rgba(63, 185, 80, 0.14)', color: 'var(--accent-green)' }}
+                  >
+                    Set dry-run
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => runAccountAction(selectedEntry.bookmaker, 'arm', () => onUpdateAccountControl(selectedEntry.bookmaker, { enabled: true, armed: true }))}
+                    disabled={!selectedEntry.account?.account || !selectedEntry.account.readiness.can_arm_safely || isAccountActionRunning(selectedEntry.bookmaker, 'arm')}
+                    className="rounded-xl px-3 py-2 text-xs font-semibold transition-opacity disabled:opacity-50"
+                    style={{ background: 'rgba(210, 153, 34, 0.14)', color: 'var(--accent-yellow)' }}
+                  >
+                    Arm safe lane
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => runAccountAction(selectedEntry.bookmaker, 'disable', () => onUpdateAccountControl(selectedEntry.bookmaker, { enabled: false, armed: false }))}
+                    disabled={!selectedEntry.account?.account || !selectedEntry.account.account.enabled || isAccountActionRunning(selectedEntry.bookmaker, 'disable')}
+                    className="rounded-xl px-3 py-2 text-xs font-semibold transition-opacity disabled:opacity-50"
+                    style={{ background: 'rgba(248, 81, 73, 0.14)', color: 'var(--accent-red)' }}
+                  >
+                    <span className="inline-flex items-center gap-1"><Power size={12} /> Disable</span>
+                  </button>
                 </div>
               </div>
 

@@ -293,7 +293,10 @@ impl BaltbetParser {
         let results = stream::iter(sport_links.into_iter().map(move |sport_link| {
             let client = client.clone();
             async move {
-                let url = format!("https://old.baltbet.ru/Line2.aspx?group={}", sport_link.group_id);
+                let url = format!(
+                    "https://old.baltbet.ru/Line2.aspx?group={}",
+                    sport_link.group_id
+                );
                 let resp = client
                     .get(&url)
                     .header(

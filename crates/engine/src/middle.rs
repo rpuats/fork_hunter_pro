@@ -1,4 +1,3 @@
-
 use shared::{Event, Odd, Sport};
 use std::collections::HashMap;
 
@@ -189,7 +188,7 @@ impl MiddleDetector {
         odd_a: &Odd,
         odd_b: &Odd,
         _handicap_a: f64,
-        _handicap_b: f64
+        _handicap_b: f64,
     ) -> Option<MiddleOpportunity> {
         // Упрощенная логика для тестирования
         let stake = 1000.0;

@@ -6,8 +6,8 @@ use corridor_scanner::CorridorScanner;
 use engine::calculator::SurebetCalculator;
 use engine::event_pool::EventPool;
 use engine::freebet::FreebetHunter;
-use engine::middle::MiddleDetector;
 use engine::generosity::GenerosityIndexCalc;
+use engine::middle::MiddleDetector;
 use engine::mirror::MirrorDetector;
 use engine::momentum::MomentumScanner;
 use engine::normalizer::Normalizer;
@@ -856,8 +856,12 @@ impl GhostScanner {
             let mut cache = self.middles_cache.write();
             *cache = middle_result.opportunities.into_iter().take(1000).collect();
         }
-        info!("🎯 Found {} middle opportunities in {} events ({}ms)",
-              middle_result.found_middles, middle_result.searched_events, middle_result.search_time_ms);
+        info!(
+            "🎯 Found {} middle opportunities in {} events ({}ms)",
+            middle_result.found_middles,
+            middle_result.searched_events,
+            middle_result.search_time_ms
+        );
 
         let odds_errors = self
             .odds_error_detector

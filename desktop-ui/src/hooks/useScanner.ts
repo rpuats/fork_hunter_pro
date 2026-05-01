@@ -2,9 +2,12 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { toast } from 'sonner'
 import type {
   AccountSessionSummary,
+  AccountControlUpdate,
+  AccountSessionImportPayload,
   AccountStateResponse,
   ApiResponse,
   BackendBookmaker,
+  BookmakerBalanceRefresh,
   BackendCollectionResponse,
   BackendCorridorOpportunity,
   BankrollRecommendationsResponse,
@@ -18,6 +21,7 @@ import type {
   BookmakerStatusCatalog,
   ParserCoverage,
   ParserHealth,
+  SemiAutoCoupon,
   BackendSurebet,
   Bookmaker,
   CorridorOpportunity,
@@ -203,6 +207,27 @@ async function fetchApiData<T>(path: string): Promise<T | null> {
   }
 }
 
+async function postApiData<T>(path: string, body: unknown): Promise<T | null> {
+  try {
+    const response = await fetch(`${API_BASE}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    if (!response.ok) return null
+
+    const payload = await response.json() as ApiResponse<T> | T
+    if (payload && typeof payload === 'object' && 'success' in payload) {
+      const apiPayload = payload as ApiResponse<T>
+      return apiPayload.success ? (apiPayload.data ?? null) : null
+    }
+
+    return payload as T
+  } catch {
+    return null
+  }
+}
+
 export function useScanner() {
   const [connected, setConnected] = useState(false)
   const [surebets, setSurebets] = useState<Surebet[]>([])
@@ -217,6 +242,7 @@ export function useScanner() {
   const [executionLedger, setExecutionLedger] = useState<ExecutionLedgerAudit | null>(null)
   const [executionState, setExecutionState] = useState<ExecutionStateAudit | null>(null)
   const [executionOperatorQueue, setExecutionOperatorQueue] = useState<ExecutionOperatorQueueAudit | null>(null)
+  const [semiAutoCoupons, setSemiAutoCoupons] = useState<SemiAutoCoupon[]>([])
   const [parserCoverage, setParserCoverage] = useState<ParserCoverage[]>([])
   const [parserHealth, setParserHealth] = useState<ParserHealth[]>([])
   const [accounts, setAccounts] = useState<AccountStateResponse[]>([])
@@ -233,7 +259,7 @@ export function useScanner() {
   // Fetch real data from API
   const fetchRealData = useCallback(async () => {
     try {
-      const [statusData, metricsData, bookmakersData, surebetsData, corridorsData, expressForksData, valueBetsData, generosityData, executionOverviewData, executionLedgerData, executionStateData, executionOperatorQueueData, parserCoverageData, parserHealthData, accountsData, accountsSummaryData, bankrollStateData, bankrollRecommendationsData, freebetSummaryData, bookmakerStatusCatalogData] = await Promise.all([
+      const [statusData, metricsData, bookmakersData, surebetsData, corridorsData, expressForksData, valueBetsData, generosityData, executionOverviewData, executionLedgerData, executionStateData, executionOperatorQueueData, semiAutoCouponsData, parserCoverageData, parserHealthData, accountsData, accountsSummaryData, bankrollStateData, bankrollRecommendationsData, freebetSummaryData, bookmakerStatusCatalogData] = await Promise.all([
         fetchApiData<ScannerStatus>('/api/v1/scanner/status'),
         fetchApiData<ScannerMetrics>('/api/v1/metrics'),
         fetchApiData<BackendBookmaker[] | LegacyBookmakersResponse>('/api/v1/bookmakers'),
@@ -246,6 +272,7 @@ export function useScanner() {
         fetchApiData<ExecutionLedgerAudit>('/api/v1/execution/ledger?limit=25'),
         fetchApiData<ExecutionStateAudit>('/api/v1/execution/state?limit=25'),
         fetchApiData<ExecutionOperatorQueueAudit>('/api/v1/execution/operator-queue?limit=25'),
+        fetchApiData<SemiAutoCoupon[]>('/api/v1/execution/semi-auto-queue?limit=8'),
         fetchApiData<ParserCoverage[]>('/api/v1/parsers/coverage'),
         fetchApiData<ParserHealth[]>('/api/v1/parsers/health'),
         fetchApiData<AccountStateResponse[]>('/api/v1/accounts'),
@@ -296,6 +323,10 @@ export function useScanner() {
         setExecutionOperatorQueue(executionOperatorQueueData)
       }
 
+      if (semiAutoCouponsData) {
+        setSemiAutoCoupons(semiAutoCouponsData)
+      }
+
       if (parserCoverageData) {
         setParserCoverage(parserCoverageData)
       }
@@ -338,7 +369,7 @@ export function useScanner() {
         })
       }
 
-      if (isFirstLoad.current && (statusData || metricsData || bookmakersData || surebetsData || corridorsData || expressForksData || valueBetsData || generosityData || executionOverviewData || executionLedgerData || executionStateData || parserCoverageData || parserHealthData || accountsData || accountsSummaryData || bankrollStateData || bankrollRecommendationsData)) {
+      if (isFirstLoad.current && (statusData || metricsData || bookmakersData || surebetsData || corridorsData || expressForksData || valueBetsData || generosityData || executionOverviewData || executionLedgerData || executionStateData || semiAutoCouponsData || parserCoverageData || parserHealthData || accountsData || accountsSummaryData || bankrollStateData || bankrollRecommendationsData)) {
         isFirstLoad.current = false
         toast.success('Данные загружены с сервера')
       }
@@ -346,6 +377,85 @@ export function useScanner() {
       // Silently fail and keep the last successful snapshot
     }
   }, [])
+
+  const confirmSemiAutoCoupon = useCallback(async (couponId: string) => {
+    const coupon = await postApiData<SemiAutoCoupon>(`/api/v1/execution/semi-auto-queue/${couponId}/confirm`, {
+      confirm_safe_mode: true,
+      operator_reference: `ui-confirm:${couponId}`,
+    })
+
+    if (!coupon) {
+      toast.error('Не удалось подтвердить полуавто-купон')
+      return null
+    }
+
+    setSemiAutoCoupons(prev => [coupon, ...prev.filter(item => item.id !== coupon.id)])
+    toast.success('Полуавто-купон применён в safe mode')
+    fetchRealData()
+    return coupon
+  }, [fetchRealData])
+
+  const bootstrapAccountSession = useCallback(async (bookmaker: string, login?: string, sessionHint?: string, importPayload?: AccountSessionImportPayload) => {
+    const account = await postApiData<AccountStateResponse>('/api/v1/accounts/bootstrap-session', {
+      bookmaker,
+      login,
+      session_hint: sessionHint,
+      raw_import: importPayload?.rawImport,
+      cookie_header: importPayload?.cookieHeader,
+      authorization_header: importPayload?.authorizationHeader,
+      csrf_token: importPayload?.csrfToken,
+      user_agent: importPayload?.userAgent,
+      expires_in_hours: importPayload?.expiresInHours,
+      available_balance: importPayload?.availableBalance ?? 10000,
+    })
+
+    if (!account) {
+      toast.error('Не удалось сохранить safe-mode сессию')
+      return null
+    }
+
+    setAccounts(prev => [account, ...prev.filter(item => item.bookmaker.toLowerCase() !== account.bookmaker.toLowerCase())])
+    toast.success(account.session_material ? `Реальная сессия ${account.bookmaker} импортирована` : `Аккаунт ${account.bookmaker} добавлен в safe-mode`)
+    fetchRealData()
+    return account
+  }, [fetchRealData])
+
+  const refreshAccountBalance = useCallback(async (bookmaker: string) => {
+    const encodedBookmaker = encodeURIComponent(bookmaker)
+    const refresh = await postApiData<BookmakerBalanceRefresh>(`/api/v1/accounts/${encodedBookmaker}/refresh`, {})
+
+    if (!refresh) {
+      toast.error(`Не удалось обновить баланс ${bookmaker}`)
+      return null
+    }
+
+    const account = await fetchApiData<AccountStateResponse>(`/api/v1/accounts/${encodedBookmaker}`)
+    if (account) {
+      setAccounts(prev => [account, ...prev.filter(item => item.bookmaker.toLowerCase() !== account.bookmaker.toLowerCase())])
+    }
+
+    toast.success(refresh.snapshot ? `Баланс ${refresh.bookmaker} обновлён` : `Баланс ${refresh.bookmaker}: ${refresh.state}`)
+    fetchRealData()
+    return account
+  }, [fetchRealData])
+
+  const updateAccountControl = useCallback(async (bookmaker: string, update: AccountControlUpdate) => {
+    const account = await postApiData<AccountStateResponse>(`/api/v1/accounts/${encodeURIComponent(bookmaker)}/control`, {
+      ...update,
+      confirm_dry_run_only: true,
+      confirm_rollout_gate_acknowledged: true,
+    })
+
+    if (!account) {
+      toast.error(`Не удалось обновить режим ${bookmaker}`)
+      return null
+    }
+
+    setAccounts(prev => [account, ...prev.filter(item => item.bookmaker.toLowerCase() !== account.bookmaker.toLowerCase())])
+    toast.success(`Режим ${account.bookmaker}: ${account.account?.mode ?? 'No account'}`)
+    fetchRealData()
+    return account
+  }, [fetchRealData])
 
   const handleWsSurebet = useCallback((payload: unknown) => {
     if (!payload || typeof payload !== 'object') return
@@ -454,6 +564,11 @@ export function useScanner() {
       executionLedger,
       executionState,
       executionOperatorQueue,
+      semiAutoCoupons,
+      confirmSemiAutoCoupon,
+      bootstrapAccountSession,
+      refreshAccountBalance,
+      updateAccountControl,
     parserCoverage,
     parserHealth,
     accounts,

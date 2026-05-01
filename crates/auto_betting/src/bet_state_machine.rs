@@ -45,14 +45,24 @@ pub enum BetPlacementState {
 /// Событие в жизненном цикле ставки
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum BetPlacementEvent {
-    Pending { timestamp: DateTime<Utc> },
-    Prepared { timestamp: DateTime<Utc> },
-    Validated { timestamp: DateTime<Utc> },
+    Pending {
+        timestamp: DateTime<Utc>,
+    },
+    Prepared {
+        timestamp: DateTime<Utc>,
+    },
+    Validated {
+        timestamp: DateTime<Utc>,
+    },
     /// Ставка создана
-    Created { timestamp: DateTime<Utc> },
+    Created {
+        timestamp: DateTime<Utc>,
+    },
 
     /// Экспозиция валидирована
-    ExposureValidated { timestamp: DateTime<Utc> },
+    ExposureValidated {
+        timestamp: DateTime<Utc>,
+    },
 
     /// Баланс валидирован
     BalanceValidated {
@@ -61,10 +71,14 @@ pub enum BetPlacementEvent {
     },
 
     /// Ставка готова
-    ReadyForExecution { timestamp: DateTime<Utc> },
+    ReadyForExecution {
+        timestamp: DateTime<Utc>,
+    },
 
     /// Ставка выполняется
-    ExecutionStarted { timestamp: DateTime<Utc> },
+    ExecutionStarted {
+        timestamp: DateTime<Utc>,
+    },
 
     /// Ставка размещена
     Placed {
@@ -73,7 +87,9 @@ pub enum BetPlacementEvent {
     },
 
     /// Ставка подтверждена
-    Confirmed { timestamp: DateTime<Utc> },
+    Confirmed {
+        timestamp: DateTime<Utc>,
+    },
 
     /// Ошибка валидации экспозиции
     ExposureValidationFailed {

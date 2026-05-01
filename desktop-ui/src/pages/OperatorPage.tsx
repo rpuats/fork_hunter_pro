@@ -3,13 +3,15 @@ import { toast } from 'sonner'
 import { motion } from 'framer-motion'
 import { Activity, AlertTriangle, CheckCircle2, Clock3, PauseCircle, PlayCircle, Search, ShieldAlert, ShieldCheck, ShieldX, Siren, TimerReset, Wallet } from 'lucide-react'
 import { CompactSignalOverlay } from '../components/CompactSignalOverlay'
-import type { AccountStateResponse, BackendParserHealthStatus, BackendParserReadinessStage, Bookmaker, BookmakerExecutionMode, BookmakerStatusCatalog, ExecutionBookmakerReadinessRecord, ExecutionLedgerAudit, ExecutionOperatorQueueAudit, ExecutionOverview, ExecutionStateAudit, ExecutionStateReadinessSummary, ExecutionStateSnapshotRecord, FreebetLifecycleSummary, ParserCoverage, ParserHealth } from '../types'
+import type { AccountStateResponse, BackendParserHealthStatus, BackendParserReadinessStage, Bookmaker, BookmakerExecutionMode, BookmakerStatusCatalog, ExecutionBookmakerReadinessRecord, ExecutionLedgerAudit, ExecutionOperatorQueueAudit, ExecutionOverview, ExecutionStateAudit, ExecutionStateReadinessSummary, ExecutionStateSnapshotRecord, FreebetLifecycleSummary, ParserCoverage, ParserHealth, SemiAutoCoupon } from '../types'
 
 interface OperatorPageProps {
   executionOverview: ExecutionOverview | null
   executionLedger: ExecutionLedgerAudit | null
   executionState: ExecutionStateAudit | null
   executionOperatorQueue: ExecutionOperatorQueueAudit | null
+  semiAutoCoupons: SemiAutoCoupon[]
+  onConfirmSemiAutoCoupon: (couponId: string) => Promise<SemiAutoCoupon | null>
   parserCoverage: ParserCoverage[]
   parserHealth: ParserHealth[]
   bookmakers: Bookmaker[]
@@ -152,7 +154,7 @@ function formatExecutionMode(mode: BookmakerExecutionMode | null | undefined) {
   return mode.replace(/([a-z])([A-Z])/g, '$1 $2')
 }
 
-export function OperatorPage({ executionOverview, executionLedger, executionState, executionOperatorQueue, parserCoverage, parserHealth, bookmakers, bookmakerStatusCatalog, accountStates, freebetSummary, onOpenAccount }: OperatorPageProps) {
+export function OperatorPage({ executionOverview, executionLedger, executionState, executionOperatorQueue, semiAutoCoupons, onConfirmSemiAutoCoupon, parserCoverage, parserHealth, bookmakers, bookmakerStatusCatalog, accountStates, freebetSummary, onOpenAccount }: OperatorPageProps) {
   // Local UI mode for automation: auto or semi-auto (MVP; backend not wired yet)
   const [autoMode, setAutoMode] = useState<string>(() => {
     const saved = typeof window !== 'undefined' ? localStorage.getItem('auto_mode') : null
@@ -167,6 +169,7 @@ export function OperatorPage({ executionOverview, executionLedger, executionStat
   const [ledgerSort, setLedgerSort] = useState<LedgerSort>('priority')
   const [ledgerBookmaker, setLedgerBookmaker] = useState<string>('all')
   const [ledgerQuery, setLedgerQuery] = useState('')
+  const [confirmingCouponId, setConfirmingCouponId] = useState<string | null>(null)
   const executionStatus = executionOverview?.autobet_status ?? null
   const accounts = executionOverview?.accounts ?? null
   const recentPlacements = executionOverview?.recent_placements ?? null
@@ -908,6 +911,20 @@ export function OperatorPage({ executionOverview, executionLedger, executionStat
       },
     ]
   }, [executionReadinessSummary.approval_required, executionReadinessSummary.submit_blocked_by_safe_mode, freebetOperatorSnapshot, hotspotSummary.active, topHotspot, topOperatorAction])
+  const semiAutoStats = useMemo(() => ({
+    awaiting: semiAutoCoupons.filter((coupon) => coupon.status === 'awaiting_operator').length,
+    blocked: semiAutoCoupons.filter((coupon) => coupon.status === 'blocked').length,
+    applied: semiAutoCoupons.filter((coupon) => coupon.status === 'applied_safe_mode').length,
+  }), [semiAutoCoupons])
+
+  const handleConfirmSemiAutoCoupon = async (couponId: string) => {
+    setConfirmingCouponId(couponId)
+    try {
+      await onConfirmSemiAutoCoupon(couponId)
+    } finally {
+      setConfirmingCouponId(null)
+    }
+  }
 
   return (
     <motion.div variants={container} initial="hidden" animate="show" className="space-y-6">
@@ -979,6 +996,76 @@ export function OperatorPage({ executionOverview, executionLedger, executionStat
             <p className="text-xs leading-5" style={{ color: 'var(--text-secondary)' }}>{entry.detail}</p>
           </div>
         ))}
+      </motion.div>
+
+      <motion.div variants={item} className="glass-card p-5">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between mb-4">
+          <div>
+            <p className="text-xs uppercase tracking-wider" style={{ color: 'var(--text-muted)' }}>Semi-auto coupon queue</p>
+            <h3 className="text-lg font-semibold mt-1">Подготовленные ставки с ручным подтверждением</h3>
+            <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
+              Система готовит купон и preflight, оператор нажимает подтвердить. Remote real-money submit остаётся выключен: применяется safe-mode execution path.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <span className="badge badge-warning">awaiting {semiAutoStats.awaiting}</span>
+            <span className="badge badge-danger">blocked {semiAutoStats.blocked}</span>
+            <span className="badge badge-success">applied {semiAutoStats.applied}</span>
+          </div>
+        </div>
+
+        {semiAutoCoupons.length === 0 ? (
+          <div className="rounded-xl p-4 text-sm" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}>
+            Нет текущих surebet-купонов для полуавто-подтверждения. Очередь появится после обнаружения вилок scanner runtime.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+            {semiAutoCoupons.slice(0, 6).map((coupon) => {
+              const isReady = coupon.status === 'awaiting_operator' && coupon.all_legs_ready
+              const isConfirming = confirmingCouponId === coupon.id
+              const badge = coupon.status === 'applied_safe_mode'
+                ? 'badge-success'
+                : coupon.status === 'blocked'
+                  ? 'badge-danger'
+                  : 'badge-warning'
+
+              return (
+                <div key={coupon.id} className="rounded-xl p-4" style={{ background: 'var(--bg-card)', border: `1px solid ${isReady ? 'rgba(210, 153, 34, 0.32)' : 'var(--border-color)'}` }}>
+                  <div className="flex items-start justify-between gap-3 mb-3">
+                    <div>
+                      <p className="font-semibold">{coupon.home_team} vs {coupon.away_team}</p>
+                      <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>{coupon.league || 'league unknown'} • +{coupon.profit_percent.toFixed(2)}% • {coupon.total_stake.toFixed(0)} RUB</p>
+                    </div>
+                    <span className={`badge ${badge}`}>{coupon.status.replace(/_/g, ' ')}</span>
+                  </div>
+
+                  <div className="space-y-2 mb-3">
+                    {coupon.legs.map((leg) => (
+                      <div key={`${coupon.id}-${leg.bookmaker}-${leg.selection}`} className="flex items-center justify-between gap-2 rounded-lg px-3 py-2 text-xs" style={{ background: 'var(--bg-primary)' }}>
+                        <span>{leg.bookmaker} • {leg.market} / {leg.selection}</span>
+                        <span>{leg.odds.toFixed(2)} × {leg.stake.toFixed(0)} RUB</span>
+                        <span className={`badge ${leg.preflight.dry_run_ready ? 'badge-success' : 'badge-danger'}`}>{leg.receipt?.status ?? (leg.preflight.dry_run_ready ? 'ready' : 'blocked')}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  {coupon.blocking_reasons.length > 0 && (
+                    <p className="text-xs mb-3" style={{ color: 'var(--text-secondary)' }}>{coupon.blocking_reasons[0]}</p>
+                  )}
+
+                  <button
+                    type="button"
+                    disabled={!isReady || isConfirming}
+                    onClick={() => handleConfirmSemiAutoCoupon(coupon.id)}
+                    className={`w-full rounded-lg px-4 py-2 text-sm font-semibold ${isReady ? 'bg-blue-600 text-white hover:bg-blue-500' : 'bg-gray-700 text-gray-300 cursor-not-allowed'}`}
+                  >
+                    {isConfirming ? 'Применяем...' : coupon.status === 'applied_safe_mode' ? 'Уже применено safe-mode' : 'Подтвердить и применить'}
+                  </button>
+                </div>
+              )
+            })}
+          </div>
+        )}
       </motion.div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">

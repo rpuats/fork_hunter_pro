@@ -1,3 +1,4 @@
+use auto_betting::auth::{BookmakerSessionMaterial, BookmakerSessionMaterialSummary};
 use auto_betting::engine::AutoBetEngine;
 use auto_betting::limiter::BetLimiterStats;
 use auto_betting::validator::StakeValidator;
@@ -9,7 +10,7 @@ use axum::response::IntoResponse;
 use axum::Json;
 use bankroll_manager::manager::BankrollManager;
 use bonus_hunter::hunter::BonusHunter;
-use chrono::Utc;
+use chrono::{Duration, Utc};
 use engine::freebet::FreebetHunter;
 use engine::generosity::GenerosityIndexCalc;
 use engine::middle::MiddleOpportunity;
@@ -26,26 +27,33 @@ use shared::models::{
     AutoBetDryRunResponse, AutoBetStatus, BankrollState, BetExecutionReceipt, BetExecutionRequest,
     BetPlacement, BetStatus, BonusInfo, BookmakerAccount, BookmakerAuthSnapshot, BookmakerBalance,
     BookmakerBalanceRefresh, BookmakerBalanceSnapshot, BookmakerExecutionCapability,
-    BookmakerExecutionMode, BookmakerMetadata, BookmakerSession, BookmakerStatusCatalog,
-    BookmakerStatusCatalogEntry, BookmakerStatusCatalogSummary, BookmakerTriageBucket,
-    DepositAllocationGuidance, DiagnosticSeverity, ExecutionBookmakerReadinessRecord,
-    ExecutionBookmakerStateSummary, ExecutionLedgerAudit, ExecutionLedgerRecord,
-    ExecutionOperatorQueueAudit, ExecutionOperatorQueueItem, ExecutionOverview,
-    ExecutionPlacementSummary, ExecutionStateAudit, ExecutionStateMachineMetadata,
-    ExecutionStatePhaseSummary, ExecutionStateReadinessSummary, ExecutionStateSnapshotRecord,
-    ExecutionStateTransitionRecord, FreebetConversionPlan, FreebetExecutionReadiness,
-    FreebetExecutionReadinessStage, FreebetLifecycleFundingGapLeader, FreebetLifecycleLabelCount,
-    FreebetLifecycleStage, FreebetLifecycleState, FreebetLifecycleSummary, FreebetOpportunity,
-    FreebetPlanRequest, FreebetProgressStatus, FreebetRolloverProgress, GenerosityIndex, OddsError,
+    BookmakerExecutionMode, BookmakerMetadata, BookmakerSession, BookmakerSessionState,
+    BookmakerStatusCatalog, BookmakerStatusCatalogEntry, BookmakerStatusCatalogSummary,
+    BookmakerTriageBucket, DepositAllocationGuidance, DiagnosticSeverity,
+    ExecutionBookmakerReadinessRecord, ExecutionBookmakerStateSummary, ExecutionLedgerAudit,
+    ExecutionLedgerRecord, ExecutionOperatorQueueAudit, ExecutionOperatorQueueItem,
+    ExecutionOverview, ExecutionPlacementSummary, ExecutionStateAudit,
+    ExecutionStateMachineMetadata, ExecutionStatePhaseSummary, ExecutionStateReadinessSummary,
+    ExecutionStateSnapshotRecord, ExecutionStateTransitionRecord, FreebetConversionPlan,
+    FreebetExecutionReadiness, FreebetExecutionReadinessStage, FreebetLifecycleFundingGapLeader,
+    FreebetLifecycleLabelCount, FreebetLifecycleStage, FreebetLifecycleState,
+    FreebetLifecycleSummary, FreebetOpportunity, FreebetPlanRequest, FreebetProgressStatus,
+    FreebetRolloverProgress, GenerosityIndex, OddsError, OpportunityKind,
     ParserCapabilityCatalogEntry, ParserCoverage, ParserDiagnosticCheck, ParserHealth,
     ParserNightlyKpiGate, ParserPromotionKpi, ParserResultStatus, ParserRuntimeSnapshot,
-    OpportunityKind, RuntimeCircuitState, ScannerMetrics, StakeValidationDecision,
-    StakeValidationPreflightRequest, StakeValidationPreflightResponse, StakeValidationRequest,
-    Surebet, UnifiedOpportunity, ValueBet,
+    RuntimeCircuitState, ScannerMetrics, SemiAutoCoupon, SemiAutoCouponLeg, SemiAutoCouponStatus,
+    StakeValidationDecision, StakeValidationPreflightRequest, StakeValidationPreflightResponse,
+    StakeValidationRequest, Surebet, UnifiedOpportunity, ValueBet,
 };
 use shared::{CorridorOpportunity, ExpressFork};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fs;
+use std::io::ErrorKind;
+use std::path::{Path, PathBuf};
+use std::process::Stdio;
+use std::time::Duration as StdDuration;
+use tokio::io::AsyncWriteExt;
+use tokio::process::Command;
 use uuid::Uuid;
 
 const STATIC_PARSER_HEALTH_NOTE: &str =
@@ -81,6 +89,12 @@ pub struct AutoBetExecuteLegResponse {
     pub preflight: StakeValidationPreflightResponse,
     pub execution_request: BetExecutionRequest,
     pub receipt: BetExecutionReceipt,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct SemiAutoConfirmRequest {
+    pub confirm_safe_mode: bool,
+    pub operator_reference: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -147,11 +161,41 @@ pub struct AccountStateResponse {
     pub capability: BookmakerExecutionCapability,
     pub account: Option<BookmakerAccount>,
     pub session: Option<BookmakerSession>,
+    pub session_material: Option<AccountSessionMaterialResponse>,
     pub balance: Option<BookmakerBalanceSnapshot>,
     pub auth_snapshot: Option<BookmakerAuthSnapshot>,
     pub persistence_status: AccountPersistenceStatusResponse,
     pub readiness: AccountReadinessResponse,
     pub control_issues: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AccountSessionMaterialResponse {
+    pub source: String,
+    pub cookie_header_present: bool,
+    pub authorization_header_present: bool,
+    pub csrf_token_present: bool,
+    pub user_agent_present: bool,
+    pub extra_header_count: usize,
+    pub imported_at: chrono::DateTime<Utc>,
+    pub redacted_hint: String,
+    pub persistence: String,
+}
+
+impl From<BookmakerSessionMaterialSummary> for AccountSessionMaterialResponse {
+    fn from(summary: BookmakerSessionMaterialSummary) -> Self {
+        Self {
+            source: summary.source,
+            cookie_header_present: summary.cookie_header_present,
+            authorization_header_present: summary.authorization_header_present,
+            csrf_token_present: summary.csrf_token_present,
+            user_agent_present: summary.user_agent_present,
+            extra_header_count: summary.extra_header_count,
+            imported_at: summary.imported_at,
+            redacted_hint: summary.redacted_hint,
+            persistence: "runtime_only_raw_secrets_not_persisted".into(),
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -187,6 +231,82 @@ pub struct AccountControlUpdateRequest {
     pub armed: Option<bool>,
     pub confirm_dry_run_only: bool,
     pub confirm_rollout_gate_acknowledged: Option<bool>,
+}
+
+#[derive(Deserialize, Debug, Clone, Default)]
+pub struct AccountSessionBootstrapRequest {
+    pub bookmaker: Option<String>,
+    pub login: Option<String>,
+    pub session_hint: Option<String>,
+    pub password: Option<String>,
+    pub raw_import: Option<String>,
+    pub cookie_header: Option<String>,
+    pub authorization_header: Option<String>,
+    pub csrf_token: Option<String>,
+    pub user_agent: Option<String>,
+    pub expires_in_hours: Option<i64>,
+    pub available_balance: Option<f64>,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct AccountAutomatedLoginRequest {
+    pub bookmaker: String,
+    pub login: String,
+    pub password: String,
+    pub login_url: Option<String>,
+    pub available_balance: Option<f64>,
+    pub wait_timeout_secs: Option<u64>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AccountAutomatedLoginResponse {
+    pub account: AccountStateResponse,
+    pub automation: AccountAutomatedLoginSummary,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AccountAutomatedLoginSummary {
+    pub bookmaker: String,
+    pub status: String,
+    pub authenticated: bool,
+    pub login_url: String,
+    pub profile_dir: String,
+    pub storage_state_path: String,
+    pub cookie_count: usize,
+    pub origin_count: usize,
+    pub filled_login: bool,
+    pub filled_password: bool,
+    pub clicked_submit: bool,
+    pub balance_text: Option<String>,
+    pub detail: Option<String>,
+    pub duration_secs: f64,
+    pub checked_at: chrono::DateTime<Utc>,
+}
+
+#[derive(Debug, Deserialize)]
+struct LoginAgentEnvelope {
+    success: bool,
+    data: Option<LoginAgentOutput>,
+    error: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct LoginAgentOutput {
+    bookmaker: String,
+    authenticated: bool,
+    status: String,
+    login_url: String,
+    profile_dir: String,
+    storage_state_path: String,
+    cookie_header: Option<String>,
+    cookie_count: usize,
+    origin_count: usize,
+    filled_login: bool,
+    filled_password: bool,
+    clicked_submit: bool,
+    balance_text: Option<String>,
+    detail: Option<String>,
+    duration_secs: f64,
 }
 
 #[derive(Serialize)]
@@ -992,6 +1112,9 @@ fn get_account_state(
     let capability = registry.get_capability(bookmaker);
     let account = registry.get_account(bookmaker);
     let session = registry.get_session(bookmaker);
+    let session_material = registry
+        .get_session_material_summary(bookmaker)
+        .map(AccountSessionMaterialResponse::from);
     let balance = registry.get_balance_snapshot(bookmaker);
     let auth_snapshot = registry.get_auth_snapshot(bookmaker);
     let persistence_status = build_account_persistence_status(
@@ -1021,6 +1144,7 @@ fn get_account_state(
         capability,
         account,
         session,
+        session_material,
         balance,
         auth_snapshot,
         persistence_status,
@@ -2199,6 +2323,114 @@ async fn build_dry_run_leg(
     })
 }
 
+async fn build_semi_auto_coupon(
+    registry: &ExecutionRegistry,
+    surebet: &Surebet,
+    receipts: HashMap<String, BetExecutionReceipt>,
+) -> Result<SemiAutoCoupon, String> {
+    let mut legs = Vec::with_capacity(surebet.legs.len());
+    let mut blocking_reasons = Vec::new();
+
+    for leg in &surebet.legs {
+        let event_id = format!("surebet-{}-{}", surebet.id, leg.bookmaker);
+        let preflight = build_stake_preflight(
+            registry,
+            StakeValidationPreflightRequest {
+                bookmaker: leg.bookmaker.clone(),
+                desired_stake: leg.stake,
+                min_stake: None,
+                max_stake: None,
+                bankroll_available_balance: None,
+                allow_auto_adjust: true,
+            },
+        )
+        .await?;
+
+        if !preflight.dry_run_ready {
+            blocking_reasons.push(format!(
+                "{}: dry-run path is not ready for operator confirmation",
+                leg.bookmaker
+            ));
+        }
+        if !preflight.validation.reasons.is_empty() {
+            blocking_reasons.extend(
+                preflight
+                    .validation
+                    .reasons
+                    .iter()
+                    .map(|reason| format!("{}: {reason}", leg.bookmaker)),
+            );
+        }
+        if preflight.submit_blocked_by_safe_mode {
+            blocking_reasons.push(format!(
+                "{}: safe mode keeps remote coupon submit disabled",
+                leg.bookmaker
+            ));
+        }
+
+        let execution_request = BetExecutionRequest {
+            bookmaker: leg.bookmaker.clone(),
+            event_id: event_id.clone(),
+            market: leg.market.clone(),
+            selection: leg.selection.clone(),
+            odds: leg.odds,
+            stake: preflight.validation.adjusted_stake,
+            allow_dry_run: true,
+            reference: Some(format!("semi-auto:{}", surebet.id)),
+        };
+
+        let receipt = receipts.get(&leg.bookmaker).cloned();
+        legs.push(SemiAutoCouponLeg {
+            bookmaker: leg.bookmaker.clone(),
+            event_id,
+            market: leg.market.clone(),
+            selection: leg.selection.clone(),
+            odds: leg.odds,
+            stake: preflight.validation.adjusted_stake,
+            url: leg.url.clone(),
+            preflight,
+            execution_request,
+            receipt,
+        });
+    }
+
+    let all_legs_ready = legs.iter().all(|leg| leg.preflight.dry_run_ready);
+    let applied = legs.iter().any(|leg| leg.receipt.is_some());
+    let status = if applied {
+        SemiAutoCouponStatus::AppliedSafeMode
+    } else if all_legs_ready {
+        SemiAutoCouponStatus::AwaitingOperator
+    } else {
+        SemiAutoCouponStatus::Blocked
+    };
+
+    let mut blocking_reasons = blocking_reasons
+        .into_iter()
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    blocking_reasons.sort();
+
+    Ok(SemiAutoCoupon {
+        id: surebet.id,
+        surebet_id: surebet.id,
+        status,
+        profit_percent: surebet.profit_percent,
+        total_stake: surebet.total_stake,
+        league: surebet.league.clone(),
+        home_team: surebet.home_team.clone(),
+        away_team: surebet.away_team.clone(),
+        is_live: surebet.is_live,
+        operator_required: true,
+        safe_mode: true,
+        all_legs_ready,
+        blocking_reasons,
+        legs,
+        created_at: Utc::now(),
+        applied_at: applied.then(Utc::now),
+    })
+}
+
 fn build_health_payload(coverage: &[ParserCoverage]) -> serde_json::Value {
     let parser_readiness = ParserPromotionKpi::from_coverage(coverage);
     let parser_readiness_details = coverage
@@ -2438,6 +2670,114 @@ pub async fn get_execution_operator_queue(
     let registry = execution_registry(&state);
     let audit = build_execution_state_audit(registry.as_ref(), replay, limit);
     Json(ApiResponse::ok(build_execution_operator_queue(&audit)))
+}
+
+pub async fn get_semi_auto_queue(
+    State(state): State<AppState>,
+    Query(params): Query<SurebetsQuery>,
+) -> axum::response::Response {
+    let limit = params.limit.unwrap_or(10).max(1) as usize;
+    let registry = execution_registry(&state);
+    let mut coupons = Vec::new();
+
+    for surebet in state.scanner.get_surebets(limit) {
+        match build_semi_auto_coupon(&registry, &surebet, HashMap::new()).await {
+            Ok(coupon) => coupons.push(coupon),
+            Err(error) => {
+                return (
+                    StatusCode::BAD_GATEWAY,
+                    Json(ApiResponse::<Vec<SemiAutoCoupon>>::error(&error)),
+                )
+                    .into_response();
+            }
+        }
+    }
+
+    (StatusCode::OK, Json(ApiResponse::ok(coupons))).into_response()
+}
+
+pub async fn confirm_semi_auto_coupon(
+    State(state): State<AppState>,
+    axum::extract::Path(coupon_id): axum::extract::Path<Uuid>,
+    Json(request): Json<SemiAutoConfirmRequest>,
+) -> axum::response::Response {
+    if !request.confirm_safe_mode {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ApiResponse::<SemiAutoCoupon>::error(
+                "semi-auto confirmation requires confirm_safe_mode=true",
+            )),
+        )
+            .into_response();
+    }
+
+    let Some(surebet) = state
+        .scanner
+        .get_surebets(200)
+        .into_iter()
+        .find(|surebet| surebet.id == coupon_id)
+    else {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(ApiResponse::<SemiAutoCoupon>::error(
+                "semi-auto coupon was not found in the current surebet snapshot",
+            )),
+        )
+            .into_response();
+    };
+
+    let registry = execution_registry(&state);
+    let draft = match build_semi_auto_coupon(&registry, &surebet, HashMap::new()).await {
+        Ok(coupon) => coupon,
+        Err(error) => {
+            return (
+                StatusCode::BAD_GATEWAY,
+                Json(ApiResponse::<SemiAutoCoupon>::error(&error)),
+            )
+                .into_response();
+        }
+    };
+
+    if !draft.all_legs_ready {
+        return (StatusCode::CONFLICT, Json(ApiResponse::ok(draft))).into_response();
+    }
+
+    let reference = request
+        .operator_reference
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| format!("operator-confirm:{coupon_id}"));
+    let mut receipts = HashMap::new();
+
+    for leg in &draft.legs {
+        let mut execution_request = leg.execution_request.clone();
+        execution_request.allow_dry_run = true;
+        execution_request.reference = Some(reference.clone());
+
+        match registry.execute_bet(&execution_request).await {
+            Ok(receipt) => {
+                receipts.insert(leg.bookmaker.clone(), receipt);
+            }
+            Err(error) => {
+                return (
+                    StatusCode::BAD_GATEWAY,
+                    Json(ApiResponse::<SemiAutoCoupon>::error(&error)),
+                )
+                    .into_response();
+            }
+        }
+    }
+
+    match build_semi_auto_coupon(&registry, &surebet, receipts).await {
+        Ok(coupon) => (StatusCode::OK, Json(ApiResponse::ok(coupon))).into_response(),
+        Err(error) => (
+            StatusCode::BAD_GATEWAY,
+            Json(ApiResponse::<SemiAutoCoupon>::error(&error)),
+        )
+            .into_response(),
+    }
 }
 
 pub async fn start_autobet(
@@ -2691,6 +3031,559 @@ pub async fn get_account_balance(
         Json(ApiResponse::ok(registry.get_balance_snapshot(&bookmaker))),
     )
         .into_response()
+}
+
+fn sanitize_import_value(value: &str) -> Option<String> {
+    let mut current = value.trim().trim_matches('\0').trim();
+
+    for _ in 0..4 {
+        let next = current
+            .trim()
+            .trim_matches(|ch| matches!(ch, '\'' | '"' | '`'))
+            .trim_end_matches('\\')
+            .trim_end_matches('^')
+            .trim()
+            .trim_matches(|ch| matches!(ch, '\'' | '"' | '`'))
+            .trim();
+
+        if next == current {
+            break;
+        }
+        current = next;
+    }
+
+    (!current.is_empty()).then(|| current.to_string())
+}
+
+fn strip_header_prefix<'a>(value: &'a str, header_name: &str) -> &'a str {
+    let trimmed = value.trim();
+    let prefix = format!("{header_name}:").to_ascii_lowercase();
+
+    if trimmed.to_ascii_lowercase().starts_with(&prefix) {
+        trimmed[prefix.len()..].trim()
+    } else {
+        trimmed
+    }
+}
+
+fn direct_header_value(value: Option<&String>, header_name: &str) -> Option<String> {
+    value.and_then(|item| sanitize_import_value(strip_header_prefix(item, header_name)))
+}
+
+fn raw_header_candidates(raw: &str) -> Vec<String> {
+    let normalized = raw
+        .replace("\r\n", "\n")
+        .replace("\\\n", " ")
+        .replace("^\n", " ");
+    let mut candidates = Vec::new();
+
+    for line in normalized.lines() {
+        candidates.push(line.to_string());
+
+        for delimiter in [" -H ", " --header ", "\t-H ", "\t--header "] {
+            for part in line.split(delimiter).skip(1) {
+                candidates.push(part.to_string());
+            }
+        }
+    }
+
+    candidates
+}
+
+fn header_from_candidate(candidate: &str, header_name: &str) -> Option<String> {
+    let cleaned = candidate
+        .trim()
+        .trim_start_matches("-H")
+        .trim_start_matches("--header")
+        .trim();
+    let cleaned = sanitize_import_value(cleaned)?;
+    let prefix = format!("{header_name}:").to_ascii_lowercase();
+    let lower = cleaned.to_ascii_lowercase();
+
+    if !lower.starts_with(&prefix) {
+        return None;
+    }
+
+    let value = cleaned[prefix.len()..].trim();
+    sanitize_import_value(value)
+}
+
+fn raw_header_value(raw: Option<&String>, header_name: &str) -> Option<String> {
+    let raw = raw?;
+    raw_header_candidates(raw)
+        .iter()
+        .find_map(|candidate| header_from_candidate(candidate, header_name))
+}
+
+fn parse_account_session_material(
+    request: &AccountSessionBootstrapRequest,
+) -> Result<Option<BookmakerSessionMaterial>, (StatusCode, String)> {
+    if let Some(raw_import) = request.raw_import.as_deref() {
+        if raw_import.len() > 64 * 1024 {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                "raw_import is too large; paste only request headers or a single cURL command"
+                    .into(),
+            ));
+        }
+    }
+
+    let cookie_header = direct_header_value(request.cookie_header.as_ref(), "cookie")
+        .or_else(|| raw_header_value(request.raw_import.as_ref(), "cookie"));
+    let authorization_header =
+        direct_header_value(request.authorization_header.as_ref(), "authorization")
+            .or_else(|| raw_header_value(request.raw_import.as_ref(), "authorization"));
+    let csrf_token = direct_header_value(request.csrf_token.as_ref(), "x-csrf-token")
+        .or_else(|| raw_header_value(request.raw_import.as_ref(), "x-csrf-token"))
+        .or_else(|| raw_header_value(request.raw_import.as_ref(), "x-xsrf-token"));
+    let user_agent = direct_header_value(request.user_agent.as_ref(), "user-agent")
+        .or_else(|| raw_header_value(request.raw_import.as_ref(), "user-agent"));
+
+    let import_attempted = request
+        .raw_import
+        .as_deref()
+        .is_some_and(|value| !value.trim().is_empty())
+        || request
+            .cookie_header
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty())
+        || request
+            .authorization_header
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty())
+        || request
+            .csrf_token
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty())
+        || request
+            .user_agent
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty());
+
+    if !import_attempted {
+        return Ok(None);
+    }
+
+    let material = BookmakerSessionMaterial {
+        cookie_header,
+        authorization_header,
+        csrf_token,
+        user_agent,
+        extra_headers: BTreeMap::new(),
+        source: if request
+            .raw_import
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty())
+        {
+            "devtools_curl_or_headers".into()
+        } else {
+            "manual_headers".into()
+        },
+        imported_at: Utc::now(),
+    };
+
+    if !material.has_credentials() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "real session import requires a Cookie or Authorization header".into(),
+        ));
+    }
+
+    Ok(Some(material))
+}
+
+fn apply_account_session_bootstrap(
+    registry: &ExecutionRegistry,
+    bankroll_manager: &BankrollManager,
+    request: AccountSessionBootstrapRequest,
+) -> Result<AccountStateResponse, (StatusCode, String)> {
+    let bookmaker = request
+        .bookmaker
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or("pari")
+        .to_lowercase();
+    let capability = registry.get_capability(&bookmaker);
+
+    if !capability.supports_dry_run {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "session bootstrap requires a dry-run capable bookmaker adapter".into(),
+        ));
+    }
+
+    let login = request
+        .login
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+
+    if matches!(request.password.as_deref().map(str::trim), Some("")) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "password cannot be empty when provided".into(),
+        ));
+    }
+
+    if matches!(request.session_hint.as_deref().map(str::trim), Some("")) {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "session_hint cannot be empty when provided".into(),
+        ));
+    }
+
+    let session_material = parse_account_session_material(&request)?;
+    let session_hint_len = request.session_hint.as_deref().map(str::trim).map(str::len);
+    let material_hint = session_material
+        .as_ref()
+        .map(|material| material.summary().redacted_hint);
+
+    let account_id = Uuid::new_v4();
+    let available_balance = request.available_balance.unwrap_or(10_000.0).max(0.0);
+    let label = login
+        .map(|value| {
+            if session_material.is_some() {
+                format!("Imported real session ({value})")
+            } else {
+                format!("UI safe-mode account ({value})")
+            }
+        })
+        .unwrap_or_else(|| {
+            if session_material.is_some() {
+                "Imported real session".into()
+            } else {
+                "UI safe-mode account".into()
+            }
+        });
+    let token_hint = match (login, session_hint_len, material_hint.as_deref()) {
+        (Some(value), Some(len), Some(material)) => {
+            format!("manual-real-session:{value}:hint:{len}chars:{material}")
+        }
+        (Some(value), None, Some(material)) => format!("manual-real-session:{value}:{material}"),
+        (None, Some(len), Some(material)) => {
+            format!("manual-real-session:operator-session:hint:{len}chars:{material}")
+        }
+        (None, None, Some(material)) => format!("manual-real-session:operator-session:{material}"),
+        (Some(value), Some(len), None) => format!("manual-bootstrap:{value}:hint:{len}chars"),
+        (Some(value), None, None) => format!("manual-bootstrap:{value}"),
+        (None, Some(len), None) => format!("manual-bootstrap:operator-session:hint:{len}chars"),
+        (None, None, None) => "manual-bootstrap:operator-session".into(),
+    };
+    let expires_in_hours = request.expires_in_hours.unwrap_or(8).clamp(1, 24 * 14);
+
+    registry.register_account(BookmakerAccount {
+        id: account_id,
+        bookmaker: bookmaker.clone(),
+        label,
+        currency: "RUB".into(),
+        enabled: true,
+        mode: BookmakerExecutionMode::DryRun,
+        created_at: Utc::now(),
+        last_used_at: None,
+    });
+    registry.upsert_session(BookmakerSession {
+        account_id,
+        bookmaker: bookmaker.clone(),
+        state: BookmakerSessionState::Active,
+        token_hint: Some(token_hint),
+        last_synced_at: Utc::now(),
+        expires_at: Some(Utc::now() + Duration::hours(expires_in_hours)),
+    });
+    if let Some(material) = session_material {
+        registry.upsert_session_material(bookmaker.clone(), material);
+    }
+    let balance = BookmakerBalanceSnapshot {
+        account_id,
+        bookmaker: bookmaker.clone(),
+        currency: "RUB".into(),
+        total_balance: available_balance,
+        available_balance,
+        exposure: 0.0,
+        bonus_balance: None,
+        source: Some("bootstrap".into()),
+        captured_at: Utc::now(),
+    };
+    registry.upsert_balance_snapshot(balance.clone());
+    sync_bankroll_with_balance_snapshot(bankroll_manager, Some(&balance));
+
+    get_account_state(registry, &bookmaker).ok_or_else(|| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "bootstrapped account state could not be loaded".to_string(),
+        )
+    })
+}
+
+fn default_login_url(bookmaker: &str) -> String {
+    match bookmaker {
+        "pari" => "https://pari.ru/",
+        "fonbet" => "https://www.fon.bet/",
+        "marathon" => "https://www.marathonbet.ru/",
+        "zenit" => "https://zenit.win/",
+        "betcity" => "https://betcity.ru/",
+        "baltbet" => "https://www.baltbet.ru/",
+        "bettery" => "https://bettery.ru/",
+        "leon" => "https://leon.ru/",
+        "sportbet" => "https://sportbet.ru/",
+        "bet24" => "https://24betting.ru/",
+        _ => "https://www.google.com/",
+    }
+    .into()
+}
+
+fn safe_path_segment(value: &str) -> String {
+    let segment: String = value
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_') {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .take(48)
+        .collect();
+
+    if segment.trim_matches('_').is_empty() {
+        "account".into()
+    } else {
+        segment
+    }
+}
+
+fn account_automation_paths(bookmaker: &str, login: &str) -> Result<(PathBuf, PathBuf), String> {
+    let bookmaker = safe_path_segment(bookmaker);
+    let login = safe_path_segment(login);
+    let profile_dir = Path::new("data")
+        .join("account_profiles")
+        .join(&bookmaker)
+        .join(&login);
+    let storage_state_path = Path::new("data")
+        .join("account_sessions")
+        .join(&bookmaker)
+        .join(format!("{login}.json"));
+
+    fs::create_dir_all(&profile_dir).map_err(|error| error.to_string())?;
+    if let Some(parent) = storage_state_path.parent() {
+        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+
+    Ok((profile_dir, storage_state_path))
+}
+
+async fn run_login_agent(
+    request: &AccountAutomatedLoginRequest,
+    bookmaker: &str,
+    login_url: &str,
+    profile_dir: &Path,
+    storage_state_path: &Path,
+) -> Result<LoginAgentOutput, String> {
+    let script_path = Path::new("tools").join("account_login_agent.py");
+    if !script_path.exists() {
+        return Err("account login agent script not found at tools/account_login_agent.py".into());
+    }
+
+    let python = std::env::var("FORK_HUNTER_PYTHON").unwrap_or_else(|_| "python".into());
+    let payload = serde_json::json!({
+        "bookmaker": bookmaker,
+        "login": request.login.trim(),
+        "password": request.password,
+        "login_url": login_url,
+        "wait_timeout_secs": request.wait_timeout_secs.unwrap_or(240).clamp(15, 900),
+        "profile_dir": profile_dir.to_string_lossy(),
+        "storage_state_path": storage_state_path.to_string_lossy(),
+    })
+    .to_string();
+
+    let mut child = Command::new(&python)
+        .arg(&script_path)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| {
+            if error.kind() == ErrorKind::NotFound {
+                format!("python executable '{python}' was not found; set FORK_HUNTER_PYTHON")
+            } else {
+                error.to_string()
+            }
+        })?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin
+            .write_all(payload.as_bytes())
+            .await
+            .map_err(|error| error.to_string())?;
+    }
+
+    let timeout_secs = request.wait_timeout_secs.unwrap_or(240).clamp(15, 900) + 45;
+    let output = tokio::time::timeout(
+        StdDuration::from_secs(timeout_secs),
+        child.wait_with_output(),
+    )
+    .await
+    .map_err(|_| "account login agent timed out".to_string())?
+    .map_err(|error| error.to_string())?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let envelope: LoginAgentEnvelope = serde_json::from_str(stdout.trim()).map_err(|error| {
+        format!(
+            "account login agent returned invalid JSON: {error}; stderr={}",
+            stderr.trim()
+        )
+    })?;
+
+    if !envelope.success {
+        return Err(envelope
+            .error
+            .unwrap_or_else(|| "account login agent failed".into()));
+    }
+
+    envelope
+        .data
+        .ok_or_else(|| "account login agent did not return data".into())
+}
+
+pub async fn automated_account_login(
+    State(state): State<AppState>,
+    Json(request): Json<AccountAutomatedLoginRequest>,
+) -> axum::response::Response {
+    let bookmaker = request.bookmaker.trim().to_lowercase();
+    let login = request.login.trim();
+
+    if bookmaker.is_empty() || login.is_empty() || request.password.trim().is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ApiResponse::<AccountAutomatedLoginResponse>::error(
+                "bookmaker, login and password are required",
+            )),
+        )
+            .into_response();
+    }
+
+    let login_url = request
+        .login_url
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| default_login_url(&bookmaker));
+    let (profile_dir, storage_state_path) = match account_automation_paths(&bookmaker, login) {
+        Ok(paths) => paths,
+        Err(error) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ApiResponse::<AccountAutomatedLoginResponse>::error(&error)),
+            )
+                .into_response();
+        }
+    };
+
+    let agent_output = match run_login_agent(
+        &request,
+        &bookmaker,
+        &login_url,
+        &profile_dir,
+        &storage_state_path,
+    )
+    .await
+    {
+        Ok(output) => output,
+        Err(error) => {
+            return (
+                StatusCode::BAD_GATEWAY,
+                Json(ApiResponse::<AccountAutomatedLoginResponse>::error(&error)),
+            )
+                .into_response();
+        }
+    };
+
+    if !agent_output.authenticated {
+        return (
+            StatusCode::ACCEPTED,
+            Json(ApiResponse::<AccountAutomatedLoginResponse>::error(
+                "login agent still needs manual captcha/2FA or selector review",
+            )),
+        )
+            .into_response();
+    }
+
+    let registry = execution_registry(&state);
+    let account_state = match apply_account_session_bootstrap(
+        &registry,
+        state.bankroll_manager.as_ref(),
+        AccountSessionBootstrapRequest {
+            bookmaker: Some(bookmaker.clone()),
+            login: Some(login.to_string()),
+            session_hint: Some(format!(
+                "playwright-profile:{};storage:{}",
+                profile_dir.to_string_lossy(),
+                storage_state_path.to_string_lossy()
+            )),
+            password: None,
+            raw_import: None,
+            cookie_header: agent_output.cookie_header.clone(),
+            authorization_header: None,
+            csrf_token: None,
+            user_agent: None,
+            expires_in_hours: Some(12),
+            available_balance: request.available_balance,
+        },
+    ) {
+        Ok(account_state) => account_state,
+        Err((status, error)) => {
+            return (
+                status,
+                Json(ApiResponse::<AccountAutomatedLoginResponse>::error(&error)),
+            )
+                .into_response();
+        }
+    };
+
+    let automation = AccountAutomatedLoginSummary {
+        bookmaker: agent_output.bookmaker,
+        status: agent_output.status,
+        authenticated: agent_output.authenticated,
+        login_url: agent_output.login_url,
+        profile_dir: agent_output.profile_dir,
+        storage_state_path: agent_output.storage_state_path,
+        cookie_count: agent_output.cookie_count,
+        origin_count: agent_output.origin_count,
+        filled_login: agent_output.filled_login,
+        filled_password: agent_output.filled_password,
+        clicked_submit: agent_output.clicked_submit,
+        balance_text: agent_output.balance_text,
+        detail: agent_output.detail,
+        duration_secs: agent_output.duration_secs,
+        checked_at: Utc::now(),
+    };
+
+    (
+        StatusCode::OK,
+        Json(ApiResponse::ok(AccountAutomatedLoginResponse {
+            account: account_state,
+            automation,
+        })),
+    )
+        .into_response()
+}
+
+pub async fn bootstrap_account_session(
+    State(state): State<AppState>,
+    Json(request): Json<AccountSessionBootstrapRequest>,
+) -> axum::response::Response {
+    let registry = execution_registry(&state);
+
+    match apply_account_session_bootstrap(&registry, state.bankroll_manager.as_ref(), request) {
+        Ok(account) => (StatusCode::OK, Json(ApiResponse::ok(account))).into_response(),
+        Err((status, error)) => (
+            status,
+            Json(ApiResponse::<AccountStateResponse>::error(&error)),
+        )
+            .into_response(),
+    }
 }
 
 pub async fn refresh_account_balance(
@@ -4631,6 +5524,64 @@ mod tests {
     }
 
     #[test]
+    fn account_session_bootstrap_does_not_store_password() {
+        let registry = ExecutionRegistry::new();
+        let bankroll_manager = BankrollManager::new(shared::BankrollConfig::default());
+        let response = apply_account_session_bootstrap(
+            &registry,
+            &bankroll_manager,
+            AccountSessionBootstrapRequest {
+                bookmaker: Some("pari".into()),
+                login: Some("operator-login".into()),
+                session_hint: Some("cookie=very-sensitive-session-token".into()),
+                password: Some("super-secret-password".into()),
+                raw_import: Some("curl 'https://pari.ru/api/private' -H 'Cookie: sid=raw-cookie-secret; token=abc' -H 'Authorization: Bearer raw-auth-secret'".into()),
+                cookie_header: None,
+                authorization_header: None,
+                csrf_token: Some("raw-csrf-secret".into()),
+                user_agent: Some("secret-user-agent".into()),
+                expires_in_hours: Some(12),
+                available_balance: Some(12_345.0),
+            },
+        )
+        .expect("bootstrap should create account state");
+
+        let serialized = serde_json::to_string(&response).expect("response serializes");
+        let account = response
+            .account
+            .as_ref()
+            .expect("account should be present");
+        let session = response
+            .session
+            .as_ref()
+            .expect("session should be present");
+
+        assert_eq!(account.label, "Imported real session (operator-login)");
+        assert!(session
+            .token_hint
+            .as_deref()
+            .unwrap_or_default()
+            .starts_with("manual-real-session:operator-login:hint:35chars:cookie:"));
+        assert!(response.session_material.is_some());
+        assert!(!account.label.contains("super-secret-password"));
+        assert!(!session
+            .token_hint
+            .as_deref()
+            .unwrap_or_default()
+            .contains("super-secret-password"));
+        assert!(!serialized.contains("super-secret-password"));
+        assert!(!serialized.contains("very-sensitive-session-token"));
+        assert!(!serialized.contains("cookie="));
+        assert!(!serialized.contains("raw-cookie-secret"));
+        assert!(!serialized.contains("raw-auth-secret"));
+        assert!(!serialized.contains("raw-csrf-secret"));
+
+        let bankroll = bankroll_manager.get_state();
+        assert_eq!(bankroll.bookmakers.len(), 1);
+        assert_eq!(bankroll.bookmakers[0].available, 12_345.0);
+    }
+
+    #[test]
     fn account_state_surfaces_control_issues_for_operator_audit() {
         let registry = ExecutionRegistry::new();
         let account = BookmakerAccount {
@@ -5915,5 +6866,127 @@ mod tests {
         assert!(response.rollout_gate_active);
         assert!(!response.approval_required);
         assert!(!response.submit_blocked_by_safe_mode);
+    }
+
+    fn make_surebet_for_semi_auto() -> Surebet {
+        let id = Uuid::new_v4();
+        Surebet {
+            id,
+            sport: Sport::Football,
+            league: "Test League".into(),
+            home_team: "Home".into(),
+            away_team: "Away".into(),
+            start_time: None,
+            is_live: false,
+            profit_percent: 1.2,
+            total_stake: 1_000.0,
+            legs: vec![
+                shared::SurebetLeg {
+                    bookmaker: "pari".into(),
+                    market: "1X2".into(),
+                    selection: "1".into(),
+                    odds: 2.1,
+                    line: None,
+                    stake: 500.0,
+                    payout: 1_050.0,
+                    url: Some("https://pari.test/event".into()),
+                },
+                shared::SurebetLeg {
+                    bookmaker: "fonbet".into(),
+                    market: "1X2".into(),
+                    selection: "2".into(),
+                    odds: 2.1,
+                    line: None,
+                    stake: 500.0,
+                    payout: 1_050.0,
+                    url: Some("https://fonbet.test/event".into()),
+                },
+            ],
+            detected_at: Utc::now(),
+            verified: true,
+            mirror: false,
+        }
+    }
+
+    #[tokio::test]
+    async fn semi_auto_coupon_waits_for_operator_when_all_legs_are_ready() {
+        let registry = ExecutionRegistry::new();
+        audit_ready_bookmaker(&registry, "pari", BookmakerExecutionMode::DryRun);
+        audit_ready_bookmaker(&registry, "fonbet", BookmakerExecutionMode::DryRun);
+
+        let coupon =
+            build_semi_auto_coupon(&registry, &make_surebet_for_semi_auto(), HashMap::new())
+                .await
+                .expect("semi-auto coupon should build");
+
+        assert!(matches!(
+            coupon.status,
+            SemiAutoCouponStatus::AwaitingOperator
+        ));
+        assert!(coupon.safe_mode);
+        assert!(coupon.operator_required);
+        assert!(coupon.all_legs_ready);
+        assert!(coupon.blocking_reasons.is_empty());
+        assert_eq!(coupon.legs.len(), 2);
+        assert!(coupon.legs.iter().all(|leg| leg.receipt.is_none()));
+    }
+
+    #[tokio::test]
+    async fn semi_auto_coupon_blocks_when_account_readiness_is_missing() {
+        let registry = ExecutionRegistry::new();
+        audit_ready_bookmaker(&registry, "pari", BookmakerExecutionMode::DryRun);
+
+        let coupon =
+            build_semi_auto_coupon(&registry, &make_surebet_for_semi_auto(), HashMap::new())
+                .await
+                .expect("semi-auto coupon should build with blocking reasons");
+
+        assert!(matches!(coupon.status, SemiAutoCouponStatus::Blocked));
+        assert!(!coupon.all_legs_ready);
+        assert!(coupon
+            .blocking_reasons
+            .iter()
+            .any(|reason| reason.contains("fonbet") && reason.contains("no enabled")));
+    }
+
+    #[tokio::test]
+    async fn semi_auto_coupon_marks_safe_mode_receipts_as_applied() {
+        let registry = ExecutionRegistry::new();
+        audit_ready_bookmaker(&registry, "pari", BookmakerExecutionMode::DryRun);
+        audit_ready_bookmaker(&registry, "fonbet", BookmakerExecutionMode::DryRun);
+
+        let mut receipts = HashMap::new();
+        receipts.insert(
+            "pari".into(),
+            BetExecutionReceipt {
+                ticket_id: Some("dry-pari-1".into()),
+                account_id: None,
+                bookmaker: "pari".into(),
+                status: shared::BetExecutionStatus::DryRun,
+                mode: BookmakerExecutionMode::DryRun,
+                accepted_stake: 500.0,
+                accepted_odds: 2.1,
+                message: Some("safe-mode dry run".into()),
+                placed_at: Utc::now(),
+            },
+        );
+
+        let coupon = build_semi_auto_coupon(&registry, &make_surebet_for_semi_auto(), receipts)
+            .await
+            .expect("semi-auto coupon should build after receipt apply");
+
+        assert!(matches!(
+            coupon.status,
+            SemiAutoCouponStatus::AppliedSafeMode
+        ));
+        assert!(coupon.applied_at.is_some());
+        assert_eq!(
+            coupon
+                .legs
+                .iter()
+                .filter(|leg| leg.receipt.is_some())
+                .count(),
+            1
+        );
     }
 }

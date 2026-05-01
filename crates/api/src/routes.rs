@@ -37,6 +37,14 @@ pub fn create_router(state: AppState) -> Router {
             "/api/v1/execution/operator-queue",
             get(get_execution_operator_queue),
         )
+        .route(
+            "/api/v1/execution/semi-auto-queue",
+            get(get_semi_auto_queue),
+        )
+        .route(
+            "/api/v1/execution/semi-auto-queue/:coupon_id/confirm",
+            post(confirm_semi_auto_coupon),
+        )
         .route("/api/v1/autobet/start", post(start_autobet))
         .route("/api/v1/autobet/stop", post(stop_autobet))
         .route(
@@ -78,6 +86,22 @@ pub fn create_router(state: AppState) -> Router {
         )
         .route("/api/v1/swarm/status", get(get_swarm_status))
         .route("/api/v1/accounts", get(get_accounts))
+        .route(
+            "/api/v1/accounts/bootstrap-session",
+            post(bootstrap_account_session),
+        )
+        .route(
+            "/api/v1/accounts/import-session",
+            post(bootstrap_account_session),
+        )
+        .route(
+            "/api/v1/accounts/automated-login",
+            post(automated_account_login),
+        )
+        .route(
+            "/api/v1/accounts/test-account",
+            post(bootstrap_account_session),
+        )
         .route("/api/v1/accounts/summary", get(get_accounts_summary))
         .route("/api/v1/accounts/:bookmaker", get(get_account_by_bookmaker))
         .route(
@@ -107,22 +131,52 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/v2/bankroll/allocate", post(post_bankroll_allocate_v2))
         .route("/api/v2/bankroll/advice", get(get_bankroll_advice_v2))
         .route("/api/v2/freebets/lifecycle", get(get_freebet_lifecycle))
-        .route("/api/v2/freebets/funding-advice", get(get_freebet_funding_advice_v2))
+        .route(
+            "/api/v2/freebets/funding-advice",
+            get(get_freebet_funding_advice_v2),
+        )
         .route("/api/v2/freebets/qualify", post(post_freebet_qualify_v2))
         .route("/api/v2/accounts", get(get_accounts))
+        .route(
+            "/api/v2/accounts/bootstrap-session",
+            post(bootstrap_account_session),
+        )
+        .route(
+            "/api/v2/accounts/import-session",
+            post(bootstrap_account_session),
+        )
+        .route(
+            "/api/v2/accounts/automated-login",
+            post(automated_account_login),
+        )
+        .route(
+            "/api/v2/accounts/test-account",
+            post(bootstrap_account_session),
+        )
         .route("/api/v2/accounts/readiness", get(get_accounts_readiness_v2))
         .route("/api/v2/accounts/:bookmaker", get(get_account_by_bookmaker))
-        .route("/api/v2/accounts/:bookmaker/refresh", post(refresh_account_balance))
+        .route(
+            "/api/v2/accounts/:bookmaker/refresh",
+            post(refresh_account_balance),
+        )
         .route("/api/v2/analytics/pll", get(get_history_stats))
         .route("/api/v2/analytics/clv", get(get_clv_analytics_v2))
         .route("/api/v2/execution/queue", get(get_execution_operator_queue))
+        .route(
+            "/api/v2/execution/semi-auto-queue",
+            get(get_semi_auto_queue),
+        )
+        .route(
+            "/api/v2/execution/semi-auto-queue/:coupon_id/confirm",
+            post(confirm_semi_auto_coupon),
+        )
         .route("/api/v2/execution/execute-leg", post(autobet_execute_leg))
         .route("/api/v2/execution/panic", post(post_execution_panic_v2))
         .route("/api/v2/health/ghost", get(get_ghost_health_v2))
         .route("/ws", get(ws_handler))
         .route("/ws/v1/surebets", get(ws_surebets_v1_handler))
         .route("/api", any(api_not_found))
-        .route("/api/{*path}", any(api_not_found))
+        .route("/api/*path", any(api_not_found))
         .layer(cors)
         .layer(TraceLayer::new_for_http())
         .layer(axum::Extension(state.event_bus.clone()))

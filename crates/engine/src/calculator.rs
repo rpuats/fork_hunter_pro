@@ -267,8 +267,10 @@ impl SurebetCalculator {
     /// Нормализует ключ рынка: Over/Under → Total, учитывает line
     fn normalize_market_key(&self, market: &str, line: Option<f64>) -> String {
         let m = market.to_lowercase();
-        let base = if m.contains("over") || m.contains("under")
-            || m.contains("тб") || m.contains("тм")
+        let base = if m.contains("over")
+            || m.contains("under")
+            || m.contains("тб")
+            || m.contains("тм")
             || m.contains("total")
         {
             "total"
@@ -385,7 +387,10 @@ impl SurebetCalculator {
             }
 
             // Проверяем что не все с одного БК
-            let bks: HashSet<&str> = best_per_sel.iter().map(|(_, o)| o.bookmaker_slug.as_str()).collect();
+            let bks: HashSet<&str> = best_per_sel
+                .iter()
+                .map(|(_, o)| o.bookmaker_slug.as_str())
+                .collect();
             if bks.len() < 2 {
                 return None;
             }

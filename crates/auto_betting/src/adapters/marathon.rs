@@ -9,6 +9,7 @@ use shared::{
     BookmakerSessionSyncState,
 };
 
+use crate::auth::BookmakerSessionMaterial;
 use crate::execution::BookmakerExecutionAdapter;
 
 #[derive(Debug, Clone, Default)]
@@ -37,6 +38,7 @@ impl MarathonExecutionAdapter {
         &self,
         account: &BookmakerAccount,
         session: Option<&BookmakerSession>,
+        session_material: Option<&BookmakerSessionMaterial>,
     ) -> BookmakerSessionStatus {
         let checked_at = Utc::now();
 
@@ -51,6 +53,9 @@ impl MarathonExecutionAdapter {
                 checked_at,
             },
             Some(session) => {
+                let has_imported_material = session_material
+                    .map(BookmakerSessionMaterial::has_credentials)
+                    .unwrap_or(false);
                 let (sync_state, authenticated, can_refresh_balance, detail) = match session.state {
                     BookmakerSessionState::Configured => (
                         BookmakerSessionSyncState::Configured,
@@ -62,7 +67,11 @@ impl MarathonExecutionAdapter {
                         BookmakerSessionSyncState::Authenticated,
                         true,
                         true,
-                        "marathon session authenticated; remote balance fetch enabled",
+                        if has_imported_material {
+                            "marathon imported browser session material is available; remote balance fetch disabled in safe mode"
+                        } else {
+                            "marathon session authenticated; remote balance fetch enabled"
+                        },
                     ),
                     BookmakerSessionState::Expired => (
                         BookmakerSessionSyncState::Expired,
@@ -165,8 +174,9 @@ impl BookmakerExecutionAdapter for MarathonExecutionAdapter {
         &self,
         account: &BookmakerAccount,
         session: Option<&BookmakerSession>,
+        session_material: Option<&BookmakerSessionMaterial>,
     ) -> Result<BookmakerSessionStatus, String> {
-        Ok(self.session_status(account, session))
+        Ok(self.session_status(account, session, session_material))
     }
 
     async fn refresh_balance_snapshot(
@@ -174,6 +184,7 @@ impl BookmakerExecutionAdapter for MarathonExecutionAdapter {
         account: &BookmakerAccount,
         session_status: &BookmakerSessionStatus,
         cached_snapshot: Option<&BookmakerBalanceSnapshot>,
+        session_material: Option<&BookmakerSessionMaterial>,
     ) -> Result<BookmakerBalanceRefresh, String> {
         let checked_at = Utc::now();
         let snapshot = cached_snapshot.cloned();
@@ -199,6 +210,9 @@ impl BookmakerExecutionAdapter for MarathonExecutionAdapter {
             }
         };
 
+        let has_imported_material = session_material
+            .map(BookmakerSessionMaterial::has_credentials)
+            .unwrap_or(false);
         let detail = match state {
             BookmakerBalanceRefreshState::NoSession => {
                 "marathon balance refresh skipped: no session configured"
@@ -207,10 +221,21 @@ impl BookmakerExecutionAdapter for MarathonExecutionAdapter {
                 "marathon balance refresh skipped: session is not authenticated"
             }
             BookmakerBalanceRefreshState::AuthenticatedBalanceUnavailable => {
-                "marathon session is authenticated but remote balance fetch is disabled in safe mode"
+                if has_imported_material {
+                    "marathon real session material imported; remote balance endpoint is not wired yet"
+                } else {
+                    "marathon session is authenticated but remote balance fetch is disabled in safe mode"
+                }
             }
             BookmakerBalanceRefreshState::CachedBalanceAvailable => {
-                "marathon returned cached balance snapshot; remote refresh remains disabled"
+                if has_imported_material {
+                    "marathon returned cached balance snapshot for imported browser session"
+                } else {
+                    "marathon returned cached balance snapshot; remote refresh remains disabled"
+                }
+            }
+            BookmakerBalanceRefreshState::RemoteBalanceFetched => {
+                "marathon balance fetched from live API"
             }
         };
 
@@ -274,7 +299,10 @@ mod tests {
                 .authorize(&account)
                 .await
                 .expect("should create mock session");
-            assert_eq!(session.bookmaker, MarathonExecutionAdapter::BOOKMAKER.to_string());
+            assert_eq!(
+                session.bookmaker,
+                MarathonExecutionAdapter::BOOKMAKER.to_string()
+            );
             // basic sanity: state should be Active
             assert_eq!(session.state, BookmakerSessionState::Active);
         });
@@ -282,13 +310,14 @@ mod tests {
 }
 
 use crate::auth::BookmakerAuth;
-use shared::{BookmakerAccount, BookmakerSession, BookmakerSessionState};
-use chrono::Utc;
 use std::error::Error;
 
 #[async_trait]
 impl BookmakerAuth for MarathonExecutionAdapter {
-    async fn authorize(&self, account: &BookmakerAccount) -> Result<BookmakerSession, Box<dyn Error + Send + Sync>> {
+    async fn authorize(
+        &self,
+        account: &BookmakerAccount,
+    ) -> Result<BookmakerSession, Box<dyn Error + Send + Sync>> {
         let session = BookmakerSession {
             account_id: account.id,
             bookmaker: Self::BOOKMAKER.to_string(),

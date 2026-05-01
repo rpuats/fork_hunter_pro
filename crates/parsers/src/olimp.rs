@@ -51,8 +51,8 @@ const INITIAL_BACKOFF_MS: u64 = 100;
 const MAX_BACKOFF_MS: u64 = 5000;
 const BACKOFF_MULTIPLIER: f64 = 2.0;
 const PREMATCH_SPORT_ID_SWEEP: &[u32] = &[
-    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,
-    21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
+    0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25,
+    26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40,
 ];
 const REQUEST_TIMEOUT_SECS: u64 = 12;
 const LIVE_SECTION_BUDGET_SECS: u64 = 24;
@@ -183,8 +183,12 @@ impl BookmakerParser for OlimpParser {
         let prematch_top_fut = self.fetch_section("line/top", false);
         let prematch_all_fut = self.fetch_section("line", false);
         let prematch_line_all_fut = self.fetch_section("line/all", false);
-        let (live_res, prematch_top_res, prematch_all_res, prematch_line_all_res) =
-            tokio::join!(live_fut, prematch_top_fut, prematch_all_fut, prematch_line_all_fut);
+        let (live_res, prematch_top_res, prematch_all_res, prematch_line_all_res) = tokio::join!(
+            live_fut,
+            prematch_top_fut,
+            prematch_all_fut,
+            prematch_line_all_fut
+        );
 
         let results = vec![
             live_res,
@@ -266,7 +270,10 @@ impl OlimpParser {
             }
 
             for attempt in 0..MAX_RETRIES {
-                match self.fetch_section_with_proxy(sport_id, section, is_live).await {
+                match self
+                    .fetch_section_with_proxy(sport_id, section, is_live)
+                    .await
+                {
                     Ok((events, odds)) => {
                         self.circuit_breaker.record_success();
                         for event in events {

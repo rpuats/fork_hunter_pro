@@ -1170,6 +1170,10 @@ pub struct BookmakerBalanceSnapshot {
     pub total_balance: f64,
     pub available_balance: f64,
     pub exposure: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bonus_balance: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub source: Option<String>,
     pub captured_at: DateTime<Utc>,
 }
 
@@ -1179,6 +1183,7 @@ pub enum BookmakerBalanceRefreshState {
     SessionNotAuthenticated,
     AuthenticatedBalanceUnavailable,
     CachedBalanceAvailable,
+    RemoteBalanceFetched,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1368,6 +1373,48 @@ pub struct AutoBetDryRunResponse {
     pub all_legs_executable: bool,
     pub ready_legs: usize,
     pub rejected_legs: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SemiAutoCouponStatus {
+    AwaitingOperator,
+    Blocked,
+    AppliedSafeMode,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SemiAutoCouponLeg {
+    pub bookmaker: String,
+    pub event_id: String,
+    pub market: String,
+    pub selection: String,
+    pub odds: f64,
+    pub stake: f64,
+    pub url: Option<String>,
+    pub preflight: StakeValidationPreflightResponse,
+    pub execution_request: BetExecutionRequest,
+    pub receipt: Option<BetExecutionReceipt>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SemiAutoCoupon {
+    pub id: Uuid,
+    pub surebet_id: Uuid,
+    pub status: SemiAutoCouponStatus,
+    pub profit_percent: f64,
+    pub total_stake: f64,
+    pub league: String,
+    pub home_team: String,
+    pub away_team: String,
+    pub is_live: bool,
+    pub operator_required: bool,
+    pub safe_mode: bool,
+    pub all_legs_ready: bool,
+    pub blocking_reasons: Vec<String>,
+    pub legs: Vec<SemiAutoCouponLeg>,
+    pub created_at: DateTime<Utc>,
+    pub applied_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

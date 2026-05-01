@@ -209,14 +209,12 @@ pub async fn build_surebet_execution_plan(
         leg.rank = index + 1;
     }
 
-    let executable = ranked_legs
-        .iter()
-        .all(|leg| {
-            matches!(
-                leg.decision,
-                ApprovalGateDecision::AllowDryRun | ApprovalGateDecision::AllowSubmission
-            )
-        });
+    let executable = ranked_legs.iter().all(|leg| {
+        matches!(
+            leg.decision,
+            ApprovalGateDecision::AllowDryRun | ApprovalGateDecision::AllowSubmission
+        )
+    });
 
     Ok(SurebetExecutionPlan {
         executable,

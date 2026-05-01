@@ -9,6 +9,7 @@ use shared::{
     BookmakerSessionSyncState,
 };
 
+use crate::auth::BookmakerSessionMaterial;
 use crate::execution::BookmakerExecutionAdapter;
 
 #[derive(Debug, Clone, Default)]
@@ -45,6 +46,7 @@ impl FonbetExecutionAdapter {
         &self,
         account: &BookmakerAccount,
         session: Option<&BookmakerSession>,
+        session_material: Option<&BookmakerSessionMaterial>,
     ) -> BookmakerSessionStatus {
         let checked_at = Utc::now();
 
@@ -59,6 +61,9 @@ impl FonbetExecutionAdapter {
                 checked_at,
             },
             Some(session) => {
+                let has_imported_material = session_material
+                    .map(BookmakerSessionMaterial::has_credentials)
+                    .unwrap_or(false);
                 let (sync_state, authenticated, can_refresh_balance, detail) = match session.state {
                     BookmakerSessionState::Configured => (
                         BookmakerSessionSyncState::Configured,
@@ -78,7 +83,11 @@ impl FonbetExecutionAdapter {
                         BookmakerSessionSyncState::Authenticated,
                         true,
                         true,
-                        "fonbet session authenticated; remote balance fetch disabled in safe mode",
+                        if has_imported_material {
+                            "fonbet imported browser session material is available; remote balance fetch disabled in safe mode"
+                        } else {
+                            "fonbet session authenticated; remote balance fetch disabled in safe mode"
+                        },
                     ),
                     BookmakerSessionState::Expired => (
                         BookmakerSessionSyncState::Expired,
@@ -180,8 +189,9 @@ impl BookmakerExecutionAdapter for FonbetExecutionAdapter {
         &self,
         account: &BookmakerAccount,
         session: Option<&BookmakerSession>,
+        session_material: Option<&BookmakerSessionMaterial>,
     ) -> Result<BookmakerSessionStatus, String> {
-        Ok(self.session_status(account, session))
+        Ok(self.session_status(account, session, session_material))
     }
 
     async fn refresh_balance_snapshot(
@@ -189,6 +199,7 @@ impl BookmakerExecutionAdapter for FonbetExecutionAdapter {
         account: &BookmakerAccount,
         session_status: &BookmakerSessionStatus,
         cached_snapshot: Option<&BookmakerBalanceSnapshot>,
+        session_material: Option<&BookmakerSessionMaterial>,
     ) -> Result<BookmakerBalanceRefresh, String> {
         let checked_at = Utc::now();
         let snapshot = cached_snapshot.cloned();
@@ -214,6 +225,9 @@ impl BookmakerExecutionAdapter for FonbetExecutionAdapter {
             }
         };
 
+        let has_imported_material = session_material
+            .map(BookmakerSessionMaterial::has_credentials)
+            .unwrap_or(false);
         let detail = match state {
             BookmakerBalanceRefreshState::NoSession => {
                 "fonbet balance refresh skipped: no session configured"
@@ -222,10 +236,21 @@ impl BookmakerExecutionAdapter for FonbetExecutionAdapter {
                 "fonbet balance refresh skipped: session is not authenticated"
             }
             BookmakerBalanceRefreshState::AuthenticatedBalanceUnavailable => {
-                "fonbet session is authenticated but remote balance fetch is disabled in safe mode"
+                if has_imported_material {
+                    "fonbet real session material imported; remote balance endpoint is not wired yet"
+                } else {
+                    "fonbet session is authenticated but remote balance fetch is disabled in safe mode"
+                }
             }
             BookmakerBalanceRefreshState::CachedBalanceAvailable => {
-                "fonbet returned cached balance snapshot; remote refresh remains disabled"
+                if has_imported_material {
+                    "fonbet returned cached balance snapshot for imported browser session"
+                } else {
+                    "fonbet returned cached balance snapshot; remote refresh remains disabled"
+                }
+            }
+            BookmakerBalanceRefreshState::RemoteBalanceFetched => {
+                "fonbet balance fetched from live API"
             }
         };
 
@@ -282,9 +307,10 @@ mod tests {
             checked_at: Utc::now(),
         };
 
-        let refresh =
-            futures::executor::block_on(adapter.refresh_balance_snapshot(&account, &status, None))
-                .expect("refresh should succeed");
+        let refresh = futures::executor::block_on(
+            adapter.refresh_balance_snapshot(&account, &status, None, None),
+        )
+        .expect("refresh should succeed");
 
         assert_eq!(
             refresh.state,
@@ -306,7 +332,7 @@ mod tests {
             expires_at: Some(Utc::now() - chrono::Duration::minutes(5)),
         };
 
-        let status = adapter.session_status(&account, Some(&session));
+        let status = adapter.session_status(&account, Some(&session), None);
 
         assert_eq!(status.sync_state, BookmakerSessionSyncState::Expired);
         assert!(!status.authenticated);
@@ -317,9 +343,10 @@ mod tests {
             .unwrap_or_default()
             .contains("local expiry timestamp"));
 
-        let refresh =
-            futures::executor::block_on(adapter.refresh_balance_snapshot(&account, &status, None))
-                .expect("refresh should succeed");
+        let refresh = futures::executor::block_on(
+            adapter.refresh_balance_snapshot(&account, &status, None, None),
+        )
+        .expect("refresh should succeed");
 
         assert_eq!(
             refresh.state,
@@ -328,13 +355,14 @@ mod tests {
     }
 }
 use crate::auth::BookmakerAuth;
-use shared::{BookmakerAccount, BookmakerSession, BookmakerSessionState};
-use chrono::Utc;
 use std::error::Error;
 
 #[async_trait]
 impl BookmakerAuth for FonbetExecutionAdapter {
-    async fn authorize(&self, account: &BookmakerAccount) -> Result<BookmakerSession, Box<dyn Error + Send + Sync>> {
+    async fn authorize(
+        &self,
+        account: &BookmakerAccount,
+    ) -> Result<BookmakerSession, Box<dyn Error + Send + Sync>> {
         let session = BookmakerSession {
             account_id: account.id,
             bookmaker: Self::BOOKMAKER.to_string(),

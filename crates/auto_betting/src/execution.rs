@@ -8,6 +8,8 @@ use shared::{
     BookmakerSession, BookmakerSessionStatus, BookmakerSessionSyncState,
 };
 
+use crate::auth::BookmakerSessionMaterial;
+
 #[async_trait]
 pub trait BookmakerExecutionAdapter: Send + Sync {
     fn capability(&self) -> BookmakerExecutionCapability;
@@ -22,6 +24,7 @@ pub trait BookmakerExecutionAdapter: Send + Sync {
         &self,
         account: &BookmakerAccount,
         session: Option<&BookmakerSession>,
+        session_material: Option<&BookmakerSessionMaterial>,
     ) -> Result<BookmakerSessionStatus, String>;
 
     async fn refresh_balance_snapshot(
@@ -29,6 +32,7 @@ pub trait BookmakerExecutionAdapter: Send + Sync {
         account: &BookmakerAccount,
         session_status: &BookmakerSessionStatus,
         cached_snapshot: Option<&BookmakerBalanceSnapshot>,
+        session_material: Option<&BookmakerSessionMaterial>,
     ) -> Result<BookmakerBalanceRefresh, String>;
 
     async fn place_bet(
@@ -111,6 +115,7 @@ impl BookmakerExecutionAdapter for NoopExecutionAdapter {
         &self,
         account: &BookmakerAccount,
         _session: Option<&BookmakerSession>,
+        _session_material: Option<&BookmakerSessionMaterial>,
     ) -> Result<BookmakerSessionStatus, String> {
         Ok(BookmakerSessionStatus {
             account_id: Some(account.id),
@@ -128,6 +133,7 @@ impl BookmakerExecutionAdapter for NoopExecutionAdapter {
         account: &BookmakerAccount,
         session_status: &BookmakerSessionStatus,
         cached_snapshot: Option<&BookmakerBalanceSnapshot>,
+        _session_material: Option<&BookmakerSessionMaterial>,
     ) -> Result<BookmakerBalanceRefresh, String> {
         let checked_at = Utc::now();
         let snapshot = cached_snapshot.cloned();

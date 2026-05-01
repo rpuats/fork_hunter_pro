@@ -225,6 +225,58 @@ export interface ExecutionOperatorQueueAudit {
   generated_at: string
 }
 
+export type SemiAutoCouponStatus = 'awaiting_operator' | 'blocked' | 'applied_safe_mode'
+
+export interface SemiAutoCouponLeg {
+  bookmaker: string
+  event_id: string
+  market: string
+  selection: string
+  odds: number
+  stake: number
+  url: string | null
+  preflight: {
+    executable: boolean
+    dry_run_ready: boolean
+    placement_ready: boolean
+    real_money_enabled: boolean
+    approval_required: boolean
+    submit_blocked_by_safe_mode: boolean
+    validation: {
+      decision: string
+      adjusted_stake: number
+      reasons: string[]
+    }
+  }
+  receipt: {
+    status: string
+    mode: BookmakerExecutionMode
+    message: string | null
+    accepted_stake: number
+    accepted_odds: number
+    placed_at: string
+  } | null
+}
+
+export interface SemiAutoCoupon {
+  id: string
+  surebet_id: string
+  status: SemiAutoCouponStatus
+  profit_percent: number
+  total_stake: number
+  league: string
+  home_team: string
+  away_team: string
+  is_live: boolean
+  operator_required: boolean
+  safe_mode: boolean
+  all_legs_ready: boolean
+  blocking_reasons: string[]
+  legs: SemiAutoCouponLeg[]
+  created_at: string
+  applied_at: string | null
+}
+
 export interface ExecutionLedgerPlacement {
   id: string
   bookmaker: string
@@ -306,6 +358,18 @@ export interface BookmakerSession {
   expires_at: string | null
 }
 
+export interface AccountSessionMaterialResponse {
+  source: string
+  cookie_header_present: boolean
+  authorization_header_present: boolean
+  csrf_token_present: boolean
+  user_agent_present: boolean
+  extra_header_count: number
+  imported_at: string
+  redacted_hint: string
+  persistence: string
+}
+
 export interface BookmakerBalanceSnapshot {
   account_id: string
   bookmaker: string
@@ -314,6 +378,64 @@ export interface BookmakerBalanceSnapshot {
   available_balance: number
   exposure: number
   captured_at: string
+}
+
+export type BookmakerBalanceRefreshState = 'NoSession' | 'SessionNotAuthenticated' | 'AuthenticatedBalanceUnavailable' | 'CachedBalanceAvailable'
+
+export interface BookmakerBalanceRefresh {
+  account_id: string | null
+  bookmaker: string
+  state: BookmakerBalanceRefreshState
+  session_status: string
+  snapshot: BookmakerBalanceSnapshot | null
+  detail: string | null
+  checked_at: string
+}
+
+export interface AccountControlUpdate {
+  enabled?: boolean
+  armed?: boolean
+}
+
+export interface AccountSessionImportPayload {
+  rawImport?: string
+  cookieHeader?: string
+  authorizationHeader?: string
+  csrfToken?: string
+  userAgent?: string
+  availableBalance?: number
+  expiresInHours?: number
+}
+
+export interface AccountAutomatedLoginPayload {
+  login: string
+  password: string
+  loginUrl?: string
+  availableBalance?: number
+  waitTimeoutSecs?: number
+}
+
+export interface AccountAutomatedLoginSummary {
+  bookmaker: string
+  status: string
+  authenticated: boolean
+  login_url: string
+  profile_dir: string
+  storage_state_path: string
+  cookie_count: number
+  origin_count: number
+  filled_login: boolean
+  filled_password: boolean
+  clicked_submit: boolean
+  balance_text: string | null
+  detail: string | null
+  duration_secs: number
+  checked_at: string
+}
+
+export interface AccountAutomatedLoginResponse {
+  account: AccountStateResponse
+  automation: AccountAutomatedLoginSummary
 }
 
 export interface AccountReadinessResponse {
@@ -335,6 +457,7 @@ export interface AccountStateResponse {
   capability: BookmakerExecutionCapability
   account: BookmakerAccount | null
   session: BookmakerSession | null
+  session_material: AccountSessionMaterialResponse | null
   balance: BookmakerBalanceSnapshot | null
   readiness: AccountReadinessResponse
   control_issues: string[]

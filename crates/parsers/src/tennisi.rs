@@ -18,7 +18,8 @@ const LIVE_CATEGORY_ID: &str = "29010669";
 const LIVE_LINES_URL: &str = "https://tennisi.bet/rt/cgi/!book2_free.LiveBetsLines?val=1&gameid=5&categoryid=29010669&lang=rus&tbnohdr=1";
 const SPORT_PAGE_URL_TEMPLATE: &str = "https://tennisi.bet/sport/{slug}";
 const CATEGORY_INFO_URL_TEMPLATE: &str = "https://tennisi.bet/rt/cgi/!rt_home.CategoryInfo?gameid=5&categoryid={category_id}&more={horizon}&lang=rus";
-const CATEGORY_INFO_URL_NO_HORIZON_TEMPLATE: &str = "https://tennisi.bet/rt/cgi/!rt_home.CategoryInfo?gameid=5&categoryid={category_id}&lang=rus";
+const CATEGORY_INFO_URL_NO_HORIZON_TEMPLATE: &str =
+    "https://tennisi.bet/rt/cgi/!rt_home.CategoryInfo?gameid=5&categoryid={category_id}&lang=rus";
 const PREMATCH_FETCH_CONCURRENCY: usize = 32;
 const MAX_DISCOVERED_CATEGORY_IDS: usize = 25;
 const CATEGORY_HORIZONS: &[Option<&str>] = &[
@@ -184,7 +185,6 @@ const PREMATCH_PROBES: &[PrematchProbe] = &[
         sport: Sport::Motorsport,
         category_id: None,
     },
-
     PrematchProbe {
         slug: "golf",
         sport: Sport::Golf,
@@ -274,9 +274,8 @@ impl TennisiParser {
             };
 
             if !response.status().is_success() {
-                last_error = Some(
-                    format!("Tennisi returned HTTP {} for {url}", response.status()).into(),
-                );
+                last_error =
+                    Some(format!("Tennisi returned HTTP {} for {url}", response.status()).into());
                 if attempt == 0 {
                     tokio::time::sleep(std::time::Duration::from_millis(350)).await;
                 }

@@ -7,6 +7,8 @@ pub mod fonbet;
 // Marathon adapter behind feature flag for MVP stability
 #[cfg(feature = "marathon_mvp")]
 pub mod marathon;
+pub mod pari;
+pub mod pari_api;
 
 pub use fonbet::FonbetExecutionAdapter;
 // MarathonExecutionAdapter removed in MVP

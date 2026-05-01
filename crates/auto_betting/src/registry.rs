@@ -11,12 +11,14 @@ use shared::{
 };
 
 use crate::adapters::register_builtin_adapters;
+use crate::auth::{BookmakerSessionMaterial, BookmakerSessionMaterialSummary};
 use crate::execution::{BookmakerExecutionAdapter, NoopExecutionAdapter};
 use crate::persistence::ExecutionRegistryPersistence;
 
 pub struct ExecutionRegistry {
     accounts: DashMap<String, BookmakerAccount>,
     sessions: DashMap<String, BookmakerSession>,
+    session_materials: DashMap<String, BookmakerSessionMaterial>,
     balances: DashMap<String, BookmakerBalanceSnapshot>,
     auth_snapshots: DashMap<String, BookmakerAuthSnapshot>,
     adapters: DashMap<String, Arc<dyn BookmakerExecutionAdapter>>,
@@ -36,6 +38,7 @@ impl ExecutionRegistry {
         let registry = Self {
             accounts: DashMap::new(),
             sessions: DashMap::new(),
+            session_materials: DashMap::new(),
             balances: DashMap::new(),
             auth_snapshots: DashMap::new(),
             adapters: DashMap::new(),
@@ -162,6 +165,31 @@ impl ExecutionRegistry {
 
     pub fn get_session(&self, bookmaker: &str) -> Option<BookmakerSession> {
         self.sessions.get(bookmaker).map(|entry| entry.clone())
+    }
+
+    pub fn upsert_session_material(
+        &self,
+        bookmaker: impl Into<String>,
+        material: BookmakerSessionMaterial,
+    ) {
+        let bookmaker = bookmaker.into();
+        self.session_materials.insert(bookmaker.clone(), material);
+        self.refresh_auth_snapshot_for_bookmaker(&bookmaker);
+    }
+
+    pub fn get_session_material(&self, bookmaker: &str) -> Option<BookmakerSessionMaterial> {
+        self.session_materials
+            .get(bookmaker)
+            .map(|entry| entry.clone())
+    }
+
+    pub fn get_session_material_summary(
+        &self,
+        bookmaker: &str,
+    ) -> Option<BookmakerSessionMaterialSummary> {
+        self.session_materials
+            .get(bookmaker)
+            .map(|entry| entry.summary())
     }
 
     pub fn upsert_balance_snapshot(&self, snapshot: BookmakerBalanceSnapshot) {
@@ -298,6 +326,7 @@ impl ExecutionRegistry {
     ) -> Result<BookmakerSessionStatus, String> {
         let account = self.get_account(bookmaker);
         let session = self.get_session(bookmaker);
+        let session_material = self.get_session_material(bookmaker);
 
         let Some(account) = account else {
             self.refresh_auth_snapshot_for_bookmaker(bookmaker);
@@ -318,11 +347,11 @@ impl ExecutionRegistry {
             .map(|entry| Arc::clone(entry.value()))
         {
             adapter
-                .get_session_status(&account, session.as_ref())
+                .get_session_status(&account, session.as_ref(), session_material.as_ref())
                 .await?
         } else {
             NoopExecutionAdapter::new(bookmaker)
-                .get_session_status(&account, session.as_ref())
+                .get_session_status(&account, session.as_ref(), session_material.as_ref())
                 .await?
         };
 
@@ -356,6 +385,7 @@ impl ExecutionRegistry {
 
         let session_status = self.refresh_session_status(bookmaker).await?;
         let cached_snapshot = self.get_balance_snapshot(bookmaker);
+        let session_material = self.get_session_material(bookmaker);
 
         let refresh = if let Some(adapter) = self
             .adapters
@@ -363,11 +393,21 @@ impl ExecutionRegistry {
             .map(|entry| Arc::clone(entry.value()))
         {
             adapter
-                .refresh_balance_snapshot(&account, &session_status, cached_snapshot.as_ref())
+                .refresh_balance_snapshot(
+                    &account,
+                    &session_status,
+                    cached_snapshot.as_ref(),
+                    session_material.as_ref(),
+                )
                 .await?
         } else {
             NoopExecutionAdapter::new(bookmaker)
-                .refresh_balance_snapshot(&account, &session_status, cached_snapshot.as_ref())
+                .refresh_balance_snapshot(
+                    &account,
+                    &session_status,
+                    cached_snapshot.as_ref(),
+                    session_material.as_ref(),
+                )
                 .await?
         };
 
