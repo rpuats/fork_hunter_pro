@@ -258,6 +258,41 @@ pub struct AccountAutomatedLoginRequest {
     pub wait_timeout_secs: Option<u64>,
 }
 
+#[derive(Deserialize, Debug, Clone)]
+pub struct BulkLoginAccount {
+    pub bookmaker: String,
+    pub login: String,
+    pub password: String,
+}
+
+#[derive(Deserialize, Debug, Clone)]
+pub struct BulkAutomatedLoginRequest {
+    pub accounts: Vec<BulkLoginAccount>,
+    pub wait_timeout_secs: Option<u64>,
+    pub auto_close_after_auth: Option<bool>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct BulkLoginResult {
+    pub bookmaker: String,
+    pub login: String,
+    pub raw_login: String,
+    pub authenticated: bool,
+    pub status: String,
+    pub balance_text: Option<String>,
+    pub cookie_count: usize,
+    pub duration_secs: f64,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct BulkAutomatedLoginResponse {
+    pub total: usize,
+    pub successful: usize,
+    pub failed: usize,
+    pub results: Vec<BulkLoginResult>,
+}
+
 #[derive(Debug, Serialize)]
 pub struct AccountAutomatedLoginResponse {
     pub account: AccountStateResponse,
@@ -307,6 +342,43 @@ struct LoginAgentOutput {
     balance_text: Option<String>,
     detail: Option<String>,
     duration_secs: f64,
+}
+
+#[derive(Debug, Deserialize)]
+struct BulkAgentResultOutput {
+    bookmaker: String,
+    login: String,
+    raw_login: String,
+    authenticated: bool,
+    status: String,
+    login_url: String,
+    profile_dir: String,
+    storage_state_path: String,
+    cookie_header: Option<String>,
+    cookie_count: usize,
+    origin_count: usize,
+    filled_login: bool,
+    filled_password: bool,
+    clicked_submit: bool,
+    balance_text: Option<String>,
+    detail: Option<String>,
+    duration_secs: f64,
+    error: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct BulkAgentOutput {
+    total: usize,
+    successful: usize,
+    failed: usize,
+    results: Vec<BulkAgentResultOutput>,
+}
+
+#[derive(Debug, Deserialize)]
+struct BulkAgentEnvelope {
+    success: bool,
+    data: Option<BulkAgentOutput>,
+    error: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -3446,6 +3518,86 @@ async fn run_login_agent(
         .ok_or_else(|| "account login agent did not return data".into())
 }
 
+async fn run_bulk_login_agent(
+    request: &BulkAutomatedLoginRequest,
+) -> Result<BulkAgentOutput, String> {
+    let script_path = Path::new("tools").join("bulk_login_agent.py");
+    if !script_path.exists() {
+        return Err("bulk login agent script not found at tools/bulk_login_agent.py".into());
+    }
+
+    let python = std::env::var("FORK_HUNTER_PYTHON").unwrap_or_else(|_| "python".into());
+    
+    // Build accounts payload
+    let accounts: Vec<serde_json::Value> = request.accounts.iter().map(|acc| {
+        serde_json::json!({
+            "bookmaker": acc.bookmaker.trim().to_lowercase(),
+            "login": acc.login.trim(),
+            "password": acc.password,
+        })
+    }).collect();
+    
+    let payload = serde_json::json!({
+        "accounts": accounts,
+        "wait_timeout_secs": request.wait_timeout_secs.unwrap_or(240).clamp(15, 900),
+        "auto_close_after_auth": request.auto_close_after_auth.unwrap_or(true),
+    })
+    .to_string();
+
+    let mut child = Command::new(&python)
+        .arg(&script_path)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| {
+            if error.kind() == ErrorKind::NotFound {
+                format!("python executable '{python}' was not found; set FORK_HUNTER_PYTHON")
+            } else {
+                error.to_string()
+            }
+        })?;
+
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin
+            .write_all(payload.as_bytes())
+            .await
+            .map_err(|error| error.to_string())?;
+    }
+
+    // Calculate timeout: per account timeout + buffer for startup/shutdown
+    let per_account_timeout = request.wait_timeout_secs.unwrap_or(240).clamp(15, 900);
+    let total_timeout = per_account_timeout * request.accounts.len() as u64 + 60;
+    
+    let output = tokio::time::timeout(
+        StdDuration::from_secs(total_timeout),
+        child.wait_with_output(),
+    )
+    .await
+    .map_err(|_| "bulk login agent timed out".to_string())?
+    .map_err(|error| error.to_string())?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    
+    let envelope: BulkAgentEnvelope = serde_json::from_str(stdout.trim()).map_err(|error| {
+        format!(
+            "bulk login agent returned invalid JSON: {error}; stderr={}",
+            stderr.trim()
+        )
+    })?;
+
+    if !envelope.success {
+        return Err(envelope
+            .error
+            .unwrap_or_else(|| "bulk login agent failed".into()));
+    }
+
+    envelope
+        .data
+        .ok_or_else(|| "bulk login agent did not return data".into())
+}
+
 pub async fn automated_account_login(
     State(state): State<AppState>,
     Json(request): Json<AccountAutomatedLoginRequest>,
@@ -3568,6 +3720,152 @@ pub async fn automated_account_login(
         })),
     )
         .into_response()
+}
+
+pub async fn bulk_automated_login(
+    State(state): State<AppState>,
+    Json(request): Json<BulkAutomatedLoginRequest>,
+) -> axum::response::Response {
+    if request.accounts.is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(ApiResponse::<BulkAutomatedLoginResponse>::error("No accounts provided")),
+        )
+            .into_response();
+    }
+
+    // Validate accounts
+    for (idx, account) in request.accounts.iter().enumerate() {
+        if account.bookmaker.trim().is_empty() || account.login.trim().is_empty() || account.password.is_empty() {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(ApiResponse::<BulkAutomatedLoginResponse>::error(&format!(
+                    "Account {}: bookmaker, login and password are required",
+                    idx + 1
+                ))),
+            )
+                .into_response();
+        }
+    }
+
+    // Run bulk login agent
+    match run_bulk_login_agent(&request).await {
+        Ok(bulk_output) => {
+            // Process results and create/update accounts
+            let mut results = Vec::with_capacity(bulk_output.results.len());
+            let registry = execution_registry(&state);
+            let mut successful = 0usize;
+            let mut failed = 0usize;
+
+            for agent_result in bulk_output.results {
+                let bookmaker = agent_result.bookmaker.clone();
+                let login = agent_result.raw_login.clone();
+                let authenticated = agent_result.authenticated;
+                
+                let result = if authenticated {
+                    // Create/update account with session
+                    let session_material = Some(BookmakerSessionMaterial {
+                        cookie_header: agent_result.cookie_header.clone(),
+                        authorization_header: None,
+                        csrf_token: None,
+                        user_agent: None,
+                        extra_headers: std::collections::BTreeMap::new(),
+                        source: "bulk_playwright_agent".into(),
+                        imported_at: Utc::now(),
+                    });
+
+                    let profile_dir = std::path::Path::new(&agent_result.profile_dir);
+                    let storage_state_path = std::path::Path::new(&agent_result.storage_state_path);
+
+                    match apply_account_session_bootstrap(
+                        &registry,
+                        state.bankroll_manager.as_ref(),
+                        AccountSessionBootstrapRequest {
+                            bookmaker: Some(bookmaker.clone()),
+                            login: Some(login.clone()),
+                            session_hint: Some(format!(
+                                "playwright-profile:{};storage:{}",
+                                profile_dir.display(),
+                                storage_state_path.display()
+                            )),
+                            password: None,
+                            raw_import: None,
+                            cookie_header: agent_result.cookie_header.clone(),
+                            authorization_header: None,
+                            csrf_token: None,
+                            user_agent: None,
+                            expires_in_hours: Some(12),
+                            available_balance: agent_result.balance_text.as_ref().and_then(|b| {
+                                b.replace(" ", "").replace(",", ".").parse::<f64>().ok()
+                            }),
+                        },
+                    ) {
+                        Ok(_) => {
+                            successful += 1;
+                            BulkLoginResult {
+                                bookmaker: agent_result.bookmaker,
+                                login: agent_result.login,
+                                raw_login: agent_result.raw_login,
+                                authenticated: true,
+                                status: "authenticated".into(),
+                                balance_text: agent_result.balance_text,
+                                cookie_count: agent_result.cookie_count,
+                                duration_secs: agent_result.duration_secs,
+                                error: None,
+                            }
+                        }
+                        Err((_, error)) => {
+                            failed += 1;
+                            BulkLoginResult {
+                                bookmaker: agent_result.bookmaker,
+                                login: agent_result.login,
+                                raw_login: agent_result.raw_login,
+                                authenticated: false,
+                                status: "session_bootstrap_failed".into(),
+                                balance_text: agent_result.balance_text,
+                                cookie_count: agent_result.cookie_count,
+                                duration_secs: agent_result.duration_secs,
+                                error: Some(error),
+                            }
+                        }
+                    }
+                } else {
+                    failed += 1;
+                    BulkLoginResult {
+                        bookmaker: agent_result.bookmaker,
+                        login: agent_result.login,
+                        raw_login: agent_result.raw_login,
+                        authenticated: false,
+                        status: agent_result.status,
+                        balance_text: agent_result.balance_text,
+                        cookie_count: agent_result.cookie_count,
+                        duration_secs: agent_result.duration_secs,
+                        error: agent_result.error,
+                    }
+                };
+                
+                results.push(result);
+            }
+
+            let response = BulkAutomatedLoginResponse {
+                total: request.accounts.len(),
+                successful,
+                failed,
+                results,
+            };
+
+            (
+                StatusCode::OK,
+                Json(ApiResponse::ok(response)),
+            )
+                .into_response()
+        }
+        Err(error) => (
+            StatusCode::BAD_GATEWAY,
+            Json(ApiResponse::<BulkAutomatedLoginResponse>::error(&error)),
+        )
+            .into_response(),
+    }
 }
 
 pub async fn bootstrap_account_session(

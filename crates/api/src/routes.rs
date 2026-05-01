@@ -99,6 +99,10 @@ pub fn create_router(state: AppState) -> Router {
             post(automated_account_login),
         )
         .route(
+            "/api/v2/accounts/bulk-automated-login",
+            post(bulk_automated_login),
+        )
+        .route(
             "/api/v1/accounts/test-account",
             post(bootstrap_account_session),
         )

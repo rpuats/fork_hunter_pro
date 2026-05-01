@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import { openUrl } from '@tauri-apps/plugin-opener'
-import { AlertTriangle, ArrowDownLeft, ArrowUpRight, BadgeAlert, CircleDollarSign, Landmark, PlusCircle, Power, RefreshCw, ShieldAlert, ShieldCheck, ShieldQuestion, Wallet, X } from 'lucide-react'
+import { AlertTriangle, ArrowDownLeft, ArrowUpRight, BadgeAlert, CircleDollarSign, Landmark, PlusCircle, Power, RefreshCw, ShieldAlert, ShieldCheck, ShieldQuestion, User, Wallet, X } from 'lucide-react'
 import type {
   AccountControlUpdate,
   AccountSessionImportPayload,
@@ -210,6 +210,10 @@ export function AccountsPage({ accounts, accountsSummary, bankrollState, bankrol
   const [loginPageOpened, setLoginPageOpened] = useState(false)
   const [bootstrappingSession, setBootstrappingSession] = useState(false)
   const [accountAction, setAccountAction] = useState<string | null>(null)
+  const [bulkAuthAccounts, setBulkAuthAccounts] = useState<Record<string, { login: string; password: string }>>({})
+  const [bulkAuthInProgress, setBulkAuthInProgress] = useState(false)
+  const [bulkAuthResults, setBulkAuthResults] = useState<{ bookmaker: string; status: string }[]>([])
+  const [bulkAuthModalOpen, setBulkAuthModalOpen] = useState(false)
   const accountMap = useMemo(() => new Map(accounts.map((entry) => [entry.bookmaker.toLowerCase(), entry])), [accounts])
   const guidanceMap = useMemo(() => new Map((bankrollRecommendations?.deposit_guidance.targets ?? []).map((entry) => [entry.bookmaker.toLowerCase(), entry])), [bankrollRecommendations])
 
@@ -510,6 +514,64 @@ export function AccountsPage({ accounts, accountsSummary, bankrollState, bankrol
 
   const isAccountActionRunning = (bookmaker: string, action: string) => accountAction === `${bookmaker.toLowerCase()}:${action}`
 
+  // Bulk authorization function
+  const handleBulkAuthorize = async () => {
+    const entries = Object.entries(bulkAuthAccounts).filter(([_, creds]) => creds.login && creds.password)
+    if (entries.length === 0) {
+      alert('Введите логин и пароль хотя бы для одной БК')
+      return
+    }
+
+    setBulkAuthInProgress(true)
+    setBulkAuthResults([])
+
+    try {
+      const response = await fetch('http://localhost:8080/api/v2/accounts/bulk-automated-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accounts: entries.map(([bookmaker, creds]) => ({
+            bookmaker,
+            login: creds.login,
+            password: creds.password,
+          })),
+          wait_timeout_secs: 240,
+          auto_close_after_auth: true,
+        }),
+      })
+
+      const data = await response.json()
+      
+      if (data.success && data.data) {
+        setBulkAuthResults(data.data.results.map((r: any) => ({
+          bookmaker: r.bookmaker,
+          status: r.authenticated ? '✅ Успешно' : `❌ ${r.status}`,
+        })))
+        
+        // Refresh accounts after successful auth
+        setTimeout(() => {
+          window.location.reload()
+        }, 3000)
+      } else {
+        alert(`Ошибка: ${data.error || 'Неизвестная ошибка'}`)
+      }
+    } catch (error) {
+      alert(`Ошибка запроса: ${error}`)
+    } finally {
+      setBulkAuthInProgress(false)
+    }
+  }
+
+  const updateBulkAuthCredential = (bookmaker: string, field: 'login' | 'password', value: string) => {
+    setBulkAuthAccounts(prev => ({
+      ...prev,
+      [bookmaker]: {
+        ...prev[bookmaker],
+        [field]: value,
+      },
+    }))
+  }
+
   return (
     <motion.div variants={container} initial="hidden" animate="show" className="space-y-6">
       <motion.div variants={item} className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
@@ -537,6 +599,20 @@ export function AccountsPage({ accounts, accountsSummary, bankrollState, bankrol
           </div>
           <div className="rounded-xl px-3 py-2" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
             Bankroll update {formatDateTime(bankrollState?.updated_at ?? null)}
+          </div>
+          
+          {/* Bulk Authorization Button */}
+          <div className="flex items-center gap-2 rounded-xl px-3 py-2" style={{ background: 'rgba(47, 129, 247, 0.14)', border: '1px solid rgba(47, 129, 247, 0.3)' }}>
+            <button
+              type="button"
+              onClick={() => setBulkAuthModalOpen(true)}
+              disabled={bulkAuthInProgress}
+              className="inline-flex items-center gap-1 rounded-lg px-2 py-1 font-medium transition-opacity disabled:opacity-50"
+              style={{ color: 'var(--accent-blue, #2f81f7)' }}
+            >
+              {bulkAuthInProgress ? <RefreshCw size={14} className="animate-spin" /> : <ShieldCheck size={14} />}
+              {bulkAuthInProgress ? 'Авторизация...' : 'Авторизовать все'}
+            </button>
           </div>
         </div>
       </motion.div>
@@ -723,6 +799,132 @@ export function AccountsPage({ accounts, accountsSummary, bankrollState, bankrol
         </div>
       )}
 
+      {/* Bulk Authorization Modal */}
+      {bulkAuthModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: 'rgba(1, 4, 9, 0.72)' }}>
+          <div className="w-full max-w-4xl max-h-[92vh] overflow-auto rounded-2xl p-5" style={{ background: 'var(--bg-card)', border: '1px solid var(--border-color)' }}>
+            <div className="flex items-start justify-between gap-4 mb-4">
+              <div>
+                <h3 className="text-lg font-semibold">🔐 Массовая авторизация БК</h3>
+                <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
+                  Введите логин и пароль для нескольких БК. Система последовательно откроет браузеры, введёт данные и дождётся captcha/2FA.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setBulkAuthModalOpen(false)}
+                className="rounded-lg p-2 transition-colors"
+                style={{ color: 'var(--text-muted)' }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              {/* List of bookmakers to authorize */}
+              <div className="grid gap-3 md:grid-cols-2">
+                {['pari', 'fonbet', 'marathon', 'bettery', 'leon'].map((bookmaker) => (
+                  <div
+                    key={bookmaker}
+                    className="rounded-xl p-3"
+                    style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}
+                  >
+                    <div className="flex items-center gap-2 mb-3">
+                      <span className="text-sm font-medium capitalize">{bookmaker}</span>
+                      <span className="text-xs px-2 py-0.5 rounded-full" style={{ 
+                        background: bulkAuthAccounts[bookmaker]?.login ? 'rgba(63, 185, 80, 0.2)' : 'rgba(139, 148, 158, 0.2)',
+                        color: bulkAuthAccounts[bookmaker]?.login ? 'var(--accent-green)' : 'var(--text-muted)'
+                      }}>
+                        {bulkAuthAccounts[bookmaker]?.login ? '✓ Готов' : '—'}
+                      </span>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <input
+                        value={bulkAuthAccounts[bookmaker]?.login || ''}
+                        onChange={(e) => updateBulkAuthCredential(bookmaker, 'login', e.target.value)}
+                        placeholder="Логин (телефон/email)"
+                        className="w-full rounded-lg px-3 py-2 text-sm outline-none"
+                        style={{ background: 'var(--bg-primary)', border: '1px solid var(--border-color)', color: 'var(--text-primary)' }}
+                      />
+                      <input
+                        type="password"
+                        value={bulkAuthAccounts[bookmaker]?.password || ''}
+                        onChange={(e) => updateBulkAuthCredential(bookmaker, 'password', e.target.value)}
+                        placeholder="Пароль"
+                        className="w-full rounded-lg px-3 py-2 text-sm outline-none"
+                        style={{ background: 'var(--var(--bg-primary)', border: '1px solid var(--border-color)', color: 'var(--text-primary)' }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Info box */}
+              <div className="rounded-xl p-3 text-xs" style={{ background: 'rgba(47, 129, 247, 0.12)', color: 'var(--text-secondary)', border: '1px solid rgba(47, 129, 247, 0.22)' }}>
+                <p className="font-medium mb-1">📋 Как это работает:</p>
+                <ul className="space-y-1 ml-4 list-disc">
+                  <li>Система откроет браузер для каждого БК по очереди</li>
+                  <li>Для телефонов автоматически добавится +7 если нужно</li>
+                  <li>После ввода логина/пароля система ждёт captcha/2FA (до 4 минут)</li>
+                  <li>После успешного входа браузер закрывается, сохраняются cookies</li>
+                  <li>Баланс автоматически определяется со страницы</li>
+                </ul>
+              </div>
+
+              {/* Results */}
+              {bulkAuthResults.length > 0 && (
+                <div className="rounded-xl p-3" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
+                  <p className="text-sm font-medium mb-2">Результаты:</p>
+                  <div className="space-y-1">
+                    {bulkAuthResults.map((result, idx) => (
+                      <div key={idx} className="flex items-center justify-between text-sm">
+                        <span className="capitalize">{result.bookmaker}</span>
+                        <span style={{ 
+                          color: result.status.includes('✅') ? 'var(--accent-green)' : 'var(--accent-red)'
+                        }}>
+                          {result.status}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setBulkAuthModalOpen(false)}
+                className="rounded-xl px-4 py-2 text-sm"
+                style={{ background: 'var(--bg-secondary)', color: 'var(--text-secondary)' }}
+              >
+                Отмена
+              </button>
+              <button
+                type="button"
+                onClick={handleBulkAuthorize}
+                disabled={bulkAuthInProgress}
+                className="rounded-xl px-4 py-2 text-sm font-semibold transition-opacity disabled:opacity-50"
+                style={{ background: 'rgba(47, 129, 247, 0.18)', color: 'var(--accent-blue)' }}
+              >
+                {bulkAuthInProgress ? (
+                  <span className="flex items-center gap-2">
+                    <RefreshCw size={14} className="animate-spin" />
+                    Авторизация...
+                  </span>
+                ) : (
+                  <span className="flex items-center gap-2">
+                    <ShieldCheck size={14} />
+                    Авторизовать все
+                  </span>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 xl:grid-cols-4 gap-4">
         {[
           { label: 'Execution-ready', value: `${summary.ready_for_execution} / ${summary.total_bookmakers}`, detail: formatPercent(readinessRate), icon: ShieldCheck, color: 'var(--accent-green)' },
@@ -877,6 +1079,27 @@ export function AccountsPage({ accounts, accountsSummary, bankrollState, bankrol
                   <div className="text-left lg:text-right shrink-0">
                     <p className="text-xs" style={{ color: 'var(--text-muted)' }}>stale signals</p>
                     <p className={`text-sm font-semibold ${entry.staleSignals > 0 ? 'profit-negative' : 'profit-positive'}`}>{entry.staleSignals}</p>
+                  </div>
+
+                  {/* Quick authorize button */}
+                  <div className="shrink-0">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        updateBulkAuthCredential(entry.bookmaker.toLowerCase(), 'login', '')
+                        updateBulkAuthCredential(entry.bookmaker.toLowerCase(), 'password', '')
+                        setBulkAuthModalOpen(true)
+                      }}
+                      className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-medium transition-colors"
+                      style={{ 
+                        background: entry.requiresSession ? 'rgba(248, 81, 73, 0.14)' : 'rgba(63, 185, 80, 0.14)', 
+                        color: entry.requiresSession ? 'var(--accent-red)' : 'var(--accent-green)'
+                      }}
+                    >
+                      <User size={12} />
+                      {entry.requiresSession ? 'Авторизовать' : 'Обновить'}
+                    </button>
                   </div>
                 </div>
               </button>
