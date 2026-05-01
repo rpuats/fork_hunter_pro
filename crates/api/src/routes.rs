@@ -9,6 +9,10 @@ use crate::handlers::*;
 use crate::handlers::{
     telegram_history, telegram_status, telegram_update_config, ApiResponse, AppState,
 };
+use crate::handlers::auth::{
+    add_account, authenticate_all, authenticate_one, get_balance, list_accounts, logout,
+    remove_account, submit_2fa, submit_captcha, supported_bookmakers,
+};
 use crate::ws::{ws_handler, ws_surebets_v1_handler};
 
 async fn api_not_found() -> (StatusCode, Json<ApiResponse<serde_json::Value>>) {
@@ -120,6 +124,17 @@ pub fn create_router(state: AppState) -> Router {
             "/api/v1/accounts/:bookmaker/control",
             post(update_account_control),
         )
+        // New auth module routes
+        .route("/api/v1/auth/accounts", get(list_accounts))
+        .route("/api/v1/auth/accounts", post(add_account))
+        .route("/api/v1/auth/accounts/:bk_id", delete(remove_account))
+        .route("/api/v1/auth/authenticate-all", post(authenticate_all))
+        .route("/api/v1/auth/authenticate/:bk_id", post(authenticate_one))
+        .route("/api/v1/auth/logout/:bk_id", post(logout))
+        .route("/api/v1/auth/captcha/:bk_id", post(submit_captcha))
+        .route("/api/v1/auth/2fa/:bk_id", post(submit_2fa))
+        .route("/api/v1/auth/balance/:bk_id", get(get_balance))
+        .route("/api/v1/auth/supported", get(supported_bookmakers))
         .route("/api/v1/stakes/validate", post(validate_stake))
         .route("/api/v1/capabilities", get(get_capabilities))
         .route("/api/v1/telegram/status", get(telegram_status))

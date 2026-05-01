@@ -124,6 +124,7 @@ pub struct ApiSurfacePlan {
     pub desktop_ui_fields: Vec<DesktopUiField>,
 }
 use std::sync::Arc;
+use tokio::sync::Mutex as TokioMutex;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -141,6 +142,8 @@ pub struct AppState {
     pub bankroll_manager: Arc<BankrollManager>,
     pub bonus_hunter: Arc<BonusHunter>,
     pub event_bus: Arc<shared::EventBus>,
+    pub auth_manager: Arc<TokioMutex<auto_betting::auth::AuthManager>>,
+    pub browser_pool: Arc<auto_betting::BrowserPool>,
 }
 
 #[derive(Serialize)]

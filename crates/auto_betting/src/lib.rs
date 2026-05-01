@@ -21,6 +21,15 @@ pub use adapters::{
     builtin_adapter, register_builtin_adapters, supported_bookmakers, FonbetExecutionAdapter,
     PariExecutionAdapter,
 };
+pub use auth::{
+    AuthError, AuthEvent, AuthManager, AuthStatus, BookmakerCredentials, Cookie, DisplaySettings,
+    OddsFormat, SessionCookies, SessionStorage, TwoFAMethod,
+    browser_auth::{
+        authenticate_bookmaker, continue_after_2fa, continue_after_captcha,
+    },
+    display_config::{apply_display_config, get_display_config, BookmakerDisplayConfig, PostLoginAction},
+    format_login, get_bookmaker_display_name, SUPPORTED_BOOKMAKERS,
+};
 pub use approval::{
     build_surebet_execution_plan, ApprovalGateDecision, RankedLegPlan, SurebetExecutionPlan,
     PARI_ROLLOUT_BOOKMAKER,
