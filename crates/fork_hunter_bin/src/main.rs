@@ -240,7 +240,31 @@ async fn main() -> anyhow::Result<()> {
         operator_queue,
     };
 
-    let app = create_router(api_state);
+    let app = create_router(api_state.clone());
+
+    // Create event channel for scanner bridge
+    let (scanner_event_tx, scanner_event_rx) = tokio::sync::mpsc::channel::<shared::BusEvent>(1000);
+    
+    // Spawn event bus bridge for scanner events
+    let _event_bus_bridge = tokio::spawn({
+        let event_bus = event_bus.clone();
+        let tx = scanner_event_tx.clone();
+        async move {
+            let mut rx = event_bus.subscribe("scanner_bridge");
+            while let Ok(event) = rx.recv().await {
+                let _ = tx.send(event).await;
+            }
+        }
+    });
+
+    // Spawn scanner bridge
+    let scanner_bridge_handle = auto_betting::spawn_scanner_bridge(
+        api_state.execution_orchestrator.clone(),
+        api_state.auth_manager.clone(),
+        api_state.browser_pool.clone(),
+        api_state.operator_queue.clone(),
+        scanner_event_rx,
+    );
 
     let addr: SocketAddr = format!("{}:{}", config.server.host, config.server.port).parse()?;
     let listener = tokio::net::TcpListener::bind(&addr).await?;
@@ -254,7 +278,7 @@ async fn main() -> anyhow::Result<()> {
             tracing::info!("Scanner task finished");
         }
     });
-    tracing::info!("Scanner spawned, starting API server");
+    tracing::info!("Scanner spawned, bridge active, starting API server");
 
     tracing::info!("Ghost Imperium is running!");
 
@@ -262,6 +286,8 @@ async fn main() -> anyhow::Result<()> {
 
     scanner_runner.stop();
     scanner_handle.abort();
+    scanner_bridge_handle.abort();
+    tracing::info!("Scanner and bridge stopped");
 
     if let Some((bot_handle, bridge_handle)) = telegram_handles {
         bridge_handle.abort();

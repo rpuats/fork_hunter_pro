@@ -6,9 +6,10 @@ use uuid::Uuid;
 use chrono::{DateTime, Utc};
 
 pub mod auto_bet;
-pub mod semi_auto_bet;
 pub mod manual_bet;
 pub mod operator_queue;
+pub mod runner;
+pub mod semi_auto_bet;
 
 /// Bet execution mode
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]

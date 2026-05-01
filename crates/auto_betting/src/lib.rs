@@ -20,6 +20,7 @@ pub use execution::{
     ExecutionState, ForkExecution, ForkStatus, Fork, ForkLeg,
     AccountReadiness, BankrollPlan, StakeAllocation, StakingStrategy,
     DailyStats, GlobalLimits, ExecutionOrchestrator,
+    ScannerBridge, spawn_scanner_bridge,
 };
 
 pub use account_pool::{
@@ -41,11 +42,12 @@ pub use auth::{
 };
 pub use browser_pool::BrowserPool;
 pub use betting::{
-    BetInstruction, BetMode, BetResult, BetStatus, BettingEngine, BettingError,
+    BetInstruction, BetMode, BetResult, BetStatus, BettingEngine,
     auto_bet::place_auto_bet,
-    semi_auto_bet::{place_semi_auto_bet, OperatorEvent, OperatorResponse},
     manual_bet::prepare_manual_bet,
     operator_queue::{OperatorQueue, QueueItem, item_factory},
+    runner::{BettingRunner, BettingRunnerConfig, BettingRunnerHandle, RunnerState, spawn_betting_runner},
+    semi_auto_bet::{place_semi_auto_bet, OperatorEvent, OperatorResponse},
 };
 pub use approval::{
     build_surebet_execution_plan, ApprovalGateDecision, RankedLegPlan, SurebetExecutionPlan,
