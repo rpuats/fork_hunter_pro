@@ -4,6 +4,7 @@ use crate::execution::BookmakerExecutionAdapter;
 use crate::registry::ExecutionRegistry;
 
 pub mod fonbet;
+pub mod fonbet_api;
 // Marathon adapter behind feature flag for MVP stability
 #[cfg(feature = "marathon_mvp")]
 pub mod marathon;

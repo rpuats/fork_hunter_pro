@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use chrono::Utc;
+use chrono::{Duration, Utc};
 use shared::{
     BetExecutionReceipt, BetExecutionRequest, BetExecutionStatus, BookmakerAccount,
     BookmakerAccountCapabilityMetadata, BookmakerAdapterAuthMetadata,
@@ -8,14 +8,36 @@ use shared::{
     BookmakerExecutionMode, BookmakerSession, BookmakerSessionState, BookmakerSessionStatus,
     BookmakerSessionSyncState,
 };
+use tracing::{debug, error, info, warn};
 
-use crate::auth::BookmakerSessionMaterial;
+use crate::auth::{BookmakerAuth, BookmakerSessionMaterial};
 use crate::execution::BookmakerExecutionAdapter;
+use crate::adapters::fonbet_api::FonbetApiClient;
 
-#[derive(Debug, Clone, Default)]
-pub struct FonbetExecutionAdapter;
+#[derive(Debug, Clone)]
+pub struct FonbetExecutionAdapter {
+    /// Enable real API calls (requires valid session cookies)
+    enable_real_api: bool,
+}
+
+impl Default for FonbetExecutionAdapter {
+    fn default() -> Self {
+        Self {
+            enable_real_api: std::env::var("FONBET_REAL_API")
+                .map(|v| v == "1" || v == "true")
+                .unwrap_or(false),
+        }
+    }
+}
 
 impl FonbetExecutionAdapter {
+    /// Create adapter with explicit real API flag
+    pub fn with_real_api(enabled: bool) -> Self {
+        Self {
+            enable_real_api: enabled,
+        }
+    }
+
     pub const BOOKMAKER: &'static str = "fonbet";
     const API_BASE_URL: &'static str = "https://clientsapi24.fonbet.ru";
 
@@ -354,7 +376,7 @@ mod tests {
         );
     }
 }
-use crate::auth::BookmakerAuth;
+
 use std::error::Error;
 
 #[async_trait]
