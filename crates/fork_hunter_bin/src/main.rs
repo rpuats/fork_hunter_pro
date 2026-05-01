@@ -9,7 +9,7 @@ use api::EventBroadcaster;
 use auto_betting::engine::AutoBetEngine;
 use auto_betting::auth::AuthManager;
 use auto_betting::BrowserPool;
-use auto_betting::betting::{BetMode, OperatorQueue};
+use auto_betting::betting::{BetMode, BettingRunnerConfig, OperatorQueue};
 use auto_betting::{ExecutionOrchestrator, ExecutionState};
 use bankroll_manager::manager::BankrollManager;
 use tokio::sync::Mutex as TokioMutex;
@@ -266,6 +266,23 @@ async fn main() -> anyhow::Result<()> {
         scanner_event_rx,
     );
 
+    // Spawn betting runner
+    let (betting_runner_handle, betting_runner_task) = auto_betting::spawn_betting_runner(
+        api_state.execution_orchestrator.clone(),
+        api_state.operator_queue.clone(),
+        api_state.auth_manager.clone(),
+        api_state.browser_pool.clone(),
+        BettingRunnerConfig {
+            mode: BetMode::SemiAuto,
+            check_interval_ms: 100,
+            max_concurrent_forks: 5,
+            auto_retry_failures: true,
+        },
+    );
+    
+    // Start betting runner
+    betting_runner_handle.start().await;
+
     let addr: SocketAddr = format!("{}:{}", config.server.host, config.server.port).parse()?;
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     tracing::info!("API server listening on {}", addr);
@@ -287,7 +304,8 @@ async fn main() -> anyhow::Result<()> {
     scanner_runner.stop();
     scanner_handle.abort();
     scanner_bridge_handle.abort();
-    tracing::info!("Scanner and bridge stopped");
+    betting_runner_task.abort();
+    tracing::info!("Scanner, bridge, and betting runner stopped");
 
     if let Some((bot_handle, bridge_handle)) = telegram_handles {
         bridge_handle.abort();
