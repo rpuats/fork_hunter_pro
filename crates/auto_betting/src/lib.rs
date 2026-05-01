@@ -10,6 +10,7 @@ pub mod engine;
 pub mod execution;
 pub mod executor;
 pub mod limiter;
+pub mod performance;
 pub mod persistence;
 pub mod registry;
 pub mod state_machine;
@@ -21,6 +22,10 @@ pub use execution::{
     AccountReadiness, BankrollPlan, StakeAllocation, StakingStrategy,
     DailyStats, GlobalLimits, ExecutionOrchestrator,
     ScannerBridge, spawn_scanner_bridge,
+};
+pub use performance::{
+    PerformanceMonitor, PerformanceTargets, PerformanceHealth,
+    PerformanceReport, OperationMetrics, init_global_monitor, get_global_monitor,
 };
 
 pub use account_pool::{

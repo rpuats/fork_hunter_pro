@@ -5,6 +5,7 @@ use crate::{
     betting::{BetInstruction, BetMode, BettingError, OperatorQueue, item_factory},
     execution::{ExecutionOrchestrator, Fork, ForkLeg, ForkStatus, AccountReadiness},
     BrowserPool,
+    performance::get_global_monitor,
 };
 use anyhow::Result;
 use base64;
@@ -60,6 +61,8 @@ impl ScannerBridge {
 
     /// Process detected surebet
     async fn process_surebet(&self, surebet: shared::Surebet) {
+        let start = std::time::Instant::now();
+
         // Check if we should process this surebet
         if !self.should_process_surebet(&surebet).await {
             return;
@@ -118,7 +121,15 @@ impl ScannerBridge {
             }
         }
 
-        info!("Fork {} execution started", fork_id);
+        let duration = start.elapsed();
+        let duration_ms = duration.as_secs_f64() * 1000.0;
+
+        // Record performance metric
+        if let Some(monitor) = get_global_monitor() {
+            monitor.record("fork_to_display", duration_ms, true).await;
+        }
+
+        info!("Fork {} execution started in {:.1}ms", fork_id, duration_ms);
     }
 
     /// Check if surebet should be processed

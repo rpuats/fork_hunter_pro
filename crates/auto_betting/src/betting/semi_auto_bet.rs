@@ -2,10 +2,11 @@
 
 use super::{BetInstruction, BetResult, BetStatus, BettingError};
 use crate::auth::SessionCookies;
+use crate::performance::get_global_monitor;
 use anyhow::Result;
 use playwright::api::Browser;
 use rust_decimal::Decimal;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tokio::sync::mpsc;
 use tokio::time::timeout;
 
@@ -17,6 +18,7 @@ pub async fn place_semi_auto_bet(
     operator_tx: mpsc::Sender<OperatorEvent>,
     operator_rx: &mut mpsc::Receiver<OperatorResponse>,
 ) -> Result<BetResult, BettingError> {
+    let start = Instant::now();
     let context = browser
         .new_context(
             playwright::api::BrowserNewContextOptions::default()
@@ -120,6 +122,14 @@ pub async fn place_semi_auto_bet(
             .map_err(|_| BettingError::Timeout { operation: "bet confirmation".to_string() })?
             .map_err(|e| BettingError::BrowserError(e))?;
 
+            let duration = start.elapsed();
+            let duration_ms = duration.as_secs_f64() * 1000.0;
+
+            // Record performance metric
+            if let Some(monitor) = get_global_monitor() {
+                monitor.record("semi_auto_bet", duration_ms, true).await;
+            }
+
             Ok(BetResult {
                 bet_id: instruction.id.clone(),
                 status: BetStatus::Placed,
@@ -133,6 +143,14 @@ pub async fn place_semi_auto_bet(
         OperatorResponse::Reject => {
             // Clear coupon
             clear_coupon(&page, &instruction.bookmaker_id).await.ok();
+
+            let duration = start.elapsed();
+            let duration_ms = duration.as_secs_f64() * 1000.0;
+
+            // Record performance metric
+            if let Some(monitor) = get_global_monitor() {
+                monitor.record("semi_auto_bet", duration_ms, false).await;
+            }
 
             Ok(BetResult {
                 bet_id: instruction.id.clone(),

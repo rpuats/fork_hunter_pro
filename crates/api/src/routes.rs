@@ -18,6 +18,9 @@ use crate::handlers::betting::{
     place_bet, reject_bet, resolve_queue_item, resume_execution, set_execution_mode,
     start_execution, stop_execution, get_current_queue_item,
 };
+use crate::handlers::performance::{
+    get_performance_metrics, reset_performance_metrics,
+};
 use crate::ws::{ws_handler, ws_surebets_v1_handler};
 use crate::ws_execution::ws_execution_handler;
 
@@ -155,6 +158,9 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/v1/operator/queue", get(get_operator_queue))
         .route("/api/v1/operator/queue/current", get(get_current_queue_item))
         .route("/api/v1/operator/queue/:item_id/resolve", post(resolve_queue_item))
+        // Performance monitoring
+        .route("/api/v1/performance", get(get_performance_metrics))
+        .route("/api/v1/performance/reset", get(reset_performance_metrics))
         .route("/api/v1/stakes/validate", post(validate_stake))
         .route("/api/v1/capabilities", get(get_capabilities))
         .route("/api/v1/telegram/status", get(telegram_status))

@@ -5,6 +5,7 @@ use crate::{
     betting::{BetMode, BettingEngine, OperatorQueue, OperatorEvent, OperatorResponse},
     execution::{ExecutionOrchestrator, ForkStatus},
     BrowserPool,
+    performance::get_global_monitor,
 };
 use anyhow::Result;
 use std::sync::Arc;
@@ -89,6 +90,8 @@ impl BettingRunner {
                 continue;
             }
 
+            let cycle_start = std::time::Instant::now();
+
             // Check for limits
             {
                 let orchestrator = self.orchestrator.lock().await;
@@ -107,6 +110,14 @@ impl BettingRunner {
 
             // Update account readiness
             self.update_account_readiness().await;
+
+            // Record cycle time
+            let cycle_duration = cycle_start.elapsed();
+            let cycle_ms = cycle_duration.as_secs_f64() * 1000.0;
+
+            if let Some(monitor) = get_global_monitor() {
+                monitor.record("runner_cycle", cycle_ms, true).await;
+            }
         }
 
         self.state = RunnerState::Stopped;

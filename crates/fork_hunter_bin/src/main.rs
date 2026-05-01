@@ -10,7 +10,7 @@ use auto_betting::engine::AutoBetEngine;
 use auto_betting::auth::AuthManager;
 use auto_betting::BrowserPool;
 use auto_betting::betting::{BetMode, BettingRunnerConfig, OperatorQueue};
-use auto_betting::{ExecutionOrchestrator, ExecutionState};
+use auto_betting::{ExecutionOrchestrator, ExecutionState, PerformanceTargets, init_global_monitor};
 use bankroll_manager::manager::BankrollManager;
 use tokio::sync::Mutex as TokioMutex;
 use bonus_hunter::hunter::BonusHunter;
@@ -217,6 +217,16 @@ async fn main() -> anyhow::Result<()> {
         ExecutionOrchestrator::new(Decimal::from(100000), BetMode::SemiAuto)
     ));
     let operator_queue = Arc::new(TokioMutex::new(OperatorQueue::new()));
+
+    // Initialize performance monitor
+    let _perf_monitor = init_global_monitor(PerformanceTargets {
+        scan_cycle_ms: 500,
+        fork_to_display_ms: 1000,
+        auto_bet_ms: 5000,
+        semi_auto_bet_ms: 10000,
+        ui_fps: 60,
+    });
+    tracing::info!("Performance monitor initialized with targets: scan=500ms, fork_to_display=1000ms, auto_bet=5000ms");
 
     let api_state = AppState {
         scanner: scanner_runner.clone(),

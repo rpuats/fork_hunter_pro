@@ -234,8 +234,8 @@ desktop-ui/
 
 ## 📊 Метрики
 
-- **Создано файлов**: 35+
-- **Строк кода**: ~15,000+
+- **Создано файлов**: 40+
+- **Строк кода**: ~18,000+
 - **Компонентов UI**: 6
 - **API endpoints**: 25+
 - **WebSocket событий**: 30+
@@ -244,4 +244,28 @@ desktop-ui/
 
 ---
 
-**Статус**: ✅ P0 Complete - Все критичные функции реализованы
+## 🔗 Интеграция компонентов
+
+### Scanner Bridge
+- Подключение к EventBus
+- Обработка событий: SurebetDetected, OddsChanged, EventExpired
+- Конвертация surebet → fork
+- Автоматический запуск execution
+
+### Betting Runner
+- Главный цикл выполнения
+- Состояния: Idle, Running, Paused, Stopping, Stopped
+- Обработка очереди оператора
+- Мониторинг активных форков
+- Обновление готовности аккаунтов
+
+### Полный Pipeline
+```
+Scanner → Bridge → ExecutionOrchestrator → BettingRunner → Browser Pool
+                ↓
+         Operator Queue ←→ Operator UI
+```
+
+---
+
+**Статус**: ✅ P0 Complete - Все критичные функции + интеграция реализованы
