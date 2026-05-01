@@ -13,6 +13,11 @@ use crate::handlers::auth::{
     add_account, authenticate_all, authenticate_one, get_balance, list_accounts, logout,
     remove_account, submit_2fa, submit_captcha, supported_bookmakers,
 };
+use crate::handlers::betting::{
+    confirm_bet, get_execution_state, get_operator_queue, get_pending_bets, pause_execution,
+    place_bet, reject_bet, resolve_queue_item, resume_execution, set_execution_mode,
+    start_execution, stop_execution, get_current_queue_item,
+};
 use crate::ws::{ws_handler, ws_surebets_v1_handler};
 use crate::ws_execution::ws_execution_handler;
 
@@ -136,6 +141,20 @@ pub fn create_router(state: AppState) -> Router {
         .route("/api/v1/auth/2fa/:bk_id", post(submit_2fa))
         .route("/api/v1/auth/balance/:bk_id", get(get_balance))
         .route("/api/v1/auth/supported", get(supported_bookmakers))
+        // Betting/Execution routes
+        .route("/api/v1/execution/state", get(get_execution_state))
+        .route("/api/v1/execution/mode", post(set_execution_mode))
+        .route("/api/v1/execution/start", post(start_execution))
+        .route("/api/v1/execution/stop", post(stop_execution))
+        .route("/api/v1/execution/pause", post(pause_execution))
+        .route("/api/v1/execution/resume", post(resume_execution))
+        .route("/api/v1/bet/place", post(place_bet))
+        .route("/api/v1/bet/confirm/:bet_id", post(confirm_bet))
+        .route("/api/v1/bet/reject/:bet_id", post(reject_bet))
+        .route("/api/v1/bet/pending", get(get_pending_bets))
+        .route("/api/v1/operator/queue", get(get_operator_queue))
+        .route("/api/v1/operator/queue/current", get(get_current_queue_item))
+        .route("/api/v1/operator/queue/:item_id/resolve", post(resolve_queue_item))
         .route("/api/v1/stakes/validate", post(validate_stake))
         .route("/api/v1/capabilities", get(get_capabilities))
         .route("/api/v1/telegram/status", get(telegram_status))

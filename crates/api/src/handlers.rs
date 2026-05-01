@@ -145,6 +145,8 @@ pub struct AppState {
     pub auth_manager: Arc<TokioMutex<auto_betting::auth::AuthManager>>,
     pub browser_pool: Arc<auto_betting::BrowserPool>,
     pub event_broadcaster: Arc<crate::ws_events::EventBroadcaster>,
+    pub execution_orchestrator: Arc<TokioMutex<auto_betting::ExecutionOrchestrator>>,
+    pub operator_queue: Arc<TokioMutex<auto_betting::betting::OperatorQueue>>,
 }
 
 #[derive(Serialize)]

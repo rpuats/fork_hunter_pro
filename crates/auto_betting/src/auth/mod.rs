@@ -10,6 +10,7 @@ use tokio::sync::mpsc;
 pub mod browser_auth;
 pub mod display_config;
 pub mod session_storage;
+pub mod streaming_auth;
 
 /// Bookmaker credentials storage
 #[derive(Debug, Clone, Serialize, Deserialize)]

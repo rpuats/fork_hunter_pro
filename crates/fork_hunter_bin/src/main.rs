@@ -1,6 +1,7 @@
 use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
+use rust_decimal::Decimal;
 
 use api::handlers::AppState;
 use api::routes::create_router;
@@ -8,6 +9,8 @@ use api::EventBroadcaster;
 use auto_betting::engine::AutoBetEngine;
 use auto_betting::auth::AuthManager;
 use auto_betting::BrowserPool;
+use auto_betting::betting::{BetMode, OperatorQueue};
+use auto_betting::{ExecutionOrchestrator, ExecutionState};
 use bankroll_manager::manager::BankrollManager;
 use tokio::sync::Mutex as TokioMutex;
 use bonus_hunter::hunter::BonusHunter;
@@ -210,6 +213,10 @@ async fn main() -> anyhow::Result<()> {
     let auth_manager = Arc::new(TokioMutex::new(AuthManager::new(auth_tx)));
     let browser_pool = Arc::new(BrowserPool::default());
     let event_broadcaster = Arc::new(EventBroadcaster::new(1000));
+    let execution_orchestrator = Arc::new(TokioMutex::new(
+        ExecutionOrchestrator::new(Decimal::from(100000), BetMode::SemiAuto)
+    ));
+    let operator_queue = Arc::new(TokioMutex::new(OperatorQueue::new()));
 
     let api_state = AppState {
         scanner: scanner_runner.clone(),
@@ -229,6 +236,8 @@ async fn main() -> anyhow::Result<()> {
         auth_manager,
         browser_pool,
         event_broadcaster,
+        execution_orchestrator,
+        operator_queue,
     };
 
     let app = create_router(api_state);
