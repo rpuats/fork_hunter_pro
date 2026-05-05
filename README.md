@@ -1,296 +1,244 @@
-# Fork Hunter Pro
+# 👻 Ghost Imperium Pro
 
-Высокочастотный Rust-сканер арбитражных вилок для букмекерского рынка РФ/ЦУПИС с operator/API/UI слоем, execution/auth readiness контуром и groundwork под freebet / semi-auto workflows.
+**Профессиональная платформа для арбитражного беттинга** — сканер вилок, коридоров и экспресс-ставок с системой управления аккаунтами как у Forking.
 
----
-
-## 1. Что это за проект
-
-`Fork Hunter Pro` — это не просто “поисковик вилок”, а растущая рабочая платформа, которая должна уметь:
-
-- собирать линии с большого числа букмекеров,
-- сопоставлять одинаковые матчи у разных БК,
-- искать вилки, value, ошибки в коэффициентах и related opportunities,
-- показывать оператору всё, что требует внимания,
-- подсказывать по bankroll / accounts / funding,
-- постепенно перейти к безопасному semi-auto execution.
-
-Проект живёт в **Rust mainline** (`crates/`) и использует legacy Python/Playwright только как вспомогательный reverse-engineering / fallback слой там, где это ещё нужно.
+![Version](https://img.shields.io/badge/version-2.0.0-purple)
+![Rust](https://img.shields.io/badge/Rust-1.75+-orange)
+![React](https://img.shields.io/badge/React-18-blue)
+![License](https://img.shields.io/badge/license-Proprietary-red)
 
 ---
 
-## 2. Текущий этап
+## 🚀 Быстрый старт
 
-Проект находится не в стадии прототипа, а в **mid/late-stage implementation**:
+```bash
+# Клонировать репозиторий
+git clone https://github.com/rpuats/fork_hunter_pro.git
+cd fork_hunter_pro
 
-- scanner/runtime core уже сильный,
-- API/UI/operator surfaces уже полезные,
-- execution/auth readiness уже выведены в продукт,
-- большой рабочий состав БК уже есть,
-- часть тяжёлых БК ещё требует отдельных волн добивки.
-
-Главный remaining фронт сейчас — не “написать с нуля”, а:
-
-1. удерживать и расширять рабочий active set букмекеров,
-2. дожимать partial-парсеры,
-3. развивать основной софт (operator queue, execution/auth surfaces, freebet bridge, safe semi-auto path).
-
----
-
-## 3. Что уже сделано
-
-### 3.1 Scanner / runtime
-
-Уже реализовано:
-
-- parser bulkhead / concurrency guard,
-- post-fetch validator,
-- per-parser caps,
-- staleness TTL,
-- live parser health / coverage,
-- bookmaker runtime diagnostics,
-- bounded anti-stall workflow для локальной разработки.
-
-Это значит, что проект уже умеет не только “что-то парсить”, но и честно показывать, что реально живо, а что деградирует.
-
-### 3.2 Основной софт
-
-Уже есть:
-
-- `Execution / Operator` UI,
-- `Accounts / Bankroll Readiness` UI,
-- parser deep-dive surface,
-- `execution/state`, `execution/overview`, `execution/ledger`,
-- `execution/operator-queue` backend + UI block,
-- auth/session/balance readiness surfaced для оператора,
-- freebet summary / funding readiness / next actions,
-- API и UI в рабочем состоянии.
-
-### 3.3 Git / workflow
-
-- проект уже пушился на GitHub,
-- в репо есть anti-stall helpers,
-- bounded local queue-runner / workflow docs добавлены,
-- память о сложных parser-попытках уже сохраняется в `artifacts/parser_memory/`.
-
----
-
-## 4. Рабочий состав букмекеров
-
-Ниже — **актуальный активный состав**, а не старый mock/placeholder список.
-
-### 4.1 Полный PASS по текущему runtime diagnostics
-
-Следующие БК уже проходят текущий KPI-run целиком:
-
-| БК | Total | Live | Prematch |
-|---|---:|---:|---:|
-| Pari | 6787 | 3390 | 3397 |
-| Marathon | 6792 | 3396 | 3396 |
-| Bettery | 7018 | 3509 | 3509 |
-| Fonbet | 6990 | 3495 | 3495 |
-| Leon | 4181 | 680 | 3501 |
-| Bet24 | 6781 | 3390 | 3391 |
-| Zenit | 4063 | 150 | 3913 |
-| Betcity | 4094 | 208 | 3886 |
-| Baltbet | 3791 | 258 | 3533 |
-
-### 4.2 Почти добитые / partial but strong
-
-| БК | Total | Live | Prematch | Статус |
-|---|---:|---:|---:|---|
-| Tennisi | 3064 | 152 | 2912 | не хватает только prematch |
-| Olimp | ~1470 | 148-216 | ~1322-1488 | live почти/фактически проходит, prematch слабый |
-
-### 4.3 Временно shelved
-
-Эти БК **не являются текущим активным фокусом**, чтобы не мешать основному продукту:
-
-- `betboom`
-- `melbet`
-- `winline`
-- `winline_json`
-
-По ним уже есть существенный прогресс, но они вынесены “в ящик” до следующей отдельной волны.
-
-### 4.4 Дубли и правила состава
-
-В проекте договорённость такая:
-
-- `olimpbet` считать дублем `olimp`
-- `_24bet` считать дублем `bet24`
-
-То есть в operational board / active set учитываем их как один БК.
-
----
-
-## 5. Что происходит с shelved БК
-
-### BetBoom
-
-`betboom` уже **пробит как standalone path**, хотя пока не закреплён в clean Rust mainline runtime.
-
-Лучший зафиксированный standalone результат:
-
-- `241 total`
-- `151 live`
-- `90 prematch`
-
-То есть по live KPI уже достижим, но prematch coverage пока не доведён.
-
-Память попыток сохранена в:
-
-- `artifacts/parser_memory/betboom_attempts_2026-04-21.md`
-
-### Melbet
-
-Главный текущий blocker локализован до runtime/bootstrap/navigation path.
-
-### Winline
-
-Главный текущий blocker локализован до headless/DOM path и unicode/python output issues в fallback цепочке.
-
----
-
-## 6. Архитектура проекта
-
-### Ключевые crates
-
-- `crates/parsers` — все Rust-парсеры БК, parser factory, diagnostics
-- `crates/scanner` — scanner/runtime pipeline
-- `crates/engine` — calculator, normalizer, verifier, value, odds errors и related logic
-- `crates/api` — HTTP API / operator-facing endpoints
-- `crates/shared` — общие модели и API contracts
-- `crates/auto_betting` — execution / auth / readiness / staged flow
-- `crates/persistence` — execution/freebet state persistence
-- `crates/bankroll_manager` — bankroll/accounts readiness logic
-- `desktop-ui` — основной UI
-
-### Важные проектные направления
-
-1. **Парсеры букмекеров**
-2. **Scanner / runtime core**
-3. **Operator / execution surfaces**
-4. **Freebet / funding / lifecycle**
-5. **Auth / readiness / semi-auto groundwork**
-
----
-
-## 7. Текущий продуктовый слой
-
-### Уже есть
-
-- operator dashboard,
-- accounts/bankroll view,
-- parser health / parser deep dive,
-- execution state,
-- execution ledger,
-- execution operator queue,
-- freebet summary / blockers / next actions,
-- auth/session readiness surface.
-
-### Это уже usable
-
-То есть проект уже можно считать **операторской системой**, а не просто набором скриптов.
-
----
-
-## 8. Что осталось сделать
-
-### 8.1 По active bookmakers
-
-1. **Tennisi**
-   - добить недостающий prematch uplift
-2. **Olimp**
-   - сильно поднять prematch coverage
-
-### 8.2 По основному софту
-
-1. дальше развивать execution/auth/readiness
-2. усиливать freebet/funding bridge
-3. аккуратно подводить систему к safe semi-auto mode
-
-### 8.3 Потом вернуться к shelved БК
-
-Отдельными волнами:
-
-- BetBoom
-- Melbet
-- Winline
-
-Но только после того, как active core и основной продукт будут в более завершённом виде.
-
----
-
-## 9. Запуск и проверки
-
-### Rust scanner / backend
-
-```powershell
-cargo run -p fork_hunter_bin
-```
-
-### Parser diagnostics
-
-Пример полного active состава:
-
-```powershell
-cargo run -p parsers --bin runtime_parser_diagnostics -- --json-stdout pari marathon bettery fonbet leon zenit betcity baltbet tennisi bet24 olimp
-```
-
-### API tests
-
-```powershell
-cargo test -p api --lib
-```
-
-### Desktop UI
-
-```powershell
+# Запуск Desktop UI (development)
 cd desktop-ui
+npm install
+npm run dev
+
+# Сборка production build
 npm run build
+
+# Tauri desktop app
+cd src-tauri
+cargo tauri dev
+```
+
+**Dev server:** http://localhost:1420
+
+---
+
+## ✨ Возможности
+
+### 📊 Сканер вилок
+- **7 рабочих парсеров** (Pari, Fonbet, Bettery, Marathon, 24bet, Leon, Sportbet)
+- **Cross-BK matching** с точностью 97.5%
+- **Цикл сканирования** ~30 секунд
+- **Real-time обновления** через WebSocket
+
+### 🎛️ Desktop UI
+- **8 страниц** с единым дизайном
+- **Система профилей** как у Forking (drops, fingerprints, прокси)
+- **3 режима авто-ставок** (ручной, полуавто, полный авто)
+- **Горячие клавиши** (Ctrl+1..8 для навигации)
+- **Анимации** Framer Motion
+
+### 🏦 Управление аккаунтами
+- **Несколько профилей** на одну БК
+- **Уникальные fingerprints** (screen, timezone, CPU, RAM)
+- **Прокси на профиль** (HTTP/SOCKS5)
+- **Cookie-based авторизация**
+- **Смена дропа в 1 клик**
+
+### 📈 Виды ставок
+- **Вилки** (surebets) — классический арбитраж
+- **Коридоры** (corridors) — перекрытие тоталов/фор
+- **Экспрессы** — конструктор с калькулятором
+- **Value ставки** — positive EV
+
+---
+
+## 🏗️ Архитектура
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Ghost Imperium Pro                       │
+├─────────────────────────────────────────────────────────────┤
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐        │
+│  │   Desktop    │  │     API      │  │   Tauri      │        │
+│  │    UI        │  │   Server     │  │   Bridge     │        │
+│  │  (React)     │  │   (Axum)     │  │  (Rust)      │        │
+│  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘        │
+│         │                 │                 │                │
+│         └─────────────────┼─────────────────┘                │
+│                           │                                  │
+│  ┌────────────────────────┴────────────────────────┐          │
+│  │              Rust Core Engine                 │          │
+│  │  ┌─────────┐ ┌─────────┐ ┌─────────┐          │          │
+│  │  │Scanner  │ │Calculator│ │Verifier │          │          │
+│  │  │Parsers  │ │Normalizer│ │Oddds Err│          │          │
+│  │  └─────────┘ └─────────┘ └─────────┘          │          │
+│  └────────────────────────────────────────────────┘          │
+└─────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 10. Практическое примечание по среде
+## 📁 Структура проекта
 
-В этой Windows-среде были recurring проблемы:
-
-- long-running task stalls,
-- file lock / linker issues,
-- mixed rustc artifacts.
-
-Поэтому рабочий режим такой:
-
-- bounded rolling tasks,
-- явный toolchain `1.94.1`,
-- отдельный `CARGO_TARGET_DIR` при тяжёлых прогонах,
-- сохранение памяти о parser-попытках в `artifacts/parser_memory/`.
+```
+fork_hunter_pro/
+├── desktop-ui/              # React + TypeScript + Tailwind
+│   ├── src/
+│   │   ├── pages/          # 8 страниц приложения
+│   │   │   ├── Dashboard.tsx
+│   │   │   ├── SurebetsPage.tsx
+│   │   │   ├── CorridorsPage.tsx
+│   │   │   ├── ExpressPage.tsx
+│   │   │   ├── OperatorPage.tsx
+│   │   │   ├── AccountsPage.tsx      # ← Профили как у Forking
+│   │   │   ├── HistoryPage.tsx
+│   │   │   └── SettingsPage.tsx
+│   │   ├── components/     # UI компоненты
+│   │   │   ├── StatCard.tsx
+│   │   │   ├── EmptyState.tsx
+│   │   │   ├── Skeleton.tsx
+│   │   │   └── Sidebar.tsx
+│   │   ├── lib/            # Утилиты и данные
+│   │   │   ├── demoData.ts
+│   │   │   └── profiles.ts # ← Система профилей
+│   │   └── App.tsx
+│   ├── src-tauri/          # Desktop shell (Tauri)
+│   └── package.json
+│
+├── crates/                 # Rust core
+│   ├── api/               # Axum REST API
+│   ├── engine/            # Calculator, Normalizer, Verifier
+│   ├── scanner/           # Parsers & web scraping
+│   └── shared/            # Models & events
+│
+├── AGENTS.md              # Документация по агентам
+└── ARCHITECTURE.md        # Техническая архитектура
+```
 
 ---
 
-## 11. Куда смотреть дальше
+## 🛠️ Технологии
 
-### Документы / память
+**Frontend:**
+- React 18 + TypeScript
+- Vite (build tool)
+- Tailwind CSS
+- Framer Motion (animations)
+- Lucide React (icons)
+- Recharts (charts)
 
-- `artifacts/parser_memory/betboom_attempts_2026-04-21.md`
-- `AGENTS.md`
-- `docs/workflows/LOCAL_QUEUE_RUNNER.md`
-- `docs/workflows/KILO_FAST_PATH.md`
+**Desktop:**
+- Tauri (Rust-based Electron alternative)
+- WebSocket для real-time
 
-### Ключевые файлы
-
-- `crates/parsers/src/parser_factory.rs`
-- `crates/parsers/src/diagnostics.rs`
-- `crates/api/src/handlers.rs`
-- `crates/api/src/routes.rs`
-- `crates/shared/src/models.rs`
-- `desktop-ui/src/pages/OperatorPage.tsx`
-- `desktop-ui/src/hooks/useScanner.ts`
+**Backend:**
+- Rust + Axum
+- Tokio (async runtime)
+- SQLite (local data)
 
 ---
 
-## 12. Текущая стадия одной фразой
+## ⌨️ Горячие клавиши
 
-`Fork Hunter Pro` уже является сильной Rust-платформой для арбитражного сканинга с большим рабочим составом БК, живым operator/API/UI слоем и execution/auth/readiness контуром; основной remaining фронт — дожать `tennisi` и `olimp`, а потом отдельными волнами вернуться к shelved hard bookmakers.
+| Клавиша | Действие |
+|---------|----------|
+| `Ctrl+1` | Обзор (Dashboard) |
+| `Ctrl+2` | Вилки (Surebets) |
+| `Ctrl+3` | Коридоры (Corridors) |
+| `Ctrl+4` | Экспрессы (Express) |
+| `Ctrl+5` | Авто-ставки (Operator) |
+| `Ctrl+6` | Аккаунты (Accounts) |
+| `Ctrl+7` | История (History) |
+| `Ctrl+8` | Настройки (Settings) |
+| `Ctrl+B` | Свернуть/развернуть sidebar |
+| `Ctrl+R` | Обновить данные |
+| `Esc` | Закрыть модалку |
+
+---
+
+## 📊 Метрики
+
+| Показатель | Значение |
+|------------|----------|
+| **Рабочих БК (Rust)** | 7/7 |
+| **Cross-BK Match Rate** | 97.5% (3832/3928) |
+| **Цикл сканирования** | ~30 сек |
+| **Вилок найдено** | 0 (рынок эффективен) |
+| **Тесты Rust** | 91 passed |
+
+---
+
+## 📝 API Endpoints
+
+```
+GET  /api/v1/health              # Проверка здоровья
+GET  /api/v1/metrics             # Метрики сканнера
+GET  /api/v1/surebets            # Вилки
+GET  /api/v1/corridors           # Коридоры
+GET  /api/v1/freebets            # Фрибеты
+GET  /api/v1/bookmakers          # Список БК
+GET  /api/v1/analytics/generosity # Индекс щедрости
+WS   /ws                         # WebSocket real-time
+```
+
+---
+
+## 🎨 Цветовая система
+
+```css
+/* Основные цвета */
+--bg-primary: #0B0F19;      /* Фон */
+--accent: #7C3AED;          /* Фиолетовый акцент */
+--success: #10B981;         /* Зелёный */
+--warning: #F59E0B;         /* Жёлтый */
+--error: #EF4444;           /* Красный */
+--text-primary: #F1F5F9;   /* Текст */
+--text-secondary: #94A3B8; /* Вторичный текст */
+```
+
+---
+
+## 🔒 Безопасность
+
+- **Шифрование сессий** — cookies хранятся в зашифрованном виде
+- **Master password** — защита данных авторизации
+- **2FA** — для операций (опционально)
+- **Автоблокировка** — через 5 мин бездействия
+- **Изолированные профили** — каждый дроп = отдельный fingerprint
+
+---
+
+## 📱 Скриншоты
+
+> *[Вставить скриншоты UI]*
+
+---
+
+## 🤝 Поддержка
+
+По вопросам и предложениям: [создать issue](https://github.com/rpuats/fork_hunter_pro/issues)
+
+---
+
+## 📜 Лицензия
+
+**Proprietary** — все права защищены. 
+
+Copyright © 2026 Ghost Imperium
+
+---
+
+<p align="center">
+  <strong>Made with 🦀 Rust + ⚛️ React</strong>
+</p>
