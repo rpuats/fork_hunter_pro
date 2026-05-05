@@ -1,8 +1,0 @@
-[2m2026-04-08T01:37:46.168766Z[0m [32m INFO[0m [2mfork_hunter_bin[0m[2m:[0m Ghost Imperium starting...
-[2m2026-04-08T01:37:46.172130Z[0m [32m INFO[0m [2mfork_hunter_bin[0m[2m:[0m Configuration loaded
-[2m2026-04-08T01:37:46.172309Z[0m [32m INFO[0m [2mfork_hunter_bin[0m[2m:[0m 7 parsers loaded
-[2m2026-04-08T01:37:46.178655Z[0m [32m INFO[0m [2mfork_hunter_bin[0m[2m:[0m API server listening on 0.0.0.0:8080
-[2m2026-04-08T01:37:46.178713Z[0m [32m INFO[0m [2mfork_hunter_bin[0m[2m:[0m Scanner spawned, starting API server
-[2m2026-04-08T01:37:46.178724Z[0m [32m INFO[0m [2mfork_hunter_bin[0m[2m:[0m Ghost Imperium is running!
-[2m2026-04-08T01:37:46.178779Z[0m [32m INFO[0m [2mfork_hunter_bin[0m[2m:[0m Scanner task starting...
-^C
