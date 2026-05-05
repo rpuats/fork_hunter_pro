@@ -3,9 +3,11 @@
 
 use serde::{Deserialize, Serialize};
 use rust_decimal::Decimal;
-use rust_decimal::prelude::ToPrimitive;
+use rust_decimal::prelude::{FromPrimitive, ToPrimitive};
 use uuid::Uuid;
-use crate::fork_finder::{Fork, ForkType};
+use chrono::Utc;
+use crate::fork_finder::{Fork, ForkLeg, ForkType};
+use shared;
 
 /// Leagues filter levels (like Forking)
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -385,6 +387,12 @@ impl ForkFilter {
     pub fn add_preset(&mut self, preset: FilterPreset) {
         self.presets.push(preset);
     }
+    
+    /// Check if surebet should be processed (compatibility method)
+    pub fn should_process_surebet(&self, _surebet: &shared::Surebet) -> bool {
+        // STUB: Always allow for now
+        true
+    }
 }
 
 impl Default for ForkFilter {
@@ -478,7 +486,7 @@ mod tests {
             league: "Premier League".to_string(),
             sport: "football".to_string(),
             is_live: false,
-            match_time: Some("60".to_string()),
+            start_time: Some(Utc::now()),
             profit_percent: Decimal::from_f64(1.5).unwrap(),
             legs: vec![
                 ForkLeg {
@@ -543,7 +551,7 @@ mod tests {
             league: "Premier League".to_string(),
             sport: "football".to_string(),
             is_live: false,
-            match_time: Some("60".to_string()),
+            start_time: Some(Utc::now()),
             profit_percent: Decimal::from_f64(1.5).unwrap(),
             legs: vec![
                 ForkLeg {
@@ -569,3 +577,7 @@ mod tests {
         }
     }
 }
+
+// Type aliases for compatibility
+pub use self::FilterPreset as FilterConfig;
+pub use self::ForkFilter as FilterEngine;

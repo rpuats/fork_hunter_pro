@@ -25,6 +25,25 @@ pub enum BusEvent {
         payload: serde_json::Value,
         timestamp: DateTime<Utc>,
     },
+    /// Surebet detected (alias for SurebetFound)
+    SurebetDetected {
+        surebet_id: String,
+        payload: serde_json::Value,
+        timestamp: DateTime<Utc>,
+    },
+    /// Odds changed for an event
+    OddsChanged {
+        event_id: String,
+        bookmaker: String,
+        old_odds: serde_json::Value,
+        new_odds: serde_json::Value,
+        timestamp: DateTime<Utc>,
+    },
+    /// Event expired
+    EventExpired {
+        event_id: String,
+        timestamp: DateTime<Utc>,
+    },
     ParserHealth {
         bookmaker: String,
         status: String,

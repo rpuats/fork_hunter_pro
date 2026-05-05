@@ -21,6 +21,10 @@ rand.workspace = true
 futures = "0.3"
 rust_decimal.workspace = true
 playwright.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+base64 = "0.22"
+whoami = "1.5"
 
 [features]
 # Enable Marathon MVP path behind a feature flag

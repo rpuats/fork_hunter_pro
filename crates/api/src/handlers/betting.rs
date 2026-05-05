@@ -19,7 +19,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex as TokioMutex;
 use uuid::Uuid;
 
-use crate::AppState;
+use super::AppState;
 
 /// Execution state response
 #[derive(Debug, Serialize)]
@@ -157,8 +157,7 @@ pub async fn place_bet(
     Json(request): Json<PlaceBetRequest>,
 ) -> Result<Json<BetResult>, (axum::http::StatusCode, String)> {
     let mode = {
-        let engine = state.betting_engine.lock().await;
-        engine.get_mode()
+        state.auto_bet_engine.get_mode()
     };
 
     let instruction = BetInstruction::new(
@@ -173,10 +172,7 @@ pub async fn place_bet(
     );
 
     // Add to engine
-    {
-        let mut engine = state.betting_engine.lock().await;
-        engine.submit_bet(instruction.clone());
-    }
+    state.auto_bet_engine.submit_bet(instruction.clone());
 
     // TODO: Actually execute bet based on mode
     let result = BetResult {
@@ -292,10 +288,9 @@ pub async fn resolve_queue_item(
 pub async fn get_pending_bets(
     State(state): State<Arc<AppState>>,
 ) -> Json<Vec<BetInstruction>> {
-    let engine = state.betting_engine.lock().await;
-    let bets: Vec<BetInstruction> = engine.get_pending_bets()
-        .iter()
-        .map(|&b| b.clone())
+    let bets: Vec<BetInstruction> = state.auto_bet_engine.get_pending_bets()
+        .into_iter()
+        .cloned()
         .collect();
     Json(bets)
 }

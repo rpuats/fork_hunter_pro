@@ -12,7 +12,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
-use crate::AppState;
+use super::AppState;
 
 /// Performance metrics response
 #[derive(Debug, Serialize)]

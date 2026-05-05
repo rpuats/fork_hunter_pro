@@ -30,6 +30,27 @@ pub enum QueueItem {
     BalanceLow(BalanceLowItem),
 }
 
+/// Queue item type enum
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum QueueItemType {
+    BetConfirmation,
+    CaptchaRequired,
+    TwoFARequired,
+    AuthRequired,
+    OddsChanged,
+    BalanceLow,
+}
+
+/// Queue item status
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum QueueItemStatus {
+    Pending,
+    InProgress,
+    Completed,
+    Expired,
+    Cancelled,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BetConfirmationItem {
     pub id: String,

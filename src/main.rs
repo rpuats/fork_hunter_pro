@@ -107,7 +107,7 @@ async fn main() -> Result<()> {
         generosity_index: generosity_index.clone(),
     };
 
-    let app = create_router(api_state);
+    let app = create_router(Arc::new(api_state));
 
     let addr = format!("{}:{}", config.server.host, config.server.port);
     let listener = tokio::net::TcpListener::bind(&addr).await?;

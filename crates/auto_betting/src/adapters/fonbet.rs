@@ -317,7 +317,7 @@ mod tests {
 
     #[test]
     fn reports_authenticated_balance_unavailable_without_cache() {
-        let adapter = FonbetExecutionAdapter;
+        let adapter = FonbetExecutionAdapter { enable_real_api: false };
         let account = account();
         let status = BookmakerSessionStatus {
             account_id: Some(account.id),
@@ -343,7 +343,7 @@ mod tests {
 
     #[test]
     fn treats_expired_active_session_as_not_authenticated() {
-        let adapter = FonbetExecutionAdapter;
+        let adapter = FonbetExecutionAdapter { enable_real_api: false };
         let account = account();
         let session = BookmakerSession {
             account_id: account.id,
@@ -383,16 +383,24 @@ use std::error::Error;
 impl BookmakerAuth for FonbetExecutionAdapter {
     async fn authorize(
         &self,
-        account: &BookmakerAccount,
-    ) -> Result<BookmakerSession, Box<dyn Error + Send + Sync>> {
-        let session = BookmakerSession {
-            account_id: account.id,
-            bookmaker: Self::BOOKMAKER.to_string(),
-            state: BookmakerSessionState::Active,
-            token_hint: Some(format!("mock_token_{}", Self::BOOKMAKER)),
-            last_synced_at: Utc::now(),
+        _account: &shared::BookmakerAccount,
+    ) -> Result<crate::auth::AuthSession, crate::auth::AuthError> {
+        let session = crate::auth::AuthSession {
+            bookmaker_id: Self::BOOKMAKER.to_string(),
+            cookies: crate::auth::SessionCookies {
+                cookies: vec![],
+                user_agent: "Mozilla/5.0".to_string(),
+                local_storage: None,
+                session_storage: None,
+                created_at: Utc::now(),
+            },
+            created_at: Utc::now(),
             expires_at: None,
         };
         Ok(session)
+    }
+
+    async fn check_session(&self, _session: &crate::auth::AuthSession) -> Result<bool, crate::auth::AuthError> {
+        Ok(true)
     }
 }

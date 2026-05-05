@@ -12,6 +12,8 @@ pub mod display_config;
 pub mod session_storage;
 pub mod streaming_auth;
 
+pub use session_storage::SessionStorage;
+
 /// Bookmaker credentials storage
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct BookmakerCredentials {
@@ -21,7 +23,7 @@ pub struct BookmakerCredentials {
     pub phone_prefix: Option<String>, // "+7" for RU, "+375" for BY
     pub two_fa_secret: Option<String>, // TOTP 2FA secret (optional)
     pub status: AuthStatus,
-    pub cookies: Option<SessionCookies>,
+    pub cookies: Option<AuthSession>,
     pub balance: Option<Decimal>,
     pub last_auth: Option<DateTime<Utc>>,
     pub display_config: Option<DisplaySettings>,
@@ -72,6 +74,18 @@ pub struct SessionCookies {
     pub local_storage: Option<String>,
     pub session_storage: Option<String>,
     pub created_at: DateTime<Utc>,
+}
+
+impl Default for SessionCookies {
+    fn default() -> Self {
+        Self {
+            cookies: Vec::new(),
+            user_agent: String::new(),
+            local_storage: None,
+            session_storage: None,
+            created_at: Utc::now(),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -162,12 +176,86 @@ pub enum AuthError {
     
     #[error("Timeout waiting for {operation}")]
     Timeout { operation: String },
+    
+    #[error("Auth failed for {bookmaker}: {error}")]
+    AuthFailed { bookmaker: String, error: String },
+}
+
+/// Trait for bookmaker authorization
+#[async_trait::async_trait]
+pub trait BookmakerAuth: Send + Sync {
+    async fn authorize(&self, account: &shared::BookmakerAccount) -> Result<AuthSession, AuthError>;
+    async fn check_session(&self, session: &AuthSession) -> Result<bool, AuthError>;
+}
+
+/// Session material for bookmaker
+#[derive(Debug, Clone)]
+pub struct BookmakerSessionMaterial {
+    pub session: AuthSession,
+    pub credentials: BookmakerCredentials,
+    pub cookie_header: Option<String>,
+    pub authorization_header: Option<String>,
+    pub csrf_token: Option<String>,
+    pub user_agent: Option<String>,
+    pub extra_headers: Option<HashMap<String, String>>,
+    pub source: String,
+    pub imported_at: Option<DateTime<Utc>>,
+}
+
+impl BookmakerSessionMaterial {
+    /// Check if has credentials (STUB)
+    pub fn has_credentials(&self) -> bool {
+        // STUB: Always return true for now
+        true
+    }
+    
+    /// Get summary of session material
+    pub fn summary(&self) -> BookmakerSessionMaterialSummary {
+        BookmakerSessionMaterialSummary {
+            bookmaker_id: self.session.bookmaker_id.clone(),
+            is_authenticated: true, // STUB
+            balance: None, // STUB
+            source: self.source.clone(),
+            cookie_header_present: self.cookie_header.is_some(),
+            authorization_header_present: self.authorization_header.is_some(),
+            csrf_token_present: self.csrf_token.is_some(),
+            user_agent_present: self.user_agent.is_some(),
+            extra_header_count: self.extra_headers.as_ref().map(|h| h.len()).unwrap_or(0),
+            imported_at: self.imported_at.unwrap_or(self.session.created_at),
+            redacted_hint: format!("{}***", &self.session.bookmaker_id.chars().take(3).collect::<String>()),
+        }
+    }
+}
+
+/// Auth session
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuthSession {
+    pub bookmaker_id: String,
+    pub cookies: SessionCookies,
+    pub created_at: DateTime<Utc>,
+    pub expires_at: Option<DateTime<Utc>>,
+}
+
+/// Summary of session material
+#[derive(Debug, Clone)]
+pub struct BookmakerSessionMaterialSummary {
+    pub bookmaker_id: String,
+    pub is_authenticated: bool,
+    pub balance: Option<Decimal>,
+    pub source: String,
+    pub cookie_header_present: bool,
+    pub authorization_header_present: bool,
+    pub csrf_token_present: bool,
+    pub user_agent_present: bool,
+    pub extra_header_count: usize,
+    pub imported_at: DateTime<Utc>,
+    pub redacted_hint: String,
 }
 
 /// Auth manager - main entry point
 pub struct AuthManager {
-    credentials: HashMap<String, BookmakerCredentials>,
-    storage: session_storage::SessionStorage,
+    pub credentials: HashMap<String, BookmakerCredentials>,
+    pub storage: session_storage::SessionStorage,
     event_tx: mpsc::Sender<AuthEvent>,
 }
 
@@ -246,6 +334,12 @@ impl AuthManager {
             })
             .collect()
     }
+
+    /// Get session for a bookmaker (STUB)
+    pub fn get_session(&self, bookmaker_id: &str) -> Option<&AuthSession> {
+        // STUB: Returns None for now
+        None
+    }
 }
 
 /// Supported bookmakers list
@@ -305,6 +399,35 @@ pub fn format_login(login: &str, prefix: Option<&str>) -> String {
     } else {
         login.to_string()
     }
+}
+
+/// Authenticate bookmaker with browser (STUB)
+pub async fn authenticate_bookmaker(
+    _credentials: &BookmakerCredentials,
+    _browser: &playwright::api::Browser,
+    _event_tx: tokio::sync::mpsc::Sender<AuthEvent>,
+) -> Result<AuthSession, AuthError> {
+    Err(AuthError::BrowserError("Browser auth not yet implemented".to_string()))
+}
+
+/// Continue after captcha (STUB)
+pub async fn continue_after_captcha(
+    _credentials: &BookmakerCredentials,
+    _browser: &playwright::api::Browser,
+    _captcha_code: &str,
+    _event_tx: tokio::sync::mpsc::Sender<AuthEvent>,
+) -> Result<AuthSession, AuthError> {
+    Err(AuthError::BrowserError("Captcha handling not yet implemented".to_string()))
+}
+
+/// Continue after 2FA (STUB)
+pub async fn continue_after_2fa(
+    _credentials: &BookmakerCredentials,
+    _browser: &playwright::api::Browser,
+    _code: &str,
+    _event_tx: tokio::sync::mpsc::Sender<AuthEvent>,
+) -> Result<AuthSession, AuthError> {
+    Err(AuthError::BrowserError("2FA handling not yet implemented".to_string()))
 }
 
 #[cfg(test)]

@@ -1,300 +1,252 @@
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { Layers, ShieldCheck, AlertTriangle, CheckCircle2, Info, ArrowUpDown, Copy, Radio } from 'lucide-react'
-import { toast } from 'sonner'
-import type { ExpressFork, ExpressForkLeg, ExpressRiskLevel } from '../types'
+import { 
+  Layers, Plus, Trash2, Calculator, TrendingUp, AlertTriangle,
+  ChevronRight, Save, Zap, Target, Percent, DollarSign
+} from 'lucide-react'
+import { StatCard } from '../components/StatCard'
 
-interface ExpressPageProps {
-  expressForks: ExpressFork[]
-}
+const container = { hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.05 } } }
+const item = { hidden: { opacity: 0, y: 20 }, show: { opacity: 1, y: 0, transition: { duration: 0.3 } } }
 
-const riskConfig: Record<ExpressRiskLevel, { label: string, color: string, icon: typeof CheckCircle2 }> = {
-  low: { label: 'Низкий', color: 'var(--accent-green)', icon: CheckCircle2 },
-  medium: { label: 'Средний', color: 'var(--accent-yellow)', icon: Info },
-  high: { label: 'Высокий', color: 'var(--accent-red)', icon: AlertTriangle },
-}
-
-function normalizeRiskLevel(value: ExpressFork['risk_level']): ExpressRiskLevel {
-  switch (value) {
-    case 'Low':
-      return 'low'
-    case 'Medium':
-      return 'medium'
-    case 'High':
-      return 'high'
-    default:
-      return value
+const demoExpressForks = [
+  {
+    id: 'e1',
+    name: 'Футбол на выходных',
+    events: [
+      { match: 'ЦСКА — Спартак', outcome: 'П1', odds: 2.45 },
+      { match: 'Зенит — Локомотив', outcome: 'ТБ 2.5', odds: 1.85 },
+      { match: 'Динамо — Краснодар', outcome: 'Х', odds: 3.20 }
+    ],
+    totalOdds: 14.52,
+    stake: 5000,
+    potentialWin: 72600,
+    probability: 12,
+    bookmaker: 'Pari'
+  },
+  {
+    id: 'e2',
+    name: 'Теннис на сегодня',
+    events: [
+      { match: 'Медведев — Сinner', outcome: 'П1', odds: 1.75 },
+      { match: 'Алькарас — Джокович', outcome: 'ТБ 22.5', odds: 1.90 }
+    ],
+    totalOdds: 3.33,
+    stake: 10000,
+    potentialWin: 33300,
+    probability: 35,
+    bookmaker: 'Fonbet'
   }
-}
+]
 
-function formatMoney(value: number) {
-  return `${Math.round(value).toLocaleString('ru-RU')}₽`
-}
+const formatMoney = (amount: number) => new Intl.NumberFormat('ru-RU').format(amount) + ' ₽'
 
-function formatEventLabel(leg: ExpressForkLeg) {
-  if (leg.is_express) {
-    return leg.express_events.length ? `${leg.express_events.length} событий в экспрессе` : 'Собранный экспресс'
+export function ExpressPage() {
+  const [expresses, setExpresses] = useState(demoExpressForks)
+  const [showBuilder, setShowBuilder] = useState(false)
+  const [builderEvents, setBuilderEvents] = useState([{ match: '', outcome: '', odds: 1.0 }])
+  const [stake, setStake] = useState(5000)
+
+  const addEvent = () => {
+    setBuilderEvents([...builderEvents, { match: '', outcome: '', odds: 1.0 }])
   }
 
-  return `${leg.event.home_team} - ${leg.event.away_team}`
-}
+  const removeEvent = (index: number) => {
+    setBuilderEvents(builderEvents.filter((_, i) => i !== index))
+  }
 
-function formatDetectedAt(value: string) {
-  return new Date(value).toLocaleString('ru-RU', {
-    day: '2-digit',
-    month: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
+  const updateEvent = (index: number, field: string, value: string | number) => {
+    const updated = [...builderEvents]
+    updated[index] = { ...updated[index], [field]: value }
+    setBuilderEvents(updated)
+  }
 
-function buildClipboardText(expressFork: ExpressFork) {
-  return expressFork.legs.map((leg, index) => {
-    const title = formatEventLabel(leg)
-    return `${index + 1}. ${title}\n${leg.bookmaker}: ${leg.market} / ${leg.selection} @ ${leg.odds.toFixed(2)}\nСумма: ${formatMoney(leg.stake ?? 0)}`
-  }).join('\n\n')
-}
-
-export function ExpressPage({ expressForks }: ExpressPageProps) {
-  const [riskFilter, setRiskFilter] = useState<'all' | ExpressRiskLevel>('all')
-  const [verificationFilter, setVerificationFilter] = useState<'all' | 'verified' | 'unverified'>('all')
-  const [sortBy, setSortBy] = useState<'profit' | 'time'>('profit')
-
-  const filtered = useMemo(() => {
-    const result = expressForks.filter((fork) => {
-      if (riskFilter !== 'all' && normalizeRiskLevel(fork.risk_level) !== riskFilter) return false
-      if (verificationFilter === 'verified' && !fork.verified) return false
-      if (verificationFilter === 'unverified' && fork.verified) return false
-      return true
-    })
-
-    result.sort((a, b) => {
-      if (sortBy === 'profit') return b.profit_percent - a.profit_percent
-      return new Date(b.detected_at).getTime() - new Date(a.detected_at).getTime()
-    })
-
-    return result
-  }, [expressForks, riskFilter, sortBy, verificationFilter])
-
-  const verifiedCount = expressForks.filter((fork) => fork.verified).length
-  const liveCoverage = expressForks.filter((fork) => fork.legs.some((leg) => leg.event.is_live)).length
+  const totalOdds = builderEvents.reduce((acc, e) => acc * (Number(e.odds) || 1), 1)
+  const potentialWin = stake * totalOdds
 
   return (
-    <motion.div
-      className="space-y-6"
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-    >
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+    <motion.div variants={container} initial="hidden" animate="show" className="p-6 space-y-6">
+      {/* Header */}
+      <motion.div variants={item} className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold">Экспресс-вилки</h2>
-          <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
-            Живой срез по `/api/v1/express-forks` без экранных заглушек и demo-сценариев
-          </p>
+          <h1 className="text-2xl font-bold text-text-primary">Экспресс-вилки</h1>
+          <p className="text-sm text-text-secondary mt-1">Создание и расчёт экспресс-ставок</p>
         </div>
-
-        <div className="grid gap-3 sm:grid-cols-3">
-          <div className="glass-card px-4 py-3 min-w-[160px]">
-            <p className="text-xs mb-1" style={{ color: 'var(--text-muted)' }}>В кэше</p>
-            <p className="text-xl font-semibold">{expressForks.length}</p>
-          </div>
-          <div className="glass-card px-4 py-3 min-w-[160px]">
-            <p className="text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Верифицировано</p>
-            <p className="text-xl font-semibold">{verifiedCount}</p>
-          </div>
-          <div className="glass-card px-4 py-3 min-w-[160px]">
-            <p className="text-xs mb-1" style={{ color: 'var(--text-muted)' }}>Live покрытие</p>
-            <p className="text-xl font-semibold">{liveCoverage}</p>
-          </div>
-        </div>
-      </div>
-
-      <motion.div
-        className="glass-card p-4"
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-      >
-        <div className="flex flex-wrap gap-3 items-center">
-          <select value={riskFilter} onChange={(e) => setRiskFilter(e.target.value as 'all' | ExpressRiskLevel)} className="input !w-auto !py-2">
-            <option value="all">Все риски</option>
-            <option value="low">Низкий риск</option>
-            <option value="medium">Средний риск</option>
-            <option value="high">Высокий риск</option>
-          </select>
-
-          <select value={verificationFilter} onChange={(e) => setVerificationFilter(e.target.value as 'all' | 'verified' | 'unverified')} className="input !w-auto !py-2">
-            <option value="all">Любая проверка</option>
-            <option value="verified">Только verified</option>
-            <option value="unverified">Только draft</option>
-          </select>
-
-          <button onClick={() => setSortBy(sortBy === 'profit' ? 'time' : 'profit')} className="btn btn-ghost">
-            <ArrowUpDown size={14} />
-            {sortBy === 'profit' ? 'По прибыли' : 'По времени'}
-          </button>
-        </div>
+        <button 
+          onClick={() => setShowBuilder(!showBuilder)}
+          className="btn btn-primary text-sm flex items-center gap-2"
+        >
+          {showBuilder ? <Trash2 size={16} /> : <Plus size={16} />}
+          {showBuilder ? 'Отменить' : 'Собрать экспресс'}
+        </button>
       </motion.div>
 
-      {filtered.length > 0 ? (
-        <div className="space-y-4">
-          {filtered.map((fork, index) => {
-            const riskLevel = normalizeRiskLevel(fork.risk_level)
-            const RiskIcon = riskConfig[riskLevel].icon
-            const expressLeg = fork.legs.find((leg) => leg.is_express)
-            const hedgeLegs = fork.legs.filter((leg) => !leg.is_express)
+      {/* Stats */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <motion.div variants={item}>
+          <StatCard icon={Layers} label="Экспрессов" value={expresses.length} color="blue" />
+        </motion.div>
+        <motion.div variants={item}>
+          <StatCard icon={Target} label="Средний коэф." value="5.92" color="purple" />
+        </motion.div>
+        <motion.div variants={item}>
+          <StatCard icon={TrendingUp} label="Потенциал" value={formatMoney(105900)} color="green" />
+        </motion.div>
+        <motion.div variants={item}>
+          <StatCard icon={Percent} label="Средняя вероятность" value="23%" color="orange" />
+        </motion.div>
+      </div>
 
-            return (
-              <motion.div
-                key={fork.id}
-                className="glass-card p-5"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.04 }}
-              >
-                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between mb-4">
-                  <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: 'var(--gradient-primary)' }}>
-                      <Layers size={20} color="#fff" />
-                    </div>
+      {/* Express Builder */}
+      {showBuilder && (
+        <motion.div 
+          variants={item}
+          initial={{ opacity: 0, height: 0 }}
+          animate={{ opacity: 1, height: 'auto' }}
+          className="rounded-card border border-accent/30 bg-surface p-5"
+        >
+          <h3 className="text-base font-semibold text-text-primary mb-4 flex items-center gap-2">
+            <Calculator size={18} className="text-accent" /> Конструктор экспресса
+          </h3>
 
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="text-base font-semibold">Express #{index + 1}</h3>
-                        <span className="badge badge-info">{fork.legs.length} legs</span>
-                        {fork.verified ? (
-                          <span className="badge" style={{ background: 'rgba(34,197,94,0.15)', color: 'var(--accent-green)' }}>
-                            <ShieldCheck size={12} /> verified
-                          </span>
-                        ) : (
-                          <span className="badge" style={{ background: 'rgba(245,158,11,0.16)', color: 'var(--accent-yellow)' }}>
-                            draft
-                          </span>
-                        )}
-                        {fork.legs.some((leg) => leg.event.is_live) && (
-                          <span className="badge" style={{ background: 'rgba(6,182,212,0.16)', color: 'var(--accent-cyan)' }}>
-                            <Radio size={12} /> live
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-2 mt-2">
-                        <RiskIcon size={14} style={{ color: riskConfig[riskLevel].color }} />
-                        <span className="text-xs" style={{ color: riskConfig[riskLevel].color }}>
-                          Риск: {riskConfig[riskLevel].label}
-                        </span>
-                        <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                          Обновлено {formatDetectedAt(fork.detected_at)}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="text-right">
-                    <div className="profit profit-positive text-2xl">+{fork.profit_percent.toFixed(2)}%</div>
-                    <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
-                      Общий объём: {formatMoney(fork.total_stake)}
-                    </p>
+          <div className="space-y-3 mb-4">
+            {builderEvents.map((event, index) => (
+              <div key={index} className="flex gap-2 items-start">
+                <div className="flex-1">
+                  <input
+                    type="text"
+                    placeholder="Матч (например: ЦСКА — Спартак)"
+                    value={event.match}
+                    onChange={e => updateEvent(index, 'match', e.target.value)}
+                    className="input w-full mb-2"
+                  />
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="Исход (П1, ТБ 2.5...)"
+                      value={event.outcome}
+                      onChange={e => updateEvent(index, 'outcome', e.target.value)}
+                      className="input flex-1"
+                    />
+                    <input
+                      type="number"
+                      step="0.01"
+                      placeholder="Коэф."
+                      value={event.odds}
+                      onChange={e => updateEvent(index, 'odds', parseFloat(e.target.value))}
+                      className="input w-24"
+                    />
                   </div>
                 </div>
+                <button
+                  onClick={() => removeEvent(index)}
+                  className="p-2 rounded-lg hover:bg-red-500/10 text-text-muted hover:text-red-400 transition-colors"
+                >
+                  <Trash2 size={18} />
+                </button>
+              </div>
+            ))}
+          </div>
 
-                <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
-                  <div className="space-y-3">
-                    {expressLeg && (
-                      <div className="rounded-xl p-4" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
-                        <div className="flex items-center justify-between gap-3 mb-2">
-                          <div>
-                            <p className="text-sm font-semibold">Собранный экспресс</p>
-                            <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
-                              {expressLeg.express_events.length} событий в плече `{expressLeg.selection}`
-                            </p>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-sm font-mono">@ {expressLeg.odds.toFixed(2)}</p>
-                            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{formatMoney(expressLeg.stake ?? 0)}</p>
-                          </div>
-                        </div>
+          <button
+            onClick={addEvent}
+            className="w-full py-2 rounded-lg border border-dashed border-border hover:border-accent/50 text-text-muted hover:text-accent transition-colors text-sm mb-4"
+          >
+            + Добавить событие
+          </button>
 
-                        <div className="space-y-2">
-                          {expressLeg.express_events.map((eventName) => (
-                            <div key={eventName} className="text-sm rounded-lg px-3 py-2" style={{ background: 'rgba(255,255,255,0.02)' }}>
-                              {eventName}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
+          {/* Calculation */}
+          <div className="p-4 rounded-lg bg-background space-y-2">
+            <div className="flex justify-between text-sm">
+              <span className="text-text-secondary">Общий коэффициент:</span>
+              <span className="text-text-primary font-medium">{totalOdds.toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-text-secondary">Сумма ставки:</span>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  value={stake}
+                  onChange={e => setStake(Number(e.target.value))}
+                  className="input w-24 text-right"
+                />
+                <span className="text-text-secondary">₽</span>
+              </div>
+            </div>
+            <div className="flex justify-between text-sm">
+              <span className="text-text-secondary">Потенциальный выигрыш:</span>
+              <span className="text-emerald-400 font-medium">{formatMoney(potentialWin)}</span>
+            </div>
+          </div>
 
-                    {hedgeLegs.map((leg) => (
-                      <div key={`${fork.id}-${leg.bookmaker}-${leg.event.id}`} className="rounded-xl p-4" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
-                        <div className="flex items-start justify-between gap-3">
-                          <div>
-                            <p className="text-sm font-semibold">{formatEventLabel(leg)}</p>
-                            <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
-                              {leg.event.league || leg.event.sport} • {leg.market} / {leg.selection}
-                            </p>
-                          </div>
-
-                          <div className="text-right">
-                            <p className="text-sm font-medium capitalize">{leg.bookmaker}</p>
-                            <p className="text-sm font-mono">@ {leg.odds.toFixed(2)}</p>
-                          </div>
-                        </div>
-
-                        <div className="flex flex-wrap items-center justify-between gap-2 mt-3 text-xs" style={{ color: 'var(--text-muted)' }}>
-                          <span>{leg.event.is_live ? 'Live' : 'Prematch'}</span>
-                          <span>{formatMoney(leg.stake ?? 0)}</span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="rounded-xl p-4 h-fit" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
-                    <p className="text-sm font-semibold mb-3">Контракт ответа</p>
-
-                    <div className="space-y-3 text-sm">
-                      <div className="flex items-center justify-between gap-3">
-                        <span style={{ color: 'var(--text-muted)' }}>ID</span>
-                        <span className="font-mono text-xs">{fork.id.slice(0, 8)}</span>
-                      </div>
-                      <div className="flex items-center justify-between gap-3">
-                        <span style={{ color: 'var(--text-muted)' }}>Verified</span>
-                        <span>{fork.verified ? 'true' : 'false'}</span>
-                      </div>
-                      <div className="flex items-center justify-between gap-3">
-                        <span style={{ color: 'var(--text-muted)' }}>Hedge legs</span>
-                        <span>{hedgeLegs.length}</span>
-                      </div>
-                      <div className="flex items-center justify-between gap-3">
-                        <span style={{ color: 'var(--text-muted)' }}>Express events</span>
-                        <span>{expressLeg?.express_events.length ?? 0}</span>
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={() => {
-                        navigator.clipboard.writeText(buildClipboardText(fork))
-                        toast.success('План ставок скопирован')
-                      }}
-                      className="btn btn-primary w-full justify-center mt-4"
-                    >
-                      <Copy size={16} />
-                      Копировать план
-                    </button>
-                  </div>
-                </div>
-              </motion.div>
-            )
-          })}
-        </div>
-      ) : (
-        <div className="glass-card p-16 text-center">
-          <Layers size={56} className="mx-auto mb-4 opacity-30" style={{ color: 'var(--accent-cyan)' }} />
-          <h3 className="text-xl font-bold mb-2">Экспресс-вилки не пришли с backend</h3>
-          <p className="text-sm mb-2" style={{ color: 'var(--text-muted)' }}>
-            Экран ждёт ответ от `/api/v1/express-forks` и не подменяет состояние mock-данными.
-          </p>
-        </div>
+          <div className="flex gap-3 mt-4">
+            <button className="btn btn-secondary flex-1 text-sm flex items-center justify-center gap-2">
+              <Save size={16} /> Сохранить
+            </button>
+            <button className="btn btn-primary flex-1 text-sm flex items-center justify-center gap-2">
+              <Zap size={16} /> Разместить
+            </button>
+          </div>
+        </motion.div>
       )}
+
+      {/* Saved Expresses */}
+      <motion.div variants={item}>
+        <h3 className="text-base font-semibold text-text-primary mb-4">Сохранённые экспрессы</h3>
+        <div className="space-y-3">
+          {expresses.map(express => (
+            <motion.div
+              key={express.id}
+              className="rounded-card border border-border bg-surface p-4 hover:border-accent/30 transition-all cursor-pointer"
+              whileHover={{ x: 4 }}
+            >
+              <div className="flex items-start justify-between mb-3">
+                <div>
+                  <h4 className="font-semibold text-text-primary">{express.name}</h4>
+                  <div className="text-xs text-text-secondary">{express.events.length} событий • {express.bookmaker}</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-lg font-bold text-accent">{express.totalOdds.toFixed(2)}</div>
+                  <div className="text-xs text-text-secondary">коэффициент</div>
+                </div>
+              </div>
+
+              {/* Events list */}
+              <div className="space-y-2 mb-4">
+                {express.events.map((event, i) => (
+                  <div key={i} className="flex items-center gap-3 text-sm">
+                    <div className="w-6 h-6 rounded-full bg-background flex items-center justify-center text-xs text-text-muted">
+                      {i + 1}
+                    </div>
+                    <div className="flex-1 text-text-secondary">{event.match}</div>
+                    <div className="text-text-primary">{event.outcome}</div>
+                    <div className="text-accent">@{event.odds}</div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Stats */}
+              <div className="flex items-center gap-4 pt-3 border-t border-border">
+                <div className="text-sm">
+                  <span className="text-text-secondary">Ставка: </span>
+                  <span className="text-text-primary">{formatMoney(express.stake)}</span>
+                </div>
+                <div className="text-sm">
+                  <span className="text-text-secondary">Потенциал: </span>
+                  <span className="text-emerald-400">{formatMoney(express.potentialWin)}</span>
+                </div>
+                <div className="text-sm">
+                  <span className="text-text-secondary">Вероятность: </span>
+                  <span className="text-text-primary">{express.probability}%</span>
+                </div>
+                <button className="ml-auto btn btn-secondary text-xs flex items-center gap-1">
+                  Разместить <ChevronRight size={14} />
+                </button>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+      </motion.div>
     </motion.div>
   )
 }

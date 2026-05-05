@@ -1,7 +1,7 @@
 {
-  "name": "fork-hunter-pro",
-  "version": "1.0.0",
-  "description": "Professional Arbitrage Scanner Desktop App",
+  "name": "ghost-imperium-pro",
+  "version": "2.0.0",
+  "description": "Ghost Imperium Pro — Арбитражный сканер вилок",
   "type": "module",
   "scripts": {
     "dev": "vite",

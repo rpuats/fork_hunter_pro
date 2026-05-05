@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::{Mutex, mpsc};
 
-use crate::AppState;
+use super::AppState;
 
 /// Account response DTO
 #[derive(Debug, Serialize)]
@@ -120,7 +120,7 @@ pub async fn add_account(
         bookmaker_id: request.bookmaker_id.clone(),
         login: request.login.clone(),
         password: request.password,
-        phone_prefix,
+        phone_prefix: phone_prefix.clone(),
         two_fa_secret: request.two_fa_secret,
         status: AuthStatus::NotAuthenticated,
         cookies: None,

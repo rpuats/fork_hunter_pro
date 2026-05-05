@@ -1,143 +1,238 @@
-import { useMemo } from 'react'
+import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { GitBranch, TrendingUp, ArrowRight, Percent, Scale } from 'lucide-react'
-import type { CorridorOpportunity } from '../types'
+import { 
+  GitBranch, TrendingUp, ArrowRight, Percent, Target,
+  Filter, Search, Zap, ChevronRight, AlertTriangle,
+  BarChart3, Calendar, Trophy, Flame
+} from 'lucide-react'
+import { StatCard } from '../components/StatCard'
 
-interface CorridorsPageProps {
-  corridors: CorridorOpportunity[]
-}
+const container = { hidden: { opacity: 0 }, show: { opacity: 1, transition: { staggerChildren: 0.05 } } }
+const item = { hidden: { opacity: 0, y: 20 }, show: { opacity: 1, y: 0, transition: { duration: 0.3 } } }
 
-export function CorridorsPage({ corridors }: CorridorsPageProps) {
-  const stats = useMemo(() => {
-    if (corridors.length === 0) {
-      return {
-        count: 0,
-        avgRoi: 0,
-        bestRoi: 0,
-        avgProbability: 0,
-      }
-    }
+const demoCorridors = [
+  {
+    id: 'c1',
+    match: 'ЦСКА — Спартак',
+    league: 'РПЛ',
+    sport: 'Футбол',
+    type: 'Тотал',
+    bet1: { bookmaker: 'Pari', outcome: 'ТБ 2.5', odds: 1.85 },
+    bet2: { bookmaker: 'Fonbet', outcome: 'ТМ 3.5', odds: 1.75 },
+    roi: 12.5,
+    probability: 78,
+    stake: 10000,
+    potentialProfit: 1250,
+    timeLeft: 3600,
+    isHot: true
+  },
+  {
+    id: 'c2',
+    match: 'Реал Мадрид — Барселона',
+    league: 'Ла Лига',
+    sport: 'Футбол',
+    type: 'Фора',
+    bet1: { bookmaker: 'Leon', outcome: 'Ф1 +0.5', odds: 1.90 },
+    bet2: { bookmaker: 'Winline', outcome: 'Ф2 +0.5', odds: 1.95 },
+    roi: 8.2,
+    probability: 65,
+    stake: 15000,
+    potentialProfit: 1230,
+    timeLeft: 7200,
+    isHot: false
+  },
+  {
+    id: 'c3',
+    match: 'Локомотив — Зенит',
+    league: 'РПЛ',
+    sport: 'Футбол',
+    type: 'ИТотал',
+    bet1: { bookmaker: 'Pari', outcome: 'ИТБ1 1.5', odds: 1.70 },
+    bet2: { bookmaker: 'Leon', outcome: 'ИТМ1 2.5', odds: 2.10 },
+    roi: 15.3,
+    probability: 85,
+    stake: 8000,
+    potentialProfit: 1224,
+    timeLeft: 1800,
+    isHot: true
+  },
+  {
+    id: 'c4',
+    match: 'Манчестер Сити — Ливерпуль',
+    league: 'АПЛ',
+    sport: 'Футбол',
+    type: 'Тотал',
+    bet1: { bookmaker: 'Fonbet', outcome: 'ТБ 2.5', odds: 1.80 },
+    bet2: { bookmaker: 'Winline', outcome: 'ТМ 3.5', odds: 1.80 },
+    roi: 6.8,
+    probability: 58,
+    stake: 12000,
+    potentialProfit: 816,
+    timeLeft: 5400,
+    isHot: false
+  }
+]
 
-    const totalRoi = corridors.reduce((sum, corridor) => sum + corridor.expected_roi, 0)
-    const totalProbability = corridors.reduce((sum, corridor) => sum + corridor.double_win_probability, 0)
+const formatMoney = (amount: number) => new Intl.NumberFormat('ru-RU').format(amount) + ' ₽'
 
-    return {
-      count: corridors.length,
-      avgRoi: totalRoi / corridors.length,
-      bestRoi: Math.max(...corridors.map((corridor) => corridor.expected_roi)),
-      avgProbability: (totalProbability / corridors.length) * 100,
-    }
-  }, [corridors])
+export function CorridorsPage() {
+  const [search, setSearch] = useState('')
+  const [minRoi, setMinRoi] = useState(0)
+  const [showHotOnly, setShowHotOnly] = useState(false)
+
+  const filtered = demoCorridors.filter(c => {
+    if (search && !c.match.toLowerCase().includes(search.toLowerCase())) return false
+    if (c.roi < minRoi) return false
+    if (showHotOnly && !c.isHot) return false
+    return true
+  })
+
+  const totalPotential = filtered.reduce((sum, c) => sum + c.potentialProfit, 0)
+  const avgRoi = filtered.length > 0 ? filtered.reduce((sum, c) => sum + c.roi, 0) / filtered.length : 0
 
   return (
-    <motion.div 
-      className="space-y-6"
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-    >
-      <div>
-        <h2 className="text-2xl font-bold">Коридоры</h2>
-        <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
-          Коридоры тоталов и фор — выигрыш при попадании в диапазон
-        </p>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="glass-card p-4">
-          <div className="flex items-center gap-3 mb-2">
-            <GitBranch size={18} style={{ color: 'var(--accent-blue)' }} />
-            <span className="text-sm font-medium">Найдено</span>
-          </div>
-          <p className="text-2xl font-bold">{stats.count}</p>
-          <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>по данным `/api/v1/corridors`</p>
-        </div>
-
-        <div className="glass-card p-4">
-          <div className="flex items-center gap-3 mb-2">
-            <Percent size={18} style={{ color: 'var(--accent-green)' }} />
-            <span className="text-sm font-medium">Средний ROI</span>
-          </div>
-          <p className="text-2xl font-bold">{stats.avgRoi.toFixed(2)}%</p>
-          <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>лучший {stats.bestRoi.toFixed(2)}%</p>
-        </div>
-
-        <div className="glass-card p-4">
-          <div className="flex items-center gap-3 mb-2">
-            <Scale size={18} style={{ color: 'var(--accent-yellow)' }} />
-            <span className="text-sm font-medium">Double win</span>
-          </div>
-          <p className="text-2xl font-bold">{stats.avgProbability.toFixed(1)}%</p>
-          <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>средняя вероятность диапазона</p>
-        </div>
-      </div>
-
-      {corridors.length > 0 ? (
-        <div className="space-y-4">
-          {corridors.map((cor, i) => (
-            <motion.div 
-              key={cor.id} 
-              className="glass-card p-5"
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.1 }}
-            >
-              <div className="flex items-start justify-between mb-4">
-                <div>
-                  <h3 className="text-base font-semibold">{cor.home_team} — {cor.away_team}</h3>
-                  <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>{cor.league}</p>
-                </div>
-                <div className="text-right">
-                  <div className="flex items-center gap-1.5">
-                    <TrendingUp size={16} style={{ color: 'var(--accent-green)' }} />
-                    <span className="profit profit-positive text-lg">ROI {cor.expected_roi.toFixed(1)}%</span>
-                  </div>
-                  <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                    Вероятность {((cor.double_win_probability ?? 0) * 100).toFixed(1)}%
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-4 mb-4 p-3 rounded-lg" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
-                <div className="flex-1">
-                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Нижняя граница</p>
-                  <p className="text-sm font-mono">{cor.line_low}</p>
-                </div>
-                <ArrowRight size={20} style={{ color: 'var(--accent-blue)' }} />
-                <div className="flex-1">
-                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Верхняя граница</p>
-                  <p className="text-sm font-mono">{cor.line_high}</p>
-                </div>
-                <div className="flex-1">
-                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Коридор</p>
-                  <p className="text-sm font-mono" style={{ color: 'var(--accent-green)' }}>{cor.line_high - cor.line_low}</p>
-                </div>
-              </div>
-
-              <div className="flex gap-3">
-                {cor.legs.map((leg, i) => (
-                  <div key={i} className="flex-1 p-3 rounded-lg" style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}>
-                    <p className="text-sm font-medium capitalize">{leg.bookmaker}</p>
-                    <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>{leg.selection}</p>
-                    <p className="text-sm font-mono mt-1">@ {leg.odds.toFixed(2)}</p>
-                  </div>
-                ))}
-              </div>
-            </motion.div>
-          ))}
-        </div>
-      ) : (
-        <div className="glass-card p-16 text-center">
-          <motion.div
-            animate={{ rotate: 360 }}
-            transition={{ duration: 20, repeat: Infinity, ease: 'linear' }}
-          >
-            <GitBranch size={64} className="mx-auto mb-4 opacity-30" style={{ color: 'var(--accent-purple)' }} />
-          </motion.div>
-          <h3 className="text-xl font-bold mb-2">Коридоры пока не найдены</h3>
-          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
-            Экран подключен к backend-контракту и покажет сделки сразу после появления данных
+    <motion.div variants={container} initial="hidden" animate="show" className="p-6 space-y-6">
+      {/* Header */}
+      <motion.div variants={item} className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-text-primary">Коридоры</h1>
+          <p className="text-sm text-text-secondary mt-1">
+            {filtered.length} найдено • Потенциал: {formatMoney(totalPotential)} • Средний ROI: {avgRoi.toFixed(1)}%
           </p>
         </div>
+        <button className="btn btn-secondary text-sm flex items-center gap-2">
+          <Zap size={16} /> Обновить
+        </button>
+      </motion.div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <motion.div variants={item}>
+          <StatCard icon={GitBranch} label="Коридоров" value={demoCorridors.length} color="blue" />
+        </motion.div>
+        <motion.div variants={item}>
+          <StatCard icon={TrendingUp} label="Средний ROI" value={`${avgRoi.toFixed(1)}%`} color="green" />
+        </motion.div>
+        <motion.div variants={item}>
+          <StatCard icon={Target} label="Потенциал" value={formatMoney(totalPotential)} color="purple" />
+        </motion.div>
+        <motion.div variants={item}>
+          <StatCard icon={Flame} label="Горячих" value={demoCorridors.filter(c => c.isHot).length} color="orange" />
+        </motion.div>
+      </div>
+
+      {/* Filters */}
+      <motion.div variants={item} className="flex flex-wrap items-center gap-3">
+        <div className="relative">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
+          <input 
+            type="text" 
+            placeholder="Поиск матчей..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="input pl-9 w-64"
+          />
+        </div>
+        
+        <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-surface border border-border">
+          <TrendingUp size={14} className="text-text-muted" />
+          <span className="text-sm text-text-secondary">ROI &gt;</span>
+          <input 
+            type="number" 
+            value={minRoi}
+            onChange={e => setMinRoi(Number(e.target.value))}
+            className="w-16 bg-transparent text-sm text-text-primary outline-none"
+          />
+          <span className="text-sm text-text-secondary">%</span>
+        </div>
+
+        <button 
+          onClick={() => setShowHotOnly(!showHotOnly)}
+          className={`btn text-sm flex items-center gap-2 ${showHotOnly ? 'btn-primary' : 'btn-secondary'}`}
+        >
+          <Flame size={14} /> Горячие
+        </button>
+      </motion.div>
+
+      {/* Corridors Grid */}
+      <motion.div variants={item} className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {filtered.map(corridor => (
+          <motion.div 
+            key={corridor.id}
+            className="rounded-card border border-border bg-surface p-5 hover:border-accent/30 transition-all cursor-pointer group"
+            whileHover={{ y: -2 }}
+          >
+            {/* Header */}
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  {corridor.isHot && <Flame size={14} className="text-orange-400" />}
+                  <h3 className="font-semibold text-text-primary">{corridor.match}</h3>
+                </div>
+                <div className="text-xs text-text-secondary">{corridor.league} • {corridor.type}</div>
+              </div>
+              <div className={`text-sm font-bold px-2 py-1 rounded-lg ${
+                corridor.roi >= 12 ? 'bg-emerald-500/10 text-emerald-400' :
+                corridor.roi >= 8 ? 'bg-blue-500/10 text-blue-400' :
+                'bg-amber-500/10 text-amber-400'
+              }`}>
+                +{corridor.roi}% ROI
+              </div>
+            </div>
+
+            {/* Bets visualization */}
+            <div className="flex items-center gap-3 mb-4">
+              {/* Bet 1 */}
+              <div className="flex-1 p-3 rounded-lg bg-background">
+                <div className="text-xs text-text-muted mb-1">{corridor.bet1.bookmaker}</div>
+                <div className="text-sm font-medium text-text-primary">{corridor.bet1.outcome}</div>
+                <div className="text-xs text-accent">@{corridor.bet1.odds}</div>
+              </div>
+
+              {/* Arrow */}
+              <div className="flex flex-col items-center">
+                <ArrowRight size={16} className="text-text-muted" />
+                <span className="text-[10px] text-text-muted">или</span>
+              </div>
+
+              {/* Bet 2 */}
+              <div className="flex-1 p-3 rounded-lg bg-background">
+                <div className="text-xs text-text-muted mb-1">{corridor.bet2.bookmaker}</div>
+                <div className="text-sm font-medium text-text-primary">{corridor.bet2.outcome}</div>
+                <div className="text-xs text-accent">@{corridor.bet2.odds}</div>
+              </div>
+            </div>
+
+            {/* Stats */}
+            <div className="grid grid-cols-3 gap-3 mb-4">
+              <div className="text-center p-2 rounded bg-background">
+                <div className="text-sm font-medium text-text-primary">{corridor.probability}%</div>
+                <div className="text-[10px] text-text-muted">Вероятность</div>
+              </div>
+              <div className="text-center p-2 rounded bg-background">
+                <div className="text-sm font-medium text-text-primary">{formatMoney(corridor.stake)}</div>
+                <div className="text-[10px] text-text-muted">Ставка</div>
+              </div>
+              <div className="text-center p-2 rounded bg-background">
+                <div className="text-sm font-medium text-emerald-400">{formatMoney(corridor.potentialProfit)}</div>
+                <div className="text-[10px] text-text-muted">Профит</div>
+              </div>
+            </div>
+
+            {/* Action */}
+            <button className="w-full btn btn-secondary text-sm flex items-center justify-center gap-2">
+              Разместить ставки <ChevronRight size={14} />
+            </button>
+          </motion.div>
+        ))}
+      </motion.div>
+
+      {filtered.length === 0 && (
+        <motion.div variants={item} className="text-center py-16">
+          <GitBranch size={48} className="mx-auto text-text-muted opacity-20 mb-4" />
+          <p className="text-text-secondary">Коридоры не найдены</p>
+          <p className="text-sm text-text-muted mt-1">Попробуйте изменить фильтры</p>
+        </motion.div>
       )}
     </motion.div>
   )

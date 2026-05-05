@@ -1,6 +1,7 @@
 use axum::http::StatusCode;
-use axum::routing::{any, get, post};
+use axum::routing::{any, delete, get, post};
 use axum::{Json, Router};
+use std::sync::Arc;
 use tower_http::cors::{Any, CorsLayer};
 use tower_http::services::{ServeDir, ServeFile};
 use tower_http::trace::TraceLayer;
@@ -31,7 +32,7 @@ async fn api_not_found() -> (StatusCode, Json<ApiResponse<serde_json::Value>>) {
     )
 }
 
-pub fn create_router(state: AppState) -> Router {
+pub fn create_router(state: Arc<AppState>) -> Router {
     let cors = CorsLayer::new()
         .allow_origin(Any)
         .allow_methods(Any)

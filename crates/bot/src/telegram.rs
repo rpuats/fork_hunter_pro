@@ -912,6 +912,15 @@ impl TelegramState {
                 self.last_bus_event_at = Some(*timestamp);
                 self.push_alert(SystemAlertDigest::new(level, message, *timestamp));
             }
+            BusEvent::SurebetDetected { .. } => {
+                // STUB: Not yet implemented
+            }
+            BusEvent::OddsChanged { timestamp, .. } => {
+                self.last_bus_event_at = Some(*timestamp);
+            }
+            BusEvent::EventExpired { timestamp, .. } => {
+                self.last_bus_event_at = Some(*timestamp);
+            }
         }
     }
 

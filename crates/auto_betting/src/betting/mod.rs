@@ -11,6 +11,13 @@ pub mod operator_queue;
 pub mod runner;
 pub mod semi_auto_bet;
 
+// Re-exports for convenience
+pub use operator_queue::{OperatorQueue, QueueItem, QueueItemType, QueueItemStatus, item_factory};
+pub use semi_auto_bet::{OperatorEvent, OperatorResponse};
+pub use auto_bet::place_auto_bet;
+pub use semi_auto_bet::place_semi_auto_bet;
+pub use manual_bet::prepare_manual_bet;
+
 /// Bet execution mode
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]

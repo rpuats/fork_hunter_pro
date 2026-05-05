@@ -531,6 +531,8 @@ mod tests {
             total_balance: 15_000.0,
             available_balance: 12_000.0,
             exposure: 3_000.0,
+            bonus_balance: Some(0.0),
+            source: Some("test".into()),
             captured_at: Utc::now(),
         };
         let auth_snapshot = BookmakerAuthSnapshot {

@@ -151,7 +151,7 @@ impl PerformanceMonitor {
     }
 
     /// Record a metric
-    async fn record(&self, name: &str, duration_ms: f64, success: bool) {
+    pub async fn record(&self, name: &str, duration_ms: f64, success: bool) {
         let mut metrics = self.metrics.write().await;
         let metric = metrics.entry(name.to_string()).or_insert_with(|| {
             OperationMetrics::new(name)
@@ -234,7 +234,7 @@ impl PerformanceMonitor {
     }
 
     /// Check if system meets all targets
-    pub async fn check_health(&self) -> PerformanceHealth {
+    pub async fn check_health(&self) -> PerformanceReport {
         let metrics = self.get_metrics().await;
         let mut health = PerformanceHealth::Healthy;
         let mut violations = Vec::new();

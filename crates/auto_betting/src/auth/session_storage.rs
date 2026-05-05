@@ -1,7 +1,7 @@
 //! Session storage - encrypted persistence for browser sessions
 //! Uses machine-specific key for encryption
 
-use super::SessionCookies;
+use super::AuthSession;
 use anyhow::{Context, Result};
 use chrono::Utc;
 use std::path::PathBuf;
@@ -31,7 +31,7 @@ impl SessionStorage {
     }
 
     /// Save session to disk with encryption
-    pub async fn save_session(&self, bookmaker_id: &str, session: &SessionCookies) -> Result<()> {
+    pub async fn save_session(&self, bookmaker_id: &str, session: &AuthSession) -> Result<()> {
         let path = self.session_file_path(bookmaker_id);
         
         // Serialize
@@ -51,7 +51,7 @@ impl SessionStorage {
     }
 
     /// Load session from disk
-    pub async fn load_session(&self, bookmaker_id: &str) -> Result<Option<SessionCookies>> {
+    pub async fn load_session(&self, bookmaker_id: &str) -> Result<Option<AuthSession>> {
         let path = self.session_file_path(bookmaker_id);
         
         if !path.exists() {
@@ -67,11 +67,11 @@ impl SessionStorage {
         let json = self.decrypt(&encrypted)?;
         
         // Deserialize
-        let session: SessionCookies = serde_json::from_str(&json)
+        let session: AuthSession = serde_json::from_str(&json)
             .context("Failed to deserialize session")?;
         
         // Check if session is expired (30 days)
-        let age = Utc::now() - session.created_at;
+        let age = Utc::now() - session.cookies.created_at;
         if age.num_days() > 30 {
             tracing::warn!("Session for {} is expired ({} days old)", bookmaker_id, age.num_days());
             let _ = tokio::fs::remove_file(&path).await;

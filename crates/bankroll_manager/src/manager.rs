@@ -154,6 +154,8 @@ mod tests {
             total_balance: 10_000.0,
             available_balance: 7_500.0,
             exposure: 2_500.0,
+            bonus_balance: Some(0.0),
+            source: Some("test".into()),
             captured_at: Utc::now(),
         });
 

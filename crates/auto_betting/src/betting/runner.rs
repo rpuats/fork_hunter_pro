@@ -159,8 +159,9 @@ impl BettingRunner {
         if let Some(item) = queue.current() {
             // Check if expired
             if item.is_expired() {
+                let item_id = item.id().to_string();
                 queue.resolve_current(true);
-                info!("Queue item expired: {}", item.id());
+                info!("Queue item expired: {}", item_id);
             }
             return;
         }
@@ -248,35 +249,44 @@ pub fn spawn_betting_runner(
 ) -> (BettingRunnerHandle, tokio::task::JoinHandle<()>) {
     let (tx, mut rx) = tokio::sync::mpsc::channel(10);
 
-    let mut runner = BettingRunner::new(
+    let runner = Arc::new(TokioMutex::new(BettingRunner::new(
         orchestrator,
         operator_queue,
         auth_manager,
         browser_pool,
         config,
-    );
+    )));
 
     let handle = tokio::spawn(async move {
-        // Listen for control commands
-        let control_task = tokio::spawn(async move {
-            while let Some(cmd) = rx.recv().await {
-                match cmd {
-                    RunnerCommand::Start => {}
-                    RunnerCommand::Pause => runner.pause(),
-                    RunnerCommand::Resume => runner.resume(),
-                    RunnerCommand::Stop => runner.stop(),
-                    RunnerCommand::SetMode(mode) => {
-                        runner.set_mode(mode).await;
+        // Run main loop with command processing
+        let mut interval = tokio::time::interval(Duration::from_millis(100));
+        let mut running = false;
+
+        loop {
+            tokio::select! {
+                _ = interval.tick() => {
+                    if running {
+                        let mut r = runner.lock().await;
+                        if r.state == RunnerState::Running {
+                            // Process one cycle
+                            r.process_operator_queue().await;
+                            r.check_active_forks().await;
+                            r.update_account_readiness().await;
+                        }
+                    }
+                }
+                Some(cmd) = rx.recv() => {
+                    let mut r = runner.lock().await;
+                    match cmd {
+                        RunnerCommand::Start => { r.state = RunnerState::Running; running = true; }
+                        RunnerCommand::Pause => r.pause(),
+                        RunnerCommand::Resume => r.resume(),
+                        RunnerCommand::Stop => { r.stop(); running = false; break; }
+                        RunnerCommand::SetMode(mode) => { r.set_mode(mode).await; }
                     }
                 }
             }
-        });
-
-        // Run main loop
-        runner.start().await;
-
-        // Stop control task
-        control_task.abort();
+        }
     });
 
     (BettingRunnerHandle { tx }, handle)

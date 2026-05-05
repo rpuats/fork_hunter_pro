@@ -1,21 +1,49 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Fork Hunter Pro",
-  "version": "0.1.0",
-  "identifier": "pro.forkhunter.desktop",
+  "productName": "Ghost Imperium Pro",
+  "version": "2.0.0",
+  "identifier": "pro.ghostimperium.desktop",
   "build": {
-    "devUrl": "http://127.0.0.1:1420",
+    "devUrl": "http://127.0.0.1:3000",
     "frontendDist": "../dist"
   },
   "app": {
     "windows": [
       {
-        "title": "Fork Hunter Pro",
-        "width": 1440,
-        "height": 920,
-        "minWidth": 1180,
-        "minHeight": 760
+        "title": "Ghost Imperium Pro",
+        "width": 1600,
+        "height": 1000,
+        "minWidth": 1280,
+        "minHeight": 800,
+        "center": true,
+        "resizable": true,
+        "maximizable": true,
+        "minimizable": true,
+        "closable": true,
+        "decorations": true,
+        "transparent": false,
+        "theme": "Dark",
+        "dragDropEnabled": false
       }
-    ]
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "windows": {
+      "wix": {
+        "language": "ru-RU"
+      }
+    }
   }
 }

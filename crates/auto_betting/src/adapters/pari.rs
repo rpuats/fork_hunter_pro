@@ -133,26 +133,25 @@ impl PariExecutionAdapter {
 impl BookmakerAuth for PariExecutionAdapter {
     async fn authorize(
         &self,
-        account: &BookmakerAccount,
-    ) -> Result<BookmakerSession, Box<dyn std::error::Error + Send + Sync>> {
-        info!("Authorizing Pari account {} (real_api={})", account.id, self.enable_real_api);
-
-        // Try real API authentication if enabled
-        if self.enable_real_api {
-            // Note: Real authentication requires session material (cookies)
-            // This will be provided via session_material in actual flow
-            info!("Pari real API mode enabled; session will be established via cookie exchange");
-        }
-
-        let session = BookmakerSession {
-            account_id: account.id,
-            bookmaker: Self::BOOKMAKER.to_string(),
-            state: BookmakerSessionState::Active,
-            token_hint: Some(format!("session_{}", chrono::Utc::now().timestamp())),
-            last_synced_at: Utc::now(),
-            expires_at: Some(Utc::now() + Duration::hours(12)),
+        _account: &shared::BookmakerAccount,
+    ) -> Result<crate::auth::AuthSession, crate::auth::AuthError> {
+        let session = crate::auth::AuthSession {
+            bookmaker_id: Self::BOOKMAKER.to_string(),
+            cookies: crate::auth::SessionCookies {
+                cookies: vec![],
+                user_agent: "Mozilla/5.0".to_string(),
+                local_storage: None,
+                session_storage: None,
+                created_at: Utc::now(),
+            },
+            created_at: Utc::now(),
+            expires_at: None,
         };
         Ok(session)
+    }
+
+    async fn check_session(&self, _session: &crate::auth::AuthSession) -> Result<bool, crate::auth::AuthError> {
+        Ok(true)
     }
 }
 

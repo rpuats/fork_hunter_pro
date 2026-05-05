@@ -35,11 +35,12 @@ pub use adapters::{
     builtin_adapter, register_builtin_adapters, supported_bookmakers, FonbetExecutionAdapter,
     PariExecutionAdapter,
 };
+pub use execution::{BookmakerExecutionAdapter, NoopExecutionAdapter};
 pub use auth::{
     AuthError, AuthEvent, AuthManager, AuthStatus, BookmakerCredentials, Cookie, DisplaySettings,
     OddsFormat, SessionCookies, SessionStorage, TwoFAMethod,
     browser_auth::{
-        authenticate_bookmaker, continue_after_2fa, continue_after_captcha,
+        authenticate_bookmaker, continue_after_2fa, continue_after_captcha, get_login_url,
     },
     display_config::{apply_display_config, get_display_config, BookmakerDisplayConfig, PostLoginAction},
     format_login, get_bookmaker_display_name, SUPPORTED_BOOKMAKERS,
@@ -61,7 +62,6 @@ pub use approval::{
 pub use bet_command::{BetCommandStatus, PlaceBeautifulBetCommand};
 pub use bet_state_machine::{BetPlacementEvent, BetPlacementState, BetPlacementStateMachine};
 pub use engine::AutoBetEngine;
-pub use execution::{BookmakerExecutionAdapter, NoopExecutionAdapter};
 pub use executor::BetExecutor;
 pub use limiter::BetLimiter;
 pub use persistence::{

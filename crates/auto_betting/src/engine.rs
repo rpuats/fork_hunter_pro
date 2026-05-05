@@ -301,6 +301,22 @@ impl AutoBetEngine {
         self.limiter.lock().get_stats()
     }
 
+    /// Get execution mode (STUB)
+    pub fn get_mode(&self) -> super::BetMode {
+        super::BetMode::Manual
+    }
+
+    /// Submit bet instruction (STUB)
+    pub fn submit_bet(&self, _instruction: super::BetInstruction) {
+        // STUB: Not yet implemented
+    }
+
+    /// Get pending bets (STUB)
+    pub fn get_pending_bets(&self) -> Vec<&super::BetInstruction> {
+        // STUB: Return empty for now
+        vec![]
+    }
+
     /// Разместить одну ставку (обёртка для прямого вызова)
     pub async fn place_bet(
         &self,
@@ -618,6 +634,8 @@ mod tests {
             total_balance: 10_000.0,
             available_balance: 8_000.0,
             exposure: 2_000.0,
+            bonus_balance: Some(0.0),
+            source: Some("test".into()),
             captured_at: Utc::now(),
         });
     }

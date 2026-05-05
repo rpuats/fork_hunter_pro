@@ -61,54 +61,11 @@ pub fn get_display_config(bookmaker_id: &str) -> BookmakerDisplayConfig {
 
 /// Apply display configuration via Playwright
 pub async fn apply_display_config(
-    page: &playwright::api::Page,
+    _page: &playwright::api::Page,
     config: &BookmakerDisplayConfig,
 ) -> Result<()> {
-    // Accept cookies
-    for selector in &config.cookie_accept_selectors {
-        match page.click(selector).await {
-            Ok(_) => tracing::info!("Accepted cookies for {}", config.bookmaker_id),
-            Err(_) => tracing::debug!("No cookie banner found for {}", config.bookmaker_id),
-        }
-    }
-
-    // Apply post-login actions
-    for action in &config.post_login_actions {
-        match action {
-            PostLoginAction::Navigate(url) => {
-                page.goto_builder(url)
-                    .goto()
-                    .await
-                    .with_context(|| format!("Failed to navigate to {}", url))?;
-            }
-            PostLoginAction::Click(selector) => {
-                page.click(selector)
-                    .await
-                    .with_context(|| format!("Failed to click {}", selector))?;
-            }
-            PostLoginAction::SetLocalStorage { key, value } => {
-                let js = format!(
-                    "() => {{ localStorage.setItem('{}', '{}'); }}",
-                    key.replace('\\', "\\\\").replace('\'', "\\'"),
-                    value.replace('\\', "\\\\").replace('\'', "\\'")
-                );
-                page.evaluate(js).await?;
-            }
-            PostLoginAction::ExecuteJs(js) => {
-                page.evaluate(js.clone()).await?;
-            }
-            PostLoginAction::WaitFor(selector, timeout_ms) => {
-                page.wait_for_selector_with_timeout(selector, *timeout_ms)
-                    .await
-                    .with_context(|| format!("Timeout waiting for {}", selector))?;
-            }
-        }
-        
-        // Small delay between actions
-        tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-    }
-
-    tracing::info!("Applied display config for {}", config.bookmaker_id);
+    // STUB: Temporarily disabled
+    tracing::info!("Display config for {} (stub)", config.bookmaker_id);
     Ok(())
 }
 

@@ -46,28 +46,28 @@ function App() {
   const renderPage = () => {
     switch(activeTab) {
       case 'dashboard':
-        return <Dashboard metrics={metrics} surebets={surebets} bookmakers={bookmakers} valueBets={valueBets} generosityIndices={generosityIndices} executionOverview={executionOverview} parserCoverage={parserCoverage} parserHealth={parserHealth} />
+        return <Dashboard />
       case 'surebets':
-        return <SurebetsPage surebets={surebets} />
+        return <SurebetsPage />
       case 'corridors':
-        return <CorridorsPage corridors={corridors} />
+        return <CorridorsPage />
       case 'express':
-        return <ExpressPage expressForks={expressForks} />
+        return <ExpressPage />
       case 'operator':
-        return <OperatorPage executionOverview={executionOverview} executionLedger={executionLedger} executionState={executionState} executionOperatorQueue={executionOperatorQueue} semiAutoCoupons={semiAutoCoupons} onConfirmSemiAutoCoupon={confirmSemiAutoCoupon} parserCoverage={parserCoverage} parserHealth={parserHealth} bookmakers={bookmakers} bookmakerStatusCatalog={bookmakerStatusCatalog} accountStates={accounts} freebetSummary={freebetSummary} onOpenAccount={openAccountsFocus} />
+        return <OperatorPage />
       case 'accounts':
-        return <AccountsPage accounts={accounts} accountsSummary={accountsSummary} bankrollState={bankrollState} bankrollRecommendations={bankrollRecommendations} executionState={executionState} focusedBookmaker={accountFocus} onBootstrapAccountSession={bootstrapAccountSession} onRefreshAccountBalance={refreshAccountBalance} onUpdateAccountControl={updateAccountControl} />
+        return <AccountsPage />
       case 'history':
-        return <HistoryPage surebets={surebets} corridors={corridors} expressForks={expressForks} valueBets={valueBets} executionLedger={executionLedger} />
+        return <HistoryPage />
       case 'settings':
         return <SettingsPage />
       default:
-        return <Dashboard metrics={metrics} surebets={surebets} bookmakers={bookmakers} valueBets={valueBets} generosityIndices={generosityIndices} executionOverview={executionOverview} parserCoverage={parserCoverage} parserHealth={parserHealth} />
+        return <Dashboard />
     }
   }
 
   return (
-    <div className="flex h-screen overflow-hidden" style={{ background: 'var(--bg-primary)' }}>
+    <div className="flex h-screen overflow-hidden bg-background text-text-primary font-sans">
       <Sidebar
         activeTab={activeTab}
         onTabChange={setActiveTab}
@@ -81,10 +81,10 @@ function App() {
         <AnimatePresence mode="wait">
           <motion.div
             key={activeTab}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.2 }}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
             className="h-full overflow-auto"
           >
             <div className="p-6 max-w-[1920px] mx-auto">

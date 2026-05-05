@@ -281,6 +281,9 @@ impl ExecutionRegistry {
             BookmakerAdapterReadinessStage::SessionBootstrapPending => format!(
                 "{bookmaker} adapter still requires operator-managed session/bootstrap readiness"
             ),
+            BookmakerAdapterReadinessStage::Stub => format!(
+                "{bookmaker} adapter is a stub implementation"
+            ),
         });
 
         BookmakerAuthSnapshot {
@@ -317,7 +320,7 @@ impl ExecutionRegistry {
         self.adapters
             .get(bookmaker)
             .map(|entry| entry.value().capability())
-            .unwrap_or_else(|| NoopExecutionAdapter::new(bookmaker).capability())
+            .unwrap_or_else(|| NoopExecutionAdapter::new().capability())
     }
 
     pub async fn refresh_session_status(
@@ -350,7 +353,7 @@ impl ExecutionRegistry {
                 .get_session_status(&account, session.as_ref(), session_material.as_ref())
                 .await?
         } else {
-            NoopExecutionAdapter::new(bookmaker)
+            NoopExecutionAdapter::new()
                 .get_session_status(&account, session.as_ref(), session_material.as_ref())
                 .await?
         };
@@ -401,7 +404,7 @@ impl ExecutionRegistry {
                 )
                 .await?
         } else {
-            NoopExecutionAdapter::new(bookmaker)
+            NoopExecutionAdapter::new()
                 .refresh_balance_snapshot(
                     &account,
                     &session_status,
@@ -502,7 +505,7 @@ impl ExecutionRegistry {
             return adapter.dry_run(None, request).await;
         }
 
-        NoopExecutionAdapter::new(bookmaker)
+        NoopExecutionAdapter::new()
             .dry_run(account.as_ref(), request)
             .await
     }
@@ -524,7 +527,7 @@ impl ExecutionRegistry {
             return adapter.dry_run(account.as_ref(), request).await;
         }
 
-        NoopExecutionAdapter::new(bookmaker)
+        NoopExecutionAdapter::new()
             .dry_run(account.as_ref(), request)
             .await
     }
@@ -804,6 +807,8 @@ mod tests {
             total_balance: 10_000.0,
             available_balance: 7_500.0,
             exposure: 2_500.0,
+            bonus_balance: Some(0.0),
+            source: Some("test".into()),
             captured_at: Utc::now(),
         });
 
@@ -1038,6 +1043,8 @@ mod tests {
             total_balance: 10_000.0,
             available_balance: 7_500.0,
             exposure: 2_500.0,
+            bonus_balance: Some(0.0),
+            source: Some("test".into()),
             captured_at: Utc::now(),
         });
 
@@ -1192,6 +1199,8 @@ mod tests {
             total_balance: 10_000.0,
             available_balance: 7_500.0,
             exposure: 2_500.0,
+            bonus_balance: Some(0.0),
+            source: Some("test".into()),
             captured_at: Utc::now(),
         });
 
@@ -1267,6 +1276,8 @@ mod tests {
             total_balance: 10_000.0,
             available_balance: 8_000.0,
             exposure: 2_000.0,
+            bonus_balance: Some(0.0),
+            source: Some("test".into()),
             captured_at: Utc::now(),
         });
         registry.upsert_balance_snapshot(BookmakerBalanceSnapshot {
@@ -1276,6 +1287,8 @@ mod tests {
             total_balance: 7_000.0,
             available_balance: 6_500.0,
             exposure: 500.0,
+            bonus_balance: Some(0.0),
+            source: Some("test".into()),
             captured_at: Utc::now(),
         });
 
@@ -1313,6 +1326,8 @@ mod tests {
             total_balance: 10_000.0,
             available_balance: 9_500.0,
             exposure: 500.0,
+            bonus_balance: Some(0.0),
+            source: Some("test".into()),
             captured_at: Utc::now(),
         };
         let store = Arc::new(TestPersistence {
